@@ -26,6 +26,7 @@ private:
   void init_instance();
   void init_surface();
   void init_device();
+  void init_swap_chain();
 
   void init_debug();
 

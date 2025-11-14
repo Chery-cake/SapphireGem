@@ -1,7 +1,5 @@
 #include "window.h"
 #include "renderer.h"
-#include "tasks.h"
-#include <GLFW/glfw3.h>
 #include <memory>
 #include <print>
 
@@ -28,6 +26,6 @@ Window::~Window() {
 
 void Window::run() {
   while (!glfwWindowShouldClose(window)) {
-    Tasks::get_instance().add_task([]() { glfwPollEvents(); });
+    glfwPollEvents();
   };
 }

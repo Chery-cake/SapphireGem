@@ -3,19 +3,28 @@
 #include "logical_device.h"
 #include "physical_device.h"
 #include "tasks.h"
+#include "vulkan/vulkan.hpp"
+#include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <memory>
 #include <print>
 #include <vector>
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-DevicesManager::DevicesManager(vk::raii::Instance &instance,
+DevicesManager::DevicesManager(GLFWwindow *window, vk::raii::Instance &instance,
                                vk::raii::SurfaceKHR &surface)
-    : instance(instance), surface(surface), physicalDevices({}),
-      logicalDevices({}), primaryDevice(nullptr), multiGPUEnabled(false) {}
+    : window(window), instance(instance), surface(surface), physicalDevices({}),
+      logicalDevices({}), primaryDevice(nullptr), multiGPUEnabled(false),
+      swapChain(nullptr) {}
 
 DevicesManager::~DevicesManager() {
   wait_idle();
+
+  swapChainImageViews.clear();
+  swapChainImages.clear();
+  swapChain.clear();
 
   logicalDevices.clear();
   primaryDevice.reset();
@@ -129,6 +138,111 @@ void DevicesManager::switch_multi_GPU(bool enable) { multiGPUEnabled = enable; }
 void DevicesManager::wait_idle() {
   for (auto &device : logicalDevices) {
     device->get_device().waitIdle();
+  }
+}
+
+void DevicesManager::create_swap_chain() {
+  auto surfaceCapabilities = primaryDevice->get_physical_device()
+                                 ->get_device()
+                                 .getSurfaceCapabilitiesKHR(surface);
+
+  auto swapChainCurrentExtent = [capabilities = &surfaceCapabilities,
+                                 this]() -> vk::Extent2D {
+    if (capabilities->currentExtent.width != 0xFFFFFFFF) {
+      return capabilities->currentExtent;
+    }
+    int width = 0;
+    int height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    return {std::clamp<uint32_t>(width, capabilities->minImageExtent.width,
+                                 capabilities->maxImageExtent.width),
+            std::clamp<uint32_t>(height, capabilities->minImageExtent.height,
+                                 capabilities->maxImageExtent.height)};
+  }();
+
+  swapChainSurfaceFormat = [availableFormats =
+                                primaryDevice->get_physical_device()
+                                    ->get_device()
+                                    .getSurfaceFormatsKHR(surface)]() {
+    assert(!availableFormats.empty());
+    const auto iterator =
+        std::ranges::find_if(availableFormats, [](const auto &format) {
+          return format.format == vk::Format::eB8G8R8A8Srgb &&
+                 format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+        });
+    return iterator != availableFormats.end() ? *iterator : availableFormats[0];
+  }();
+
+  auto swapChainPresentMode = [availablePresentModes =
+                                   primaryDevice->get_physical_device()
+                                       ->get_device()
+                                       .getSurfacePresentModesKHR(surface)]() {
+    assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) {
+      return presentMode == vk::PresentModeKHR::eFifo;
+    }));
+    return std::ranges::any_of(availablePresentModes,
+                               [](const vk::PresentModeKHR value) {
+                                 return vk::PresentModeKHR::eMailbox == value;
+                               })
+               ? vk::PresentModeKHR::eMailbox
+               : vk::PresentModeKHR::eFifo;
+  }();
+
+  vk::SwapchainCreateInfoKHR swapChainCreateInfo{
+      .surface = surface,
+      .minImageCount = ((surfaceCapabilities.maxImageCount > 0) &&
+                        (surfaceCapabilities.maxImageCount <
+                         surfaceCapabilities.minImageCount))
+                           ? surfaceCapabilities.maxImageCount
+                           : surfaceCapabilities.minImageCount,
+      .imageFormat = swapChainSurfaceFormat.format,
+      .imageColorSpace = swapChainSurfaceFormat.colorSpace,
+      .imageExtent = swapChainCurrentExtent,
+      .imageArrayLayers = 1,
+      .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+      .imageSharingMode = vk::SharingMode::eExclusive,
+      .preTransform = surfaceCapabilities.currentTransform,
+      .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+      .presentMode = swapChainPresentMode,
+      .clipped = true};
+
+  swapChain =
+      vk::raii::SwapchainKHR(primaryDevice->get_device(), swapChainCreateInfo);
+  swapChainImages = swapChain.getImages();
+}
+
+void DevicesManager::recreate_swap_chain() {
+  int width = 0, height = 0;
+  glfwGetFramebufferSize(window, &width, &height);
+  while (width == 0 || height == 0) {
+    glfwGetFramebufferSize(window, &width, &height);
+    glfwWaitEvents();
+  }
+
+  wait_idle();
+
+  swapChainImages.clear();
+  swapChain.clear();
+
+  create_swap_chain();
+
+  swapChainImages.clear();
+
+  create_swap_image_views();
+}
+
+void DevicesManager::create_swap_image_views() {
+  swapChainImageViews.clear();
+
+  vk::ImageViewCreateInfo imageViewCreateInfo{
+      .viewType = vk::ImageViewType::e2D,
+      .format = swapChainSurfaceFormat.format,
+      .subresourceRange = {vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1}};
+  for (auto image : swapChainImages) {
+    imageViewCreateInfo.image = image;
+    swapChainImageViews.emplace_back(primaryDevice->get_device(),
+                                     imageViewCreateInfo);
   }
 }
 

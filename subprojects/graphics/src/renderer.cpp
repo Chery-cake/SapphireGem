@@ -29,6 +29,8 @@ Renderer::Renderer(GLFWwindow *window)
   init_device();
   VULKAN_HPP_DEFAULT_DISPATCHER.init(
       *devicesManager->get_primary_device()->get_device());
+
+  init_swap_chain();
 }
 
 Renderer::~Renderer() {
@@ -73,9 +75,14 @@ void Renderer::init_surface() {
 }
 
 void Renderer::init_device() {
-  devicesManager = std::make_unique<DevicesManager>(instance, surface);
+  devicesManager = std::make_unique<DevicesManager>(window, instance, surface);
   devicesManager->enumerate_physical_devices();
   devicesManager->initialize_devices();
+}
+
+void Renderer::init_swap_chain() {
+  devicesManager->create_swap_chain();
+  devicesManager->create_swap_image_views();
 }
 
 void Renderer::init_debug() {
