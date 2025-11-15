@@ -2,7 +2,6 @@
 
 #include "logical_device.h"
 #include "physical_device.h"
-#include "vulkan/vulkan.hpp"
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
@@ -10,6 +9,7 @@
 #include <GLFW/glfw3.h>
 
 class DevicesManager {
+
 private:
   GLFWwindow *window;
 
@@ -31,6 +31,9 @@ private:
   find_graphics_queue_index(std::shared_ptr<PhysicalDevice> device) const;
   void add_device(std::shared_ptr<PhysicalDevice> physicalDevice);
 
+  void create_swap_chain(LogicalDevice &device);
+  void clear_swap_chains();
+
 public:
   DevicesManager(GLFWwindow *window, vk::raii::Instance &instance,
                  vk::raii::SurfaceKHR &surface);
@@ -43,7 +46,7 @@ public:
   void switch_multi_GPU(bool enable);
   void wait_idle();
 
-  void create_swap_chain();
+  void create_swap_chains();
   void recreate_swap_chain();
   void create_swap_image_views();
 

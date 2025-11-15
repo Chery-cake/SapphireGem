@@ -81,10 +81,12 @@ void Renderer::init_device() {
 }
 
 void Renderer::init_swap_chain() {
-  devicesManager->create_swap_chain();
+  devicesManager->create_swap_chains();
   devicesManager->create_swap_image_views();
 }
 
 void Renderer::init_debug() {
   debugMessanger = Config::get_instance().set_up_debug_messanger(instance);
 }
+
+DevicesManager &Renderer::get_device_manager() { return *devicesManager; }

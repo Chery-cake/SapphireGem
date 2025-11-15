@@ -1,3 +1,5 @@
+#include <GLFW/glfw3.h>
+#include <vector>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnullability-completeness"
 #pragma clang diagnostic ignored "-Wnullability-extension"
@@ -63,6 +65,23 @@ LogicalDevice::~LogicalDevice() {
   conditionVariable.notify_all();
 
   thread.join();
+
+  // Process any remaining tasks in the queue
+  std::queue<std::function<void()>> remainingTasks;
+  {
+    std::lock_guard lock(mutex);
+    std::swap(taskQueue, remainingTasks);
+  }
+
+  while (!remainingTasks.empty()) {
+    auto task = std::move(remainingTasks.front());
+    remainingTasks.pop();
+    try {
+      task();
+    } catch (const std::exception &e) {
+      std::print("Error executing final task: {}\n", e.what());
+    }
+  }
 
   vmaDestroyAllocator(allocator);
 

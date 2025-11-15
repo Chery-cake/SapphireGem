@@ -1,6 +1,8 @@
 #pragma once
 
 #include "physical_device.h"
+#include "vulkan/vulkan.hpp"
+#include <GLFW/glfw3.h>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -8,6 +10,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 

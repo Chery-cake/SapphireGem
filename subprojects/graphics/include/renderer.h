@@ -33,4 +33,6 @@ private:
 public:
   Renderer(GLFWwindow *window);
   ~Renderer();
+
+  DevicesManager &get_device_manager();
 };
