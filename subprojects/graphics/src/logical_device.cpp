@@ -1,5 +1,5 @@
-#include <GLFW/glfw3.h>
-#include <vector>
+#include <future>
+#include <thread>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnullability-completeness"
 #pragma clang diagnostic ignored "-Wnullability-extension"
@@ -12,11 +12,14 @@
 #include "config.h"
 #include "logical_device.h"
 #include "physical_device.h"
+#include "swap_chain.h"
 #include "vulkan/vulkan.hpp"
+#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <print>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -25,9 +28,9 @@ VmaVulkanFunctions LogicalDevice::vmaVulkanFunctions = {};
 LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
                              std::shared_ptr<PhysicalDevice> physicalDevice,
                              uint32_t graphicsQueueIndex)
-    : physicalDevice(physicalDevice), device(nullptr), graphicsQueue(nullptr),
-      graphicsQueueIndex(graphicsQueueIndex), allocator(VK_NULL_HANDLE),
-      thread(&LogicalDevice::thread_loop, this), stopThread(false) {
+    : stopThread(false), physicalDevice(physicalDevice), device(nullptr),
+      graphicsQueue(nullptr), graphicsQueueIndex(graphicsQueueIndex),
+      allocator(VK_NULL_HANDLE) {
 
   // Query for required features
   auto featureChain = Config::get_features();
@@ -54,6 +57,8 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
              physicalDevice->get_properties().deviceName.data());
 
   initialize_vma_allocator(instance);
+
+  thread = std::jthread(&LogicalDevice::thread_loop, this);
 }
 
 LogicalDevice::~LogicalDevice() {
@@ -61,31 +66,31 @@ LogicalDevice::~LogicalDevice() {
   {
     std::lock_guard lock(mutex);
     stopThread = true;
+
+    // clear pending tasks
+    while (!taskQueue.empty()) {
+      taskQueue.pop();
+    }
   }
   conditionVariable.notify_all();
 
-  thread.join();
-
-  // Process any remaining tasks in the queue
-  std::queue<std::function<void()>> remainingTasks;
-  {
-    std::lock_guard lock(mutex);
-    std::swap(taskQueue, remainingTasks);
-  }
-
-  while (!remainingTasks.empty()) {
-    auto task = std::move(remainingTasks.front());
-    remainingTasks.pop();
+  if (thread.joinable()) {
     try {
-      task();
-    } catch (const std::exception &e) {
-      std::print("Error executing final task: {}\n", e.what());
+      thread.join();
+    } catch (const std::system_error &e) {
+      std::print("Error joining thread: {}\n", e.what());
     }
   }
 
-  vmaDestroyAllocator(allocator);
+  swapChain.reset();
 
-  std::print("Logical device destructor executed\n");
+  if (allocator != VK_NULL_HANDLE) {
+    vmaDestroyAllocator(allocator);
+    allocator = VK_NULL_HANDLE;
+  }
+
+  std::print("Logical device for - {} - destructor executed\n",
+             physicalDevice->get_properties().deviceName.data());
 }
 
 void LogicalDevice::thread_loop() {
@@ -101,7 +106,15 @@ void LogicalDevice::thread_loop() {
 
       // Unlock while executing task to allow new tasks to be submitted
       lock.unlock();
-      task();
+      try {
+        if (task) {
+          task();
+        }
+      } catch (const std::exception &e) {
+        std::print("Error executing task in device {0} thread: {1}\n",
+                   physicalDevice->get_properties().deviceName.data(),
+                   e.what());
+      }
       lock.lock();
     }
   }
@@ -135,10 +148,29 @@ void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
   std::print("VMA allocator initialized for device: {}\n",
              physicalDevice->get_properties().deviceName.data());
 }
+void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
+                                          vk::raii::SurfaceKHR &surface) {
+  swapChain = std::make_unique<SwapChain>(this, window, surface);
+  swapChain->create_swap_chain();
+  swapChain->create_swap_image_views();
+}
+void LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
+                                          vk::Extent2D extent) {
+  swapChain = std::make_unique<SwapChain>(this, format, extent);
+  swapChain->create_swap_chain();
+  swapChain->create_swap_image_views();
+}
 
 void LogicalDevice::wait_idle() {
   device.waitIdle();
-  submit_task([]() {});
+
+  // Wait for all queued tasks to complete
+  std::promise<void> promise;
+  auto future = promise.get_future();
+
+  submit_task([&promise]() { promise.set_value(); });
+
+  future.wait();
   device.waitIdle();
 }
 
@@ -153,3 +185,5 @@ vk::raii::Queue &LogicalDevice::get_graphics_queue() { return graphicsQueue; }
 uint32_t LogicalDevice::get_graphics_queue_index() const {
   return graphicsQueueIndex;
 }
+
+SwapChain &LogicalDevice::get_swap_chain() { return *swapChain; }

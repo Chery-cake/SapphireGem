@@ -1,6 +1,7 @@
 #pragma once
 
 #include "physical_device.h"
+#include "swap_chain.h"
 #include "vulkan/vulkan.hpp"
 #include <GLFW/glfw3.h>
 #include <condition_variable>
@@ -10,12 +11,19 @@
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 
 class LogicalDevice {
 private:
+  // Thread management
+  std::mutex mutex;
+  std::condition_variable conditionVariable;
+  std::queue<std::function<void()>> taskQueue;
+  bool stopThread;
+  std::jthread thread;
+
+  // Vulkan objects
   std::shared_ptr<PhysicalDevice> physicalDevice;
   vk::raii::Device device;
   vk::raii::Queue graphicsQueue;
@@ -23,12 +31,7 @@ private:
 
   VmaAllocator allocator;
 
-  // Thread management
-  std::jthread thread;
-  std::mutex mutex;
-  std::condition_variable conditionVariable;
-  std::queue<std::function<void()>> taskQueue;
-  bool stopThread;
+  std::unique_ptr<SwapChain> swapChain;
 
   void thread_loop();
 
@@ -42,12 +45,16 @@ public:
                 uint32_t graphicsQueueIndex);
   ~LogicalDevice();
 
+  void initialize_swap_chain(GLFWwindow *window, vk::raii::SurfaceKHR &surface);
+  void initialize_swap_chain(vk::SurfaceFormatKHR format, vk::Extent2D extent);
+
   void wait_idle();
 
   std::shared_ptr<PhysicalDevice> get_physical_device() const;
   vk::raii::Device &get_device();
   vk::raii::Queue &get_graphics_queue();
   uint32_t get_graphics_queue_index() const;
+  SwapChain &get_swap_chain();
 
   // Task submission
   template <typename F> void submit_task(F &&task) {

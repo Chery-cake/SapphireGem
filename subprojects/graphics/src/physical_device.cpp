@@ -12,7 +12,8 @@ PhysicalDevice::PhysicalDevice(vk::raii::PhysicalDevice device)
       queueFamilies(device.getQueueFamilyProperties()) {}
 
 PhysicalDevice::~PhysicalDevice() {
-  std::print("Physical device destructor executed\n");
+  std::print("Physical device for - {} - destructor executed\n",
+             properties.deviceName.data());
 }
 
 int PhysicalDevice::calculate_score(vk::raii::SurfaceKHR &surface) const {

@@ -21,18 +21,10 @@ private:
   std::shared_ptr<LogicalDevice> primaryDevice;
   bool multiGPUEnabled;
 
-  vk::raii::SwapchainKHR swapChain;
-  std::vector<vk::Image> swapChainImages;
-  std::vector<vk::raii::ImageView> swapChainImageViews;
-  vk::SurfaceFormatKHR swapChainSurfaceFormat;
-
   std::shared_ptr<PhysicalDevice> select_primary_device() const;
   uint32_t
   find_graphics_queue_index(std::shared_ptr<PhysicalDevice> device) const;
   void add_device(std::shared_ptr<PhysicalDevice> physicalDevice);
-
-  void create_swap_chain(LogicalDevice &device);
-  void clear_swap_chains();
 
 public:
   DevicesManager(GLFWwindow *window, vk::raii::Instance &instance,
@@ -48,7 +40,6 @@ public:
 
   void create_swap_chains();
   void recreate_swap_chain();
-  void create_swap_image_views();
 
   // Getters
   std::shared_ptr<LogicalDevice> get_primary_device() const;

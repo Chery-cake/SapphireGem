@@ -1,6 +1,7 @@
 #pragma once
 
 #include "renderer.h"
+#include <GLFW/glfw3.h>
 #include <memory>
 #include <string>
 

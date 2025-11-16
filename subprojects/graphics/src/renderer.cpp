@@ -80,10 +80,7 @@ void Renderer::init_device() {
   devicesManager->initialize_devices();
 }
 
-void Renderer::init_swap_chain() {
-  devicesManager->create_swap_chains();
-  devicesManager->create_swap_image_views();
-}
+void Renderer::init_swap_chain() { devicesManager->create_swap_chains(); }
 
 void Renderer::init_debug() {
   debugMessanger = Config::get_instance().set_up_debug_messanger(instance);
