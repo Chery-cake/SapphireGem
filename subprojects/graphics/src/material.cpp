@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <future>
 #include <mutex>
-#include <print>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -30,7 +29,7 @@ Material::~Material() {
     resources.reset();
   }
 
-  std::print("Material - {} - destructor executed", identifier);
+  Common::print("Material - {} - destructor executed", identifier);
 }
 
 bool Material::create_shader_module(LogicalDevice *device,
@@ -43,7 +42,7 @@ bool Material::create_shader_module(LogicalDevice *device,
     shaderModule = device->get_device().createShaderModule(shaderInfo);
     return true;
   } catch (const std::exception &e) {
-    std::print("Failed to create shader module: {}\n", e.what());
+    Common::print("Failed to create shader module: {}\n", e.what());
     return false;
   }
 }
@@ -121,7 +120,7 @@ bool Material::create_pipeline(LogicalDevice *device,
 
     return true;
   } catch (const std::exception &e) {
-    std::print(
+    Common::print(
         "Failed to create pipeline for device {}: {}\n",
         device->get_physical_device()->get_properties().deviceName.data(),
         e.what());
@@ -140,7 +139,7 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
   auto fragmentCode = Common::readFile(createInfo.fragmentShaders);
 
   if (vertexCode.empty() || fragmentCode.empty()) {
-    std::print("Failed to load shader files for material: {}\n", identifier);
+    Common::print("Failed to load shader files for material: {}\n", identifier);
     return false;
   }
 
@@ -169,7 +168,7 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
         // Create pipeline for this device
         return create_pipeline(device, resources, createInfo);
       } catch (const std::exception &e) {
-        std::print(
+        Common::print(
             "Failed to create pipeline for device {}: {}\n",
             device->get_physical_device()->get_properties().deviceName.data(),
             e.what());
@@ -181,7 +180,7 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
   bool allSuccess = true;
   for (size_t i = 0; i < futures.size(); ++i) {
     if (!futures[i].get()) {
-      std::print("Failed to initialize material {} on device {}\n", identifier,
+      Common::print("Failed to initialize material {} on device {}\n", identifier,
                  logicalDevices[i]
                      ->get_physical_device()
                      ->get_properties()
@@ -192,7 +191,7 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
 
   if (allSuccess) {
     initialized = true;
-    std::print("Material - {} - initialized successfully on {} devices\n",
+    Common::print("Material - {} - initialized successfully on {} devices\n",
                identifier, logicalDevices.size());
   }
 

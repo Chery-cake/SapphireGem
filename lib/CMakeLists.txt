@@ -3,35 +3,44 @@ add_subdirectory(steamworks)
 
 find_package(glfw3 REQUIRED)
 
+target_compile_definitions(glfw INTERFACE
+    GLFW_INCLUDE_VULKAN
+)
+
 find_package(glm CONFIG REQUIRED)
 
 find_package(Vulkan REQUIRED)
 add_library(vulkan)
 
 target_compile_definitions(vulkan PUBLIC
-        VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
-        VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
 )
-target_include_directories(vulkan
-        PUBLIC
-        "${Vulkan_INCLUDE_DIR}"
+target_include_directories(vulkan PUBLIC
+    "${Vulkan_INCLUDE_DIR}"
 )
-target_link_libraries(vulkan
-        PUBLIC
-        Vulkan::Vulkan
+target_link_libraries(vulkan PUBLIC
+    Vulkan::Vulkan
 )
 
-target_compile_features( vulkan PUBLIC cxx_std_20 )
-set_target_properties(vulkan PROPERTIES CXX_STANDARD 20)
-
-target_sources(vulkan
-        PUBLIC
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS
-        "${Vulkan_INCLUDE_DIR}"
-        FILES
-        "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+target_compile_features(vulkan PUBLIC cxx_std_20)
+set_target_properties(vulkan PROPERTIES
+    CXX_SCAN_FOR_MODULES ON
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS ON
 )
+
+if(EXISTS "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm")
+    target_sources(vulkan PUBLIC
+        FILE_SET CXX_MODULES TYPE CXX_MODULES
+        BASE_DIRS "${Vulkan_INCLUDE_DIR}"
+        FILES "${Vulkan_INCLUDE_DIR}/vulkan/vulkan.cppm"
+    )
+    message(STATUS "Vulkan C++ modules enabled")
+else()
+    message(STATUS "Vulkan C++ modules not found, using traditional includes")
+endif()
 
 # Only fetch if not already available
 if(NOT TARGET VulkanMemoryAllocator)
@@ -85,15 +94,35 @@ if(NOT TARGET BS::thread_pool)
     message(STATUS "BTP binary: ${bs_thread_pool_BINARY_DIR}")
 endif()
 
-add_library(btp INTERFACE)
+add_library(btp)
 
-target_include_directories(btp INTERFACE
-    ${bs_thread_pool_SOURCE_DIR}/include
-    ${bs_thread_pool_SOURCE_DIR}/modules
-)
-
-target_compile_definitions(btp INTERFACE
+target_compile_definitions(btp PUBLIC
     # BS_THREAD_POOL_NATIVE_EXTENSIONS
 )
 
-target_link_libraries(btp INTERFACE Threads::Threads)
+target_include_directories(btp PUBLIC
+    ${bs_thread_pool_SOURCE_DIR}/include
+    ${bs_thread_pool_SOURCE_DIR}/modules
+)
+target_link_libraries(btp PUBLIC
+    Threads::Threads
+)
+
+target_compile_features(btp PUBLIC cxx_std_20)
+set_target_properties(btp PROPERTIES
+    CXX_SCAN_FOR_MODULES ON
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS ON
+)
+
+if(EXISTS "${bs_thread_pool_SOURCE_DIR}/modules/BS.thread_pool.cppm")
+    target_sources(btp PUBLIC
+        FILE_SET CXX_MODULES TYPE CXX_MODULES
+        BASE_DIRS "${bs_thread_pool_SOURCE_DIR}"
+        FILES "${bs_thread_pool_SOURCE_DIR}/modules/BS.thread_pool.cppm"
+    )
+    message(STATUS "BS::thread_pool C++ modules enabled")
+else()
+    message(STATUS "BS::thread_pool C++ modules not found, using traditional includes")
+endif()

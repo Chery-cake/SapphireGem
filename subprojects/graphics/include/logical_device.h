@@ -7,12 +7,10 @@
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <queue>
 #include <thread>
-#include <type_traits>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 

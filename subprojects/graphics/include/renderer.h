@@ -1,13 +1,16 @@
 #pragma once
 
 #include "devices_manager.h"
+#include <GLFW/glfw3.h>
 #include <memory>
 #include <sys/types.h>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+
+#ifdef __INTELLISENSE__
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#else
+import vulkan_hpp;
+#endif
 
 class Renderer {
 

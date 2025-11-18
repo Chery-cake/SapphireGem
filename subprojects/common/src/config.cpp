@@ -1,16 +1,15 @@
 #include "config.h"
+#include "common.h"
+#include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <print>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
     vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -18,8 +17,8 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
     const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
   if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
       severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-    std::print(std::cerr, "validation layer: type {0} msg: {1}\n",
-               to_string(type), pCallbackData->pMessage);
+    Common::print(std::cerr, "validation layer: type {0} msg: {1}\n",
+                  to_string(type), pCallbackData->pMessage);
     ;
   }
 
@@ -52,7 +51,7 @@ Config::Config()
   }
 }
 
-Config::~Config() { std::print("Config destructor executed\n"); };
+Config::~Config() { Common::print("Config destructor executed\n"); };
 
 vk::raii::DebugUtilsMessengerEXT
 Config::set_up_debug_messanger(vk::raii::Instance &instance) {

@@ -1,10 +1,15 @@
 #pragma once
 
-#include <BS_thread_pool.hpp>
 #include <cstdint>
 #include <future>
 #include <type_traits>
 #include <utility>
+
+#ifdef __INTELLISENSE__
+#include <BS_thread_pool.hpp>
+#else
+import BS.thread_pool;
+#endif
 
 class Tasks {
 private:
@@ -29,8 +34,8 @@ public:
   void remove_gpu();
 
   template <typename F>
-  auto add_task(F &&func, const BS::priority_t priority = 0)
-      -> std::future<std::invoke_result_t<std::decay_t<F>>> {
+  std::future<std::invoke_result_t<std::decay_t<F>>>
+  add_task(F &&func, const BS::priority_t priority = 0) {
     return pool.submit_task(std::forward<F>(func), priority);
   }
 };

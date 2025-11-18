@@ -2,11 +2,10 @@
 
 #include "logical_device.h"
 #include "physical_device.h"
+#include <GLFW/glfw3.h>
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
 class DevicesManager {
 

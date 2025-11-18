@@ -1,8 +1,7 @@
 #include "swap_chain.h"
+#include "common.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
-#include <memory>
-#include <print>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -21,7 +20,7 @@ SwapChain::~SwapChain() {
 
   clear_swap_chain();
 
-  std::print(
+  Common::print(
       "Swap chain for device - {} - destructor executed\n",
       logicalDevice->get_physical_device()->get_properties().deviceName.data());
 }
@@ -102,10 +101,10 @@ void SwapChain::create_swap_chain() {
                                        swapChainCreateInfo);
     swapChainImages = swapChain.getImages();
 
-    std::print("Created Swap Chain for device: {}\n",
-               logicalDevice->get_physical_device()
-                   ->get_properties()
-                   .deviceName.data());
+    Common::print("Created Swap Chain for device: {}\n",
+                  logicalDevice->get_physical_device()
+                      ->get_properties()
+                      .deviceName.data());
     return;
   }
 
@@ -137,7 +136,7 @@ void SwapChain::create_swap_chain() {
 
   imageView = logicalDevice->get_device().createImageView(viewInfo);
 
-  std::print(
+  Common::print(
       "Created Swap Image for device: {}\n",
       logicalDevice->get_physical_device()->get_properties().deviceName.data());
 }

@@ -2,7 +2,6 @@
 
 #include "vulkan/vulkan.hpp"
 #include <GLFW/glfw3.h>
-#include <memory>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 

@@ -1,10 +1,10 @@
 #include "renderer.h"
+#include "common.h"
 #include "config.h"
 #include "devices_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <memory>
-#include <print>
 #include <stdexcept>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -36,7 +36,7 @@ Renderer::Renderer(GLFWwindow *window)
 Renderer::~Renderer() {
   devicesManager.reset();
 
-  std::print("Renderer destructor executed\n");
+  Common::print("Renderer destructor executed\n");
 }
 
 void Renderer::init_instance() {

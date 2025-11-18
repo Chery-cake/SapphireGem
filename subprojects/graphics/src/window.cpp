@@ -1,12 +1,17 @@
 #include "window.h"
+#include "common.h"
 #include "renderer.h"
 #include <GLFW/glfw3.h>
 #include <memory>
-#include <print>
+#include <stdexcept>
 
 Window::Window(int width, int height, std::string title)
     : frameBufferRezized(false) {
   glfwInit();
+
+  if (!glfwVulkanSupported()) {
+    throw std::runtime_error("GLFW can't load Vulkan\n");
+  }
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
   glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -25,7 +30,7 @@ Window::~Window() {
 
   glfwTerminate();
 
-  std::print("Window destructor executed\n");
+  Common::print("Window destructor executed\n");
 }
 
 void Window::frame_buffer_resize_callback(GLFWwindow *window, int width,

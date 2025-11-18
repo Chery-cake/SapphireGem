@@ -1,10 +1,13 @@
 #pragma once
 
-#include "vulkan/vulkan.hpp"
 #include <vector>
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+
+#ifdef __INTELLISENSE__
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+#else
+import vulkan_hpp;
+#endif
 
 class Config {
 

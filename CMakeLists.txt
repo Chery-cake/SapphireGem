@@ -12,10 +12,12 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         FORCE)
 endif()
 
+option(TEST_MEMORY_LEAKS "Enable ASan to test for memory leaks" OFF)
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
@@ -23,6 +25,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 set(CMAKE_COLOR_MAKEFILE ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Set common output directory for all targets
 set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin)
@@ -51,9 +54,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_link_options(-s)  # GCC/Clang: strip symbols
     endif()
 
-    # Godot release defines
     add_compile_definitions(
-        GODOT_RELEASE=1
         NDEBUG  # Disable assertions
     )
 else()
@@ -77,6 +78,26 @@ else()
 
     # Enable assertions (remove in production)
     add_compile_definitions(ENABLE_ASSERTIONS)
+
+    if(TEST_MEMORY_LEAKS)
+
+        add_compile_options(
+            -fsanitize=address
+            -fsanitize=undefined
+            -fno-sanitize-recover=all
+            -fno-omit-frame-pointer
+        )
+        add_link_options(
+            -fsanitize=address
+            -fsanitize=undefined
+        )
+
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            add_compile_options(-fno-var-tracking)
+        endif()
+
+    endif()
+
 endif()
 
 # Create the common output directory if it doesn't exist
@@ -122,7 +143,8 @@ CompileFlags:
         - \"-std=c++${CMAKE_CXX_STANDARD}\"
         - \"-std=gnu++${CMAKE_CXX_STANDARD}\"
         - \"-Wall\"
-        - \"-Wno-missing-prototypes\"
+        - \"-Wextra\"
+        - \"-Wpedantic\"
     CompilationDatabase: ${CMAKE_BINARY_DIR}
 
 Diagnostics:

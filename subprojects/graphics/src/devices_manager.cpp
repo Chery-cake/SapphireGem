@@ -1,4 +1,5 @@
 #include "devices_manager.h"
+#include "common.h"
 #include "config.h"
 #include "logical_device.h"
 #include "physical_device.h"
@@ -7,7 +8,6 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
-#include <print>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
@@ -24,7 +24,7 @@ DevicesManager::~DevicesManager() {
   primaryDevice.reset();
   physicalDevices.clear();
 
-  std::print("Devices manager destructor executed\n");
+  Common::print("Devices manager destructor executed\n");
 }
 
 std::shared_ptr<PhysicalDevice> DevicesManager::select_primary_device() const {
@@ -78,11 +78,12 @@ void DevicesManager::add_device(
 
       Tasks::get_instance().add_gpu();
 
-      std::print("Secondary device added: {}\n",
-                 physicalDevice->get_properties().deviceName.data());
+      Common::print("Secondary device added: {}\n",
+                    physicalDevice->get_properties().deviceName.data());
     } catch (const std::exception &e) {
-      std::print("Failed to create logical device for {}: {}\n",
-                 physicalDevice->get_properties().deviceName.data(), e.what());
+      Common::print("Failed to create logical device for {}: {}\n",
+                    physicalDevice->get_properties().deviceName.data(),
+                    e.what());
     }
   }
 }
@@ -94,8 +95,8 @@ void DevicesManager::enumerate_physical_devices() {
   for (auto &device : devices) {
     auto physicalDevice = std::make_shared<PhysicalDevice>(std::move(device));
     physicalDevices.push_back(physicalDevice);
-    std::print("Found physical device: {}\n",
-               physicalDevice->get_properties().deviceName.data());
+    Common::print("Found physical device: {}\n",
+                  physicalDevice->get_properties().deviceName.data());
   }
 
   if (physicalDevices.empty()) {
@@ -120,8 +121,8 @@ void DevicesManager::initialize_devices() {
   primaryDevice =
       std::make_shared<LogicalDevice>(instance, primaryPhysical, queueIndex);
 
-  std::print("Primary device selected: {}\n",
-             primaryPhysical->get_properties().deviceName.data());
+  Common::print("Primary device selected: {}\n",
+                primaryPhysical->get_properties().deviceName.data());
 
   // For multi-GPU, create logical devices for secondary GPUs
   if (multiGPUEnabled) {
