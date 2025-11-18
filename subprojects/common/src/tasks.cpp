@@ -2,6 +2,7 @@
 #include "BS_thread_pool.hpp"
 #include "common.h"
 #include <cstdint>
+#include <print>
 #include <stdexcept>
 #include <thread>
 
@@ -16,7 +17,7 @@ Tasks::Tasks()
 
 Tasks::~Tasks() {
   pool.wait();
-  Common::print("Tasks destructor executed\n");
+  std::print("Tasks destructor executed\n");
 };
 
 void Tasks::set_threads(uint16_t amount) {

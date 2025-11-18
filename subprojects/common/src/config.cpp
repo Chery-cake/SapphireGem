@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <print>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -17,8 +18,8 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
     const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
   if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
       severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-    Common::print(std::cerr, "validation layer: type {0} msg: {1}\n",
-                  to_string(type), pCallbackData->pMessage);
+    std::print(std::cerr, "validation layer: type {0} msg: {1}\n",
+               to_string(type), pCallbackData->pMessage);
     ;
   }
 
@@ -51,7 +52,7 @@ Config::Config()
   }
 }
 
-Config::~Config() { Common::print("Config destructor executed\n"); };
+Config::~Config() { std::print("Config destructor executed\n"); };
 
 vk::raii::DebugUtilsMessengerEXT
 Config::set_up_debug_messanger(vk::raii::Instance &instance) {

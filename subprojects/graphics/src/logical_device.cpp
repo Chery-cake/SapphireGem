@@ -1,5 +1,6 @@
 #include "common.h"
 #include <future>
+#include <print>
 #include <thread>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnullability-completeness"
@@ -52,8 +53,8 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
   device = vk::raii::Device(physicalDevice->get_device(), deviceCreateInfo);
   graphicsQueue = vk::raii::Queue(device, graphicsQueueIndex, 0);
 
-  Common::print("Created logical device: {}\n",
-                physicalDevice->get_properties().deviceName.data());
+  std::print("Created logical device: {}\n",
+             physicalDevice->get_properties().deviceName.data());
 
   initialize_vma_allocator(instance);
 
@@ -77,7 +78,7 @@ LogicalDevice::~LogicalDevice() {
     try {
       thread.join();
     } catch (const std::system_error &e) {
-      Common::print("Error joining thread: {}\n", e.what());
+      std::print("Error joining thread: {}\n", e.what());
     }
   }
 
@@ -85,8 +86,8 @@ LogicalDevice::~LogicalDevice() {
 
   vmaDestroyAllocator(allocator);
 
-  Common::print("Logical device for - {} - destructor executed\n",
-                physicalDevice->get_properties().deviceName.data());
+  std::print("Logical device for - {} - destructor executed\n",
+             physicalDevice->get_properties().deviceName.data());
 }
 
 void LogicalDevice::thread_loop() {
@@ -107,9 +108,9 @@ void LogicalDevice::thread_loop() {
           task();
         }
       } catch (const std::exception &e) {
-        Common::print("Error executing task in device {0} thread: {1}\n",
-                      physicalDevice->get_properties().deviceName.data(),
-                      e.what());
+        std::print("Error executing task in device {0} thread: {1}\n",
+                   physicalDevice->get_properties().deviceName.data(),
+                   e.what());
       }
       lock.lock();
     }
@@ -141,8 +142,8 @@ void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
     throw std::runtime_error("Failed to create VMA allocator!");
   }
 
-  Common::print("VMA allocator initialized for device: {}\n",
-                physicalDevice->get_properties().deviceName.data());
+  std::print("VMA allocator initialized for device: {}\n",
+             physicalDevice->get_properties().deviceName.data());
 }
 void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
                                           vk::raii::SurfaceKHR &surface) {

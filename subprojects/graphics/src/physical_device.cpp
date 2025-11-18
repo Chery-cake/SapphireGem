@@ -1,7 +1,7 @@
 #include "physical_device.h"
-#include "common.h"
 #include "config.h"
 #include "vulkan/vulkan.hpp"
+#include <print>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
@@ -12,8 +12,8 @@ PhysicalDevice::PhysicalDevice(vk::raii::PhysicalDevice device)
       queueFamilies(device.getQueueFamilyProperties()) {}
 
 PhysicalDevice::~PhysicalDevice() {
-  Common::print("Physical device for - {} - destructor executed\n",
-                properties.deviceName.data());
+  std::print("Physical device for - {} - destructor executed\n",
+             properties.deviceName.data());
 }
 
 int PhysicalDevice::calculate_score(vk::raii::SurfaceKHR &surface) const {

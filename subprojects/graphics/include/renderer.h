@@ -4,13 +4,8 @@
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <sys/types.h>
-
-#ifdef __INTELLISENSE__
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
-#else
-import vulkan_hpp;
-#endif
 
 class Renderer {
 

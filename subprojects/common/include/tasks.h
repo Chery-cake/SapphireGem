@@ -1,15 +1,10 @@
 #pragma once
 
+#include <BS_thread_pool.hpp>
 #include <cstdint>
 #include <future>
 #include <type_traits>
 #include <utility>
-
-#ifdef __INTELLISENSE__
-#include <BS_thread_pool.hpp>
-#else
-import BS.thread_pool;
-#endif
 
 class Tasks {
 private:
