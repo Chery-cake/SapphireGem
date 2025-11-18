@@ -84,10 +84,7 @@ LogicalDevice::~LogicalDevice() {
 
   swapChain.reset();
 
-  if (allocator != VK_NULL_HANDLE) {
-    vmaDestroyAllocator(allocator);
-    allocator = VK_NULL_HANDLE;
-  }
+  vmaDestroyAllocator(allocator);
 
   std::print("Logical device for - {} - destructor executed\n",
              physicalDevice->get_properties().deviceName.data());
