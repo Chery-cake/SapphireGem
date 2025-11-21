@@ -24,7 +24,7 @@ private:
   std::jthread thread;
 
   // Vulkan objects
-  std::shared_ptr<PhysicalDevice> physicalDevice;
+  PhysicalDevice *physicalDevice;
   vk::raii::Device device;
   vk::raii::Queue graphicsQueue;
   uint32_t graphicsQueueIndex;
@@ -35,13 +35,10 @@ private:
 
   void thread_loop();
 
-  static VmaVulkanFunctions vmaVulkanFunctions;
-
   void initialize_vma_allocator(vk::raii::Instance &instance);
 
 public:
-  LogicalDevice(vk::raii::Instance &instance,
-                std::shared_ptr<PhysicalDevice> physicalDevice,
+  LogicalDevice(vk::raii::Instance &instance, PhysicalDevice *physicalDevice,
                 uint32_t graphicsQueueIndex);
   ~LogicalDevice();
 
@@ -50,8 +47,8 @@ public:
 
   void wait_idle();
 
-  std::shared_ptr<PhysicalDevice> get_physical_device() const;
-  vk::raii::Device &get_device();
+  PhysicalDevice *get_physical_device() const;
+  const vk::raii::Device &get_device() const;
   vk::raii::Queue &get_graphics_queue();
   uint32_t get_graphics_queue_index() const;
   SwapChain &get_swap_chain();

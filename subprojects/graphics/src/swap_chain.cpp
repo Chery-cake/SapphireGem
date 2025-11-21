@@ -1,5 +1,4 @@
 #include "swap_chain.h"
-#include "common.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <print>

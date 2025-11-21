@@ -1,6 +1,7 @@
 #pragma once
 
 #include "devices_manager.h"
+#include "material_manager.h"
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <sys/types.h>
@@ -20,11 +21,13 @@ private:
   vk::raii::DebugUtilsMessengerEXT debugMessanger;
 
   std::unique_ptr<DevicesManager> devicesManager;
+  std::unique_ptr<MaterialManager> materialManager;
 
   void init_instance();
   void init_surface();
   void init_device();
   void init_swap_chain();
+  void init_materials();
 
   void init_debug();
 

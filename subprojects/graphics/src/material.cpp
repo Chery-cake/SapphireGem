@@ -2,8 +2,10 @@
 #include "common.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
+#include <array>
 #include <cstdint>
 #include <future>
+#include <memory>
 #include <mutex>
 #include <print>
 #include <string>
@@ -11,15 +13,30 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
+vk::VertexInputBindingDescription Material::Vertex2D::getBindingDescription() {
+  return {0, sizeof(Material::Vertex2D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+Material::Vertex2D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,
+                                          offsetof(Material::Vertex2D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Material::Vertex2D, color))};
+}
+
 Material::Material(const std::vector<LogicalDevice *> &devices,
                    const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier), color(1.0f),
-      rougthness(0.5f), metalic(0) {
+      rougthness(0.5f), metalic(0), logicalDevices(devices) {
 
   deviceResources.reserve(devices.size());
   for (size_t i = 0; i < logicalDevices.size(); ++i) {
     deviceResources.push_back(std::make_unique<DeviceMaterialResources>());
   }
+
+  initialize(createInfo);
 }
 
 Material::~Material() {
@@ -29,8 +46,9 @@ Material::~Material() {
   for (auto &resources : deviceResources) {
     resources.reset();
   }
+  deviceResources.clear();
 
-  std::print("Material - {} - destructor executed", identifier);
+  std::print("Material - {} - destructor executed\n", identifier);
 }
 
 bool Material::create_shader_module(LogicalDevice *device,
@@ -136,10 +154,11 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
     return true;
   }
 
-  auto vertexCode = Common::readFile(createInfo.vertexShaders);
-  auto fragmentCode = Common::readFile(createInfo.fragmentShaders);
+  std::vector<char> vertexCode;
+  std::vector<char> fragmentCode;
 
-  if (vertexCode.empty() || fragmentCode.empty()) {
+  if (!Common::readFile(createInfo.vertexShaders, vertexCode) ||
+      !Common::readFile(createInfo.fragmentShaders, fragmentCode)) {
     std::print("Failed to load shader files for material: {}\n", identifier);
     return false;
   }
@@ -245,3 +264,5 @@ vk::raii::DescriptorSetLayout &
 Material::get_descriptor_set_layout(uint32_t deviceIndex) {
   return deviceResources[deviceIndex]->descriptorLayout;
 }
+
+const std::string &Material::get_identifier() const { return identifier; }

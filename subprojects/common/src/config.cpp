@@ -1,5 +1,4 @@
 #include "config.h"
-#include "common.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdint>
@@ -10,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
 static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
@@ -45,7 +45,7 @@ Config::Config()
                         vk::KHRSynchronization2ExtensionName,
                         vk::KHRCreateRenderpass2ExtensionName,
                         vk::KHRDynamicRenderingExtensionName}),
-      reload(false) {
+      reload(false), vmaVulkanFunctionsInitialized(false) {
   if (enableValidationLayers) {
     instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
     instanceExtensions.push_back(vk::EXTDebugUtilsExtensionName);
@@ -212,4 +212,17 @@ void Config::remove_device_extension(const char *extension) {
 }
 const std::vector<const char *> &Config::get_device_extension() const {
   return deviceExtensions;
+}
+
+const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
+  if (vmaVulkanFunctionsInitialized) {
+    return &vmaVulkanFunctions;
+  }
+
+  vmaVulkanFunctions.vkGetInstanceProcAddr =
+      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
+  vmaVulkanFunctions.vkGetDeviceProcAddr =
+      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+
+  return &vmaVulkanFunctions;
 }

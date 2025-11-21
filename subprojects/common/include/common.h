@@ -6,5 +6,5 @@
 class Common {
 
 public:
-  static std::vector<char> readFile(const std::string fileName);
+  static bool readFile(const std::string fileName, std::vector<char> &buffer);
 };

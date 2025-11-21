@@ -1,21 +1,24 @@
 #include "common.h"
 #include <fstream>
+#include <iostream>
+#include <print>
 #include <string>
 #include <vector>
 
-std::vector<char> Common::readFile(const std::string fileName) {
+bool Common::readFile(const std::string fileName, std::vector<char> &buffer) {
   std::ifstream file(fileName, std::ios::ate | std::ios::binary);
 
   if (!file.is_open()) {
-    throw std::runtime_error("failed to open file: " + fileName);
+    std::print(std::cerr, "failed to open file: {}\n", fileName);
+    return false;
   }
 
   size_t fileSize = (size_t)file.tellg();
-  std::vector<char> buffer(fileSize);
+  buffer.resize(fileSize);
 
   file.seekg(0);
   file.read(buffer.data(), fileSize);
   file.close();
 
-  return buffer;
+  return true;
 }

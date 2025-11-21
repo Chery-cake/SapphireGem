@@ -1,7 +1,8 @@
 #include "renderer.h"
-#include "common.h"
 #include "config.h"
 #include "devices_manager.h"
+#include "material.h"
+#include "material_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <memory>
@@ -17,14 +18,14 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
       debugMessanger(nullptr), devicesManager(nullptr) {
-  PFN_vkGetInstanceProcAddr vkInstAddr =
+  PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-  VULKAN_HPP_DEFAULT_DISPATCHER.init(vkInstAddr);
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
   init_instance();
   VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
-  init_debug();
 
+  init_debug();
   init_surface();
 
   init_device();
@@ -32,9 +33,11 @@ Renderer::Renderer(GLFWwindow *window)
       *devicesManager->get_primary_device()->get_device());
 
   init_swap_chain();
+  init_materials();
 }
 
 Renderer::~Renderer() {
+  materialManager.reset();
   devicesManager.reset();
 
   std::print("Renderer destructor executed\n");
@@ -82,6 +85,57 @@ void Renderer::init_device() {
 }
 
 void Renderer::init_swap_chain() { devicesManager->create_swap_chains(); }
+
+void Renderer::init_materials() {
+  materialManager = std::make_unique<MaterialManager>(devicesManager.get());
+
+  vk::DescriptorSetLayoutBinding bidingInfo = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex};
+
+  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+      .blendEnable = vk::False,
+      .colorWriteMask =
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+  auto bindingDescription = Material::Vertex2D::getBindingDescription();
+  auto attributeDescriptions = Material::Vertex2D::getAttributeDescriptions();
+
+  Material::MaterialCreateInfo createInfo{
+      .identifier = "Test",
+      .vertexShaders = "",
+      .fragmentShaders = "",
+      .descriptorBindings = {bidingInfo},
+      .rasterizationState = {.depthClampEnable = vk::False,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState = {},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{.vertexBindingDescriptionCount = 1,
+                        .pVertexBindingDescriptions = &bindingDescription,
+                        .vertexAttributeDescriptionCount =
+                            static_cast<uint32_t>(attributeDescriptions.size()),
+                        .pVertexAttributeDescriptions =
+                            attributeDescriptions.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  materialManager->add_material(createInfo);
+}
 
 void Renderer::init_debug() {
   debugMessanger = Config::get_instance().set_up_debug_messanger(instance);

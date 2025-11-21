@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -24,6 +25,9 @@ private:
   std::vector<const char *> deviceExtensions;
 
   bool reload;
+
+  bool vmaVulkanFunctionsInitialized;
+  VmaVulkanFunctions vmaVulkanFunctions;
 
   Config();
 
@@ -60,4 +64,6 @@ public:
   void add_device_extension(const char *extension);
   void remove_device_extension(const char *extension);
   const std::vector<const char *> &get_device_extension() const;
+
+  const VmaVulkanFunctions *get_vma_vulkan_functions();
 };

@@ -4,7 +4,10 @@
 #include "vulkan/vulkan.hpp"
 #include <atomic>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vulkan/vulkan_core.h>
@@ -12,6 +15,15 @@
 
 class Material {
 public:
+  struct Vertex2D {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
   struct MaterialCreateInfo {
     std::string identifier;
 
@@ -60,8 +72,8 @@ private:
                             const std::vector<char> &code,
                             vk::raii::ShaderModule &shaderModule);
   bool create_pipeline(LogicalDevice *device,
-                                  DeviceMaterialResources &resources,
-                                  const MaterialCreateInfo &createInfo);
+                       DeviceMaterialResources &resources,
+                       const MaterialCreateInfo &createInfo);
 
 public:
   Material(const std::vector<LogicalDevice *> &devices,
