@@ -21,4 +21,7 @@ public:
 
   void add_material(Material::MaterialCreateInfo createInfo);
   void remove_material(std::string identifier);
+  void reload_materials();
+
+  const std::vector<Material *> &get_materials() const;
 };

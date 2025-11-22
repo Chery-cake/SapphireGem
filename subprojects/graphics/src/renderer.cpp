@@ -4,10 +4,13 @@
 #include "material.h"
 #include "material_manager.h"
 #include "vulkan/vulkan.hpp"
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <print>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_hpp_macros.hpp>
@@ -106,8 +109,8 @@ void Renderer::init_materials() {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
-      .vertexShaders = "",
-      .fragmentShaders = "",
+      .vertexShaders = "slang.spv",
+      .fragmentShaders = "slang.spv",
       .descriptorBindings = {bidingInfo},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
@@ -135,6 +138,20 @@ void Renderer::init_materials() {
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
 
   materialManager->add_material(createInfo);
+
+  auto vec = materialManager->get_materials();
+  for (auto &mat : vec) {
+    std::print("name: {} - init: {}\n", mat->get_identifier(),
+               mat->is_initialized());
+  }
+  std::print("finish 1\n");
+  materialManager->reload_materials();
+
+  for (auto &mat : vec) {
+    std::print("name: {} - init: {}\n", mat->get_identifier(),
+               mat->is_initialized());
+  }
+  std::print("finish 2\n");
 }
 
 void Renderer::init_debug() {

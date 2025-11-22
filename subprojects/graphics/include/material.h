@@ -59,6 +59,7 @@ private:
   std::atomic<bool> initialized;
 
   std::string identifier;
+  MaterialCreateInfo createInfo;
   std::vector<std::unique_ptr<DeviceMaterialResources>> deviceResources;
 
   // shared properties
@@ -81,7 +82,8 @@ public:
   ~Material();
 
   // Thread-safe initialization
-  bool initialize(const MaterialCreateInfo &createInfo);
+  bool initialize();
+  bool reinitialize();
 
   // Multi-device support
   void bind(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex = 0);

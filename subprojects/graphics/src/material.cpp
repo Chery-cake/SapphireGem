@@ -9,6 +9,7 @@
 #include <mutex>
 #include <print>
 #include <string>
+#include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
@@ -28,15 +29,16 @@ Material::Vertex2D::getAttributeDescriptions() {
 
 Material::Material(const std::vector<LogicalDevice *> &devices,
                    const MaterialCreateInfo &createInfo)
-    : initialized(false), identifier(createInfo.identifier), color(1.0f),
-      rougthness(0.5f), metalic(0), logicalDevices(devices) {
+    : initialized(false), identifier(createInfo.identifier),
+      createInfo(createInfo), color(1.0f), rougthness(0.5f), metalic(0),
+      logicalDevices(devices) {
 
-  deviceResources.reserve(devices.size());
+  deviceResources.reserve(logicalDevices.size());
   for (size_t i = 0; i < logicalDevices.size(); ++i) {
     deviceResources.push_back(std::make_unique<DeviceMaterialResources>());
   }
 
-  initialize(createInfo);
+  initialize();
 }
 
 Material::~Material() {
@@ -69,18 +71,17 @@ bool Material::create_shader_module(LogicalDevice *device,
 bool Material::create_pipeline(LogicalDevice *device,
                                DeviceMaterialResources &resources,
                                const MaterialCreateInfo &createInfo) {
+  std::print("start\n");
   try {
-    std::string vertName = "vert-" + identifier;
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eVertex,
         .module = *resources.vertexShader,
-        .pName = vertName.c_str()};
+        .pName = "vertMain"};
 
-    std::string fragName = "frag-" + identifier;
     vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eFragment,
         .module = *resources.fragmentShader,
-        .pName = fragName.c_str()};
+        .pName = "fragMain"};
 
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
         vertShaderStageInfo, fragShaderStageInfo};
@@ -91,6 +92,11 @@ bool Material::create_pipeline(LogicalDevice *device,
           .bindingCount =
               static_cast<uint32_t>(createInfo.descriptorBindings.size()),
           .pBindings = createInfo.descriptorBindings.data()};
+      resources.descriptorLayout =
+          device->get_device().createDescriptorSetLayout(layoutInfo);
+    } else {
+      // Create empty descriptor layout if no bindings
+      vk::DescriptorSetLayoutCreateInfo layoutInfo{};
       resources.descriptorLayout =
           device->get_device().createDescriptorSetLayout(layoutInfo);
     }
@@ -147,7 +153,7 @@ bool Material::create_pipeline(LogicalDevice *device,
   }
 }
 
-bool Material::initialize(const MaterialCreateInfo &createInfo) {
+bool Material::initialize() {
   std::lock_guard lock(materialMutex);
 
   if (initialized) {
@@ -172,27 +178,28 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
 
     // Submit pipeline creation as a task to the device's thread
 
-    std::promise<bool> promise;
-    futures.push_back(promise.get_future());
+    auto promise = std::make_shared<std::promise<bool>>();
+    futures.push_back(promise->get_future());
 
     device->submit_task([this, device, &resources, vertexCode, fragmentCode,
-                         &createInfo, &promise]() -> bool {
+                         promise]() {
       try {
         // Create shader modules
         if (!create_shader_module(device, vertexCode, resources.vertexShader) ||
             !create_shader_module(device, fragmentCode,
                                   resources.fragmentShader)) {
-          return false;
+          promise->set_value(false);
+          return;
         }
 
         // Create pipeline for this device
-        return create_pipeline(device, resources, createInfo);
+        promise->set_value(create_pipeline(device, resources, createInfo));
       } catch (const std::exception &e) {
         std::print(
             "Failed to create pipeline for device {}: {}\n",
             device->get_physical_device()->get_properties().deviceName.data(),
             e.what());
-        return false;
+        promise->set_value(false);
       }
     });
   }
@@ -216,6 +223,21 @@ bool Material::initialize(const MaterialCreateInfo &createInfo) {
   }
 
   return allSuccess;
+}
+
+bool Material::reinitialize() {
+  {
+    std::lock_guard lock(materialMutex);
+
+    initialized = false;
+    deviceResources.clear();
+
+    deviceResources.reserve(logicalDevices.size());
+    for (size_t i = 0; i < logicalDevices.size(); ++i) {
+      deviceResources.push_back(std::make_unique<DeviceMaterialResources>());
+    }
+  }
+  return initialize();
 }
 
 void Material::bind(vk::raii::CommandBuffer &commandBuffer,
