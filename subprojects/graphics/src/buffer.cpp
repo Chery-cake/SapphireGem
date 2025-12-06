@@ -178,6 +178,9 @@ bool Buffer::create_buffer(LogicalDevice *device,
       if (result != VK_SUCCESS) {
         std::print("Failed to create staging buffer: {}\n",
                    static_cast<int>(result));
+        vmaDestroyBuffer(allocator, resources.buffer, resources.allocation);
+        resources.buffer = VK_NULL_HANDLE;
+        resources.allocation = VK_NULL_HANDLE;
         return false;
       }
 
