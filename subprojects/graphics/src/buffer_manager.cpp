@@ -1,0 +1,121 @@
+#include "buffer_manager.h"
+#include <algorithm>
+#include <print>
+
+BufferManager::BufferManager(const DevicesManager *devicesManager)
+    : devicesManager(devicesManager) {}
+
+BufferManager::~BufferManager() {
+  std::lock_guard lock(managerMutex);
+  buffers.clear();
+  std::print("Buffer Manager destructor executed\n");
+}
+
+Buffer *BufferManager::create_buffer(const Buffer::BufferCreateInfo &createInfo) {
+  std::lock_guard lock(managerMutex);
+
+  if (buffers.find(createInfo.identifier) != buffers.end()) {
+    std::print("Buffer with identifier {} already exists\n",
+               createInfo.identifier);
+    return buffers[createInfo.identifier].get();
+  }
+
+  auto buffer = std::make_unique<Buffer>(
+      devicesManager->get_all_logical_devices(), createInfo);
+
+  Buffer *bufferPtr = buffer.get();
+  buffers[createInfo.identifier] = std::move(buffer);
+
+  return bufferPtr;
+}
+
+Buffer *BufferManager::create_vertex_buffer(const std::string &identifier,
+                                            vk::DeviceSize size,
+                                            const void *data,
+                                            BufferUsageMode usageMode) {
+  Buffer::BufferCreateInfo createInfo{.identifier = identifier,
+                                      .type = BufferType::Vertex,
+                                      .usageMode = usageMode,
+                                      .size = size,
+                                      .initialData = data};
+
+  return create_buffer(createInfo);
+}
+
+Buffer *BufferManager::create_index_buffer(const std::string &identifier,
+                                           vk::DeviceSize size,
+                                           const void *data,
+                                           BufferUsageMode usageMode) {
+  Buffer::BufferCreateInfo createInfo{.identifier = identifier,
+                                      .type = BufferType::Index,
+                                      .usageMode = usageMode,
+                                      .size = size,
+                                      .initialData = data};
+
+  return create_buffer(createInfo);
+}
+
+Buffer *BufferManager::create_uniform_buffer(const std::string &identifier,
+                                             vk::DeviceSize size,
+                                             const void *data,
+                                             BufferUsageMode usageMode) {
+  Buffer::BufferCreateInfo createInfo{.identifier = identifier,
+                                      .type = BufferType::Uniform,
+                                      .usageMode = usageMode,
+                                      .size = size,
+                                      .initialData = data};
+
+  return create_buffer(createInfo);
+}
+
+void BufferManager::remove_buffer(const std::string &identifier) {
+  std::lock_guard lock(managerMutex);
+
+  auto it = buffers.find(identifier);
+  if (it != buffers.end()) {
+    buffers.erase(it);
+    std::print("Removed buffer: {}\n", identifier);
+  }
+}
+
+Buffer *BufferManager::get_buffer(const std::string &identifier) const {
+  std::lock_guard lock(managerMutex);
+
+  auto it = buffers.find(identifier);
+  if (it != buffers.end()) {
+    return it->second.get();
+  }
+  return nullptr;
+}
+
+bool BufferManager::has_buffer(const std::string &identifier) const {
+  std::lock_guard lock(managerMutex);
+  return buffers.find(identifier) != buffers.end();
+}
+
+std::vector<Buffer *> BufferManager::get_all_buffers() const {
+  std::lock_guard lock(managerMutex);
+
+  std::vector<Buffer *> result;
+  result.reserve(buffers.size());
+
+  for (const auto &[key, buffer] : buffers) {
+    result.push_back(buffer.get());
+  }
+
+  return result;
+}
+
+std::vector<Buffer *> BufferManager::get_buffers_by_type(BufferType type) const {
+  std::lock_guard lock(managerMutex);
+
+  std::vector<Buffer *> result;
+
+  for (const auto &[key, buffer] : buffers) {
+    if (buffer->get_type() == type) {
+      result.push_back(buffer.get());
+    }
+  }
+
+  return result;
+}

@@ -111,3 +111,4 @@ build/
 
 bin/
 *.clangd
+_codeql_detected_source_root
