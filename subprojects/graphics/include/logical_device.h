@@ -52,6 +52,7 @@ public:
   vk::raii::Queue &get_graphics_queue();
   uint32_t get_graphics_queue_index() const;
   SwapChain &get_swap_chain();
+  VmaAllocator get_allocator() const;
 
   // Task submission
   template <typename F> void submit_task(F &&task) {

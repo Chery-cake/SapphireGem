@@ -180,3 +180,5 @@ uint32_t LogicalDevice::get_graphics_queue_index() const {
 }
 
 SwapChain &LogicalDevice::get_swap_chain() { return *swapChain; }
+
+VmaAllocator LogicalDevice::get_allocator() const { return allocator; }
