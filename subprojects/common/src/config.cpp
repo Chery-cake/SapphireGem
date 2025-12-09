@@ -17,8 +17,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageTypeFlagsEXT type,
     const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
   if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
-    std::print(std::cerr, "validation layer: type {0} msg: {1}\n",
-               static_cast<uint32_t>(type), pCallbackData->pMessage);
+    std::fprintf(stderr, "validation layer: type %u msg: %s\n",
+                 static_cast<uint32_t>(type), pCallbackData->pMessage);
   }
 
   return VK_FALSE;
@@ -103,7 +103,7 @@ bool Config::validate_instance_requirements(
     if (!found) {
       std::string error = "Instance required layer not supported: " + 
                          std::string(requiredLayer);
-      std::print(std::cerr, "ERROR: {}\n", error);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
       throw std::runtime_error(error);
     } else {
       std::print("  ✓ Layer found: {}\n", requiredLayer);
@@ -121,7 +121,7 @@ bool Config::validate_instance_requirements(
     if (!found) {
       std::string error = "Instance required extension not supported: " +
                          std::string(requiredExtension);
-      std::print(std::cerr, "ERROR: {}\n", error);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
       throw std::runtime_error(error);
     } else {
       std::print("  ✓ Extension found: {}\n", requiredExtension);
@@ -147,7 +147,7 @@ bool Config::validate_device_requirements(
     if (!found) {
       std::string error = "Device required layer not supported: " +
                          std::string(requiredLayer);
-      std::print(std::cerr, "ERROR: {}\n", error);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
       throw std::runtime_error(error);
     } else {
       std::print("  ✓ Device layer found: {}\n", requiredLayer);
@@ -165,7 +165,7 @@ bool Config::validate_device_requirements(
     if (!found) {
       std::string error = "Device required extension not supported: " +
                          std::string(requiredExtension);
-      std::print(std::cerr, "ERROR: {}\n", error);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
       throw std::runtime_error(error);
     } else {
       std::print("  ✓ Device extension found: {}\n", requiredExtension);

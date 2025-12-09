@@ -140,8 +140,8 @@ void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
       std::print("✓ Secondary device added: {}\n",
                  physicalDevice->get_properties().deviceName.data());
     } catch (const std::exception &e) {
-      std::print(std::cerr, "✗ Failed to create logical device for {}: {}\n",
-                 physicalDevice->get_properties().deviceName.data(), e.what());
+      std::fprintf(stderr, "✗ Failed to create logical device for %s: %s\n",
+                   physicalDevice->get_properties().deviceName.data(), e.what());
     }
   } else {
     std::print("Secondary device already initialized: {}\n",
@@ -236,9 +236,9 @@ void DeviceManager::create_swap_chains() {
         std::print("  ✓ Secondary device swap chain created: {}\n",
                    device->get_physical_device()->get_properties().deviceName.data());
       } catch (const std::exception &e) {
-        std::print(std::cerr, "  ✗ Failed to create swap chain for {}: {}\n",
-                   device->get_physical_device()->get_properties().deviceName.data(),
-                   e.what());
+        std::fprintf(stderr, "  ✗ Failed to create swap chain for %s: %s\n",
+                     device->get_physical_device()->get_properties().deviceName.data(),
+                     e.what());
       }
     }
   }
@@ -261,9 +261,9 @@ void DeviceManager::recreate_swap_chain() {
         std::print("  ✓ Secondary device swap chain recreated: {}\n",
                    device->get_physical_device()->get_properties().deviceName.data());
       } catch (const std::exception &e) {
-        std::print(std::cerr, "  ✗ Failed to recreate swap chain for {}: {}\n",
-                   device->get_physical_device()->get_properties().deviceName.data(),
-                   e.what());
+        std::fprintf(stderr, "  ✗ Failed to recreate swap chain for %s: %s\n",
+                     device->get_physical_device()->get_properties().deviceName.data(),
+                     e.what());
       }
     }
   }
@@ -285,9 +285,9 @@ void DeviceManager::create_command_pool() {
         std::print("  ✓ Secondary device command pool created: {}\n",
                    device->get_physical_device()->get_properties().deviceName.data());
       } catch (const std::exception &e) {
-        std::print(std::cerr, "  ✗ Failed to create command pool for {}: {}\n",
-                   device->get_physical_device()->get_properties().deviceName.data(),
-                   e.what());
+        std::fprintf(stderr, "  ✗ Failed to create command pool for %s: %s\n",
+                     device->get_physical_device()->get_properties().deviceName.data(),
+                     e.what());
       }
     }
   }
