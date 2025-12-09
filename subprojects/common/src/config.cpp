@@ -45,7 +45,8 @@ Config::Config()
                         vk::KHRSynchronization2ExtensionName,
                         vk::KHRCreateRenderpass2ExtensionName,
                         vk::KHRDynamicRenderingExtensionName}),
-      reload(false), vmaVulkanFunctionsInitialized(false) {
+      maxFramesInFligth(2), reload(false),
+      vmaVulkanFunctionsInitialized(false) {
   if (enableValidationLayers) {
     instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
     instanceExtensions.push_back(vk::EXTDebugUtilsExtensionName);
@@ -213,6 +214,9 @@ void Config::remove_device_extension(const char *extension) {
 const std::vector<const char *> &Config::get_device_extension() const {
   return deviceExtensions;
 }
+
+void Config::set_max_frames(uint8_t &max) { maxFramesInFligth = max; }
+const uint8_t &Config::get_max_frames() const { return maxFramesInFligth; }
 
 const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
   if (vmaVulkanFunctionsInitialized) {

@@ -1,6 +1,7 @@
 #pragma once
 
-#include "devices_manager.h"
+#include "buffer_manager.h"
+#include "device_manager.h"
 #include "material_manager.h"
 #include <GLFW/glfw3.h>
 #include <memory>
@@ -20,8 +21,10 @@ private:
 
   vk::raii::DebugUtilsMessengerEXT debugMessanger;
 
-  std::unique_ptr<DevicesManager> devicesManager;
+  std::unique_ptr<DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
+
+  std::unique_ptr<BufferManager> bufferManager;
 
   void init_instance();
   void init_surface();
@@ -31,9 +34,11 @@ private:
 
   void init_debug();
 
+  void create_buffers();
+
 public:
   Renderer(GLFWwindow *window);
   ~Renderer();
 
-  DevicesManager &get_device_manager();
+  DeviceManager &get_device_manager();
 };

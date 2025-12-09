@@ -1,10 +1,9 @@
-#include "devices_manager.h"
 #include "config.h"
+#include "device_manager.h"
 #include "logical_device.h"
 #include "physical_device.h"
 #include "tasks.h"
 #include "vulkan/vulkan.hpp"
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <memory>
@@ -14,12 +13,12 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-DevicesManager::DevicesManager(GLFWwindow *window, vk::raii::Instance &instance,
-                               vk::raii::SurfaceKHR &surface)
+DeviceManager::DeviceManager(GLFWwindow *window, vk::raii::Instance &instance,
+                             vk::raii::SurfaceKHR &surface)
     : window(window), instance(instance), surface(surface),
       primaryDevice(nullptr), multiGPUEnabled(false) {}
 
-DevicesManager::~DevicesManager() {
+DeviceManager::~DeviceManager() {
   wait_idle();
 
   logicalDevices.clear();
@@ -28,7 +27,7 @@ DevicesManager::~DevicesManager() {
   std::print("Devices manager destructor executed\n");
 }
 
-PhysicalDevice *DevicesManager::select_primary_device() const {
+PhysicalDevice *DeviceManager::select_primary_device() const {
   PhysicalDevice *bestDevice = nullptr;
   int bestScore = -1;
 
@@ -47,7 +46,7 @@ PhysicalDevice *DevicesManager::select_primary_device() const {
 }
 
 uint32_t
-DevicesManager::find_graphics_queue_index(PhysicalDevice *device) const {
+DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
   uint32_t queueIndex;
   if (!device->has_graphic_queue(surface, &queueIndex)) {
     throw std::runtime_error(
@@ -56,7 +55,7 @@ DevicesManager::find_graphics_queue_index(PhysicalDevice *device) const {
   return queueIndex;
 }
 
-void DevicesManager::add_device(PhysicalDevice *physicalDevice) {
+void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
   if (primaryDevice->get_physical_device() == physicalDevice) {
     return;
   }
@@ -89,7 +88,7 @@ void DevicesManager::add_device(PhysicalDevice *physicalDevice) {
   }
 }
 
-void DevicesManager::enumerate_physical_devices() {
+void DeviceManager::enumerate_physical_devices() {
   physicalDevices.clear();
 
   auto devices = instance.enumeratePhysicalDevices();
@@ -109,7 +108,7 @@ void DevicesManager::enumerate_physical_devices() {
   }
 }
 
-void DevicesManager::initialize_devices() {
+void DeviceManager::initialize_devices() {
   logicalDevices.clear();
   secondaryDevices.clear();
 
@@ -136,15 +135,15 @@ void DevicesManager::initialize_devices() {
   }
 }
 
-void DevicesManager::switch_multi_GPU(bool enable) { multiGPUEnabled = enable; }
+void DeviceManager::switch_multi_GPU(bool enable) { multiGPUEnabled = enable; }
 
-void DevicesManager::wait_idle() {
+void DeviceManager::wait_idle() {
   for (auto &device : logicalDevices) {
     device->get_device().waitIdle();
   }
 }
 
-void DevicesManager::create_swap_chains() {
+void DeviceManager::create_swap_chains() {
   primaryDevice->initialize_swap_chain(window, surface);
 
   if (multiGPUEnabled) {
@@ -156,7 +155,7 @@ void DevicesManager::create_swap_chains() {
   }
 }
 
-void DevicesManager::recreate_swap_chain() {
+void DeviceManager::recreate_swap_chain() {
 
   wait_idle();
 
@@ -171,12 +170,26 @@ void DevicesManager::recreate_swap_chain() {
   }
 }
 
-const LogicalDevice *DevicesManager::get_primary_device() const {
+void DeviceManager::create_command_pool() {
+
+  vk::CommandPoolCreateInfo createInfo{
+      .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer};
+
+  primaryDevice->initialize_command_pool(createInfo);
+
+  if (multiGPUEnabled) {
+    for (const auto &device : secondaryDevices) {
+      device->initialize_command_pool(createInfo);
+    }
+  }
+}
+
+const LogicalDevice *DeviceManager::get_primary_device() const {
   return primaryDevice;
 }
 
 const std::vector<LogicalDevice *> &
-DevicesManager::get_all_secondary_devices() const {
+DeviceManager::get_all_secondary_devices() const {
   static std::vector<LogicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : secondaryDevices) {
@@ -186,7 +199,7 @@ DevicesManager::get_all_secondary_devices() const {
 }
 
 const std::vector<PhysicalDevice *> &
-DevicesManager::get_all_physical_devices() const {
+DeviceManager::get_all_physical_devices() const {
   static std::vector<PhysicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : physicalDevices) {
@@ -196,7 +209,7 @@ DevicesManager::get_all_physical_devices() const {
 }
 
 const std::vector<LogicalDevice *> &
-DevicesManager::get_all_logical_devices() const {
+DeviceManager::get_all_logical_devices() const {
   static std::vector<LogicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : logicalDevices) {
@@ -205,4 +218,4 @@ DevicesManager::get_all_logical_devices() const {
   return ptrs;
 }
 
-bool DevicesManager::is_multi_GPU_enabled() const { return multiGPUEnabled; }
+bool DeviceManager::is_multi_GPU_enabled() const { return multiGPUEnabled; }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "devices_manager.h"
+#include "device_manager.h"
 #include "material.h"
 #include <memory>
 #include <string>
@@ -9,14 +9,14 @@
 class MaterialManager {
 
 private:
-  const DevicesManager *devicesManager;
+  const DeviceManager *deviceManager;
 
   std::vector<std::unique_ptr<Material>> materials;
 
   void initialize_material();
 
 public:
-  MaterialManager(DevicesManager *devicesManager);
+  MaterialManager(DeviceManager *deviceManager);
   ~MaterialManager();
 
   void add_material(Material::MaterialCreateInfo createInfo);

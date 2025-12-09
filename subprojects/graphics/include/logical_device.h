@@ -11,6 +11,7 @@
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -32,9 +33,10 @@ private:
   VmaAllocator allocator;
 
   std::unique_ptr<SwapChain> swapChain;
+  vk::raii::CommandPool commandPool;
+  std::vector<vk::raii::CommandBuffer> commandBuffers;
 
   void thread_loop();
-
   void initialize_vma_allocator(vk::raii::Instance &instance);
 
 public:
@@ -45,7 +47,11 @@ public:
   void initialize_swap_chain(GLFWwindow *window, vk::raii::SurfaceKHR &surface);
   void initialize_swap_chain(vk::SurfaceFormatKHR format, vk::Extent2D extent);
 
+  void initialize_command_pool(vk::CommandPoolCreateInfo &createInfo);
+  void create_command_buffer();
+
   void wait_idle();
+  template <typename F> void submit_task(F &&task);
 
   PhysicalDevice *get_physical_device() const;
   const vk::raii::Device &get_device() const;
@@ -53,12 +59,14 @@ public:
   uint32_t get_graphics_queue_index() const;
   SwapChain &get_swap_chain();
 
-  // Task submission
-  template <typename F> void submit_task(F &&task) {
-    {
-      std::lock_guard lock(mutex);
-      taskQueue.push(std::forward<F>(task));
-    }
-    conditionVariable.notify_one();
+  VmaAllocator get_allocator() const;
+  const vk::raii::CommandPool &get_command_pool() const;
+};
+
+template <typename F> void LogicalDevice::submit_task(F &&task) {
+  {
+    std::lock_guard lock(mutex);
+    taskQueue.push(std::forward<F>(task));
   }
+  conditionVariable.notify_one();
 };

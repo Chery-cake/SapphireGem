@@ -1,16 +1,16 @@
 #include "renderer.h"
+#include "buffer.h"
+#include "buffer_manager.h"
 #include "config.h"
-#include "devices_manager.h"
+#include "device_manager.h"
 #include "material.h"
 #include "material_manager.h"
 #include "vulkan/vulkan.hpp"
-#include <chrono>
 #include <cstdint>
-#include <cstdio>
+#include <iterator>
 #include <memory>
 #include <print>
 #include <stdexcept>
-#include <thread>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_hpp_macros.hpp>
@@ -20,7 +20,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), devicesManager(nullptr) {
+      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -33,15 +33,18 @@ Renderer::Renderer(GLFWwindow *window)
 
   init_device();
   VULKAN_HPP_DEFAULT_DISPATCHER.init(
-      *devicesManager->get_primary_device()->get_device());
+      *deviceManager->get_primary_device()->get_device());
 
   init_swap_chain();
   init_materials();
+
+  create_buffers();
 }
 
 Renderer::~Renderer() {
+  bufferManager.reset();
   materialManager.reset();
-  devicesManager.reset();
+  deviceManager.reset();
 
   std::print("Renderer destructor executed\n");
 }
@@ -82,15 +85,18 @@ void Renderer::init_surface() {
 }
 
 void Renderer::init_device() {
-  devicesManager = std::make_unique<DevicesManager>(window, instance, surface);
-  devicesManager->enumerate_physical_devices();
-  devicesManager->initialize_devices();
+  deviceManager = std::make_unique<DeviceManager>(window, instance, surface);
+  deviceManager->enumerate_physical_devices();
+  deviceManager->initialize_devices();
 }
 
-void Renderer::init_swap_chain() { devicesManager->create_swap_chains(); }
+void Renderer::init_swap_chain() {
+  deviceManager->create_swap_chains();
+  deviceManager->create_command_pool();
+}
 
 void Renderer::init_materials() {
-  materialManager = std::make_unique<MaterialManager>(devicesManager.get());
+  materialManager = std::make_unique<MaterialManager>(deviceManager.get());
 
   vk::DescriptorSetLayoutBinding bidingInfo = {
       .binding = 0,
@@ -144,18 +150,38 @@ void Renderer::init_materials() {
     std::print("name: {} - init: {}\n", mat->get_identifier(),
                mat->is_initialized());
   }
-  std::print("finish 1\n");
-  materialManager->reload_materials();
-
-  for (auto &mat : vec) {
-    std::print("name: {} - init: {}\n", mat->get_identifier(),
-               mat->is_initialized());
-  }
-  std::print("finish 2\n");
 }
 
 void Renderer::init_debug() {
   debugMessanger = Config::get_instance().set_up_debug_messanger(instance);
 }
 
-DevicesManager &Renderer::get_device_manager() { return *devicesManager; }
+void Renderer::create_buffers() {
+  bufferManager = std::make_unique<BufferManager>(deviceManager.get());
+
+  const std::vector<Material::Vertex2D> vertices = {
+      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
+
+  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+
+  Buffer::BufferCreateInfo vertInfo = {.identifier = "vertices",
+                                       .type = Buffer::BufferType::VERTEX,
+                                       .usage = Buffer::BufferUsage::STATIC,
+                                       .size = std::size(vertices),
+                                       .initialData = &vertices};
+
+  bufferManager->create_buffer(vertInfo);
+
+  Buffer::BufferCreateInfo indInfo = {.identifier = "indices",
+                                      .type = Buffer::BufferType::INDEX,
+                                      .usage = Buffer::BufferUsage::STATIC,
+                                      .size = std::size(indices),
+                                      .initialData = &indices};
+
+  bufferManager->create_buffer(indInfo);
+}
+
+DeviceManager &Renderer::get_device_manager() { return *deviceManager; }

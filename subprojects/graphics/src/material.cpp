@@ -71,7 +71,6 @@ bool Material::create_shader_module(LogicalDevice *device,
 bool Material::create_pipeline(LogicalDevice *device,
                                DeviceMaterialResources &resources,
                                const MaterialCreateInfo &createInfo) {
-  std::print("start\n");
   try {
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eVertex,

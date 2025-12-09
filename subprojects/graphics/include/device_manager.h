@@ -7,7 +7,7 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
-class DevicesManager {
+class DeviceManager {
 
 private:
   GLFWwindow *window;
@@ -26,9 +26,9 @@ private:
   void add_device(PhysicalDevice *physicalDevice);
 
 public:
-  DevicesManager(GLFWwindow *window, vk::raii::Instance &instance,
-                 vk::raii::SurfaceKHR &surface);
-  ~DevicesManager();
+  DeviceManager(GLFWwindow *window, vk::raii::Instance &instance,
+                vk::raii::SurfaceKHR &surface);
+  ~DeviceManager();
 
   void enumerate_physical_devices();
   void initialize_devices();
@@ -39,6 +39,8 @@ public:
 
   void create_swap_chains();
   void recreate_swap_chain();
+
+  void create_command_pool();
 
   // Getters
   const LogicalDevice *get_primary_device() const;

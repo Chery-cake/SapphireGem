@@ -1,4 +1,5 @@
 #include "logical_device.h"
+#include "buffer.h"
 #include "config.h"
 #include "physical_device.h"
 #include "swap_chain.h"
@@ -28,7 +29,7 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
                              uint32_t graphicsQueueIndex)
     : stopThread(false), physicalDevice(physicalDevice), device(nullptr),
       graphicsQueue(nullptr), graphicsQueueIndex(graphicsQueueIndex),
-      allocator(VK_NULL_HANDLE) {
+      commandPool(nullptr) {
 
   // Query for required features
   auto featureChain = Config::get_features();
@@ -154,6 +155,20 @@ void LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
   swapChain->create_swap_image_views();
 }
 
+void LogicalDevice::initialize_command_pool(
+    vk::CommandPoolCreateInfo &createInfo) {
+  createInfo.queueFamilyIndex = graphicsQueueIndex;
+  commandPool = vk::raii::CommandPool(device, createInfo);
+}
+
+void LogicalDevice::create_command_buffer() {
+  vk::CommandBufferAllocateInfo allocInfo{
+      .commandPool = commandPool,
+      .level = vk::CommandBufferLevel::ePrimary,
+      .commandBufferCount = Config::get_instance().get_max_frames()};
+  commandBuffers = vk::raii::CommandBuffers(device, allocInfo);
+}
+
 void LogicalDevice::wait_idle() {
   device.waitIdle();
 
@@ -180,3 +195,9 @@ uint32_t LogicalDevice::get_graphics_queue_index() const {
 }
 
 SwapChain &LogicalDevice::get_swap_chain() { return *swapChain; }
+
+VmaAllocator LogicalDevice::get_allocator() const { return allocator; }
+
+const vk::raii::CommandPool &LogicalDevice::get_command_pool() const {
+  return commandPool;
+}

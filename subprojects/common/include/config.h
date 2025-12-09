@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.hpp>
@@ -23,6 +24,8 @@ private:
   std::vector<const char *> instanceExtensions;
   std::vector<const char *> deviceLayers;
   std::vector<const char *> deviceExtensions;
+
+  uint8_t maxFramesInFligth;
 
   bool reload;
 
@@ -64,6 +67,9 @@ public:
   void add_device_extension(const char *extension);
   void remove_device_extension(const char *extension);
   const std::vector<const char *> &get_device_extension() const;
+
+  void set_max_frames(uint8_t &max);
+  const uint8_t &get_max_frames() const;
 
   const VmaVulkanFunctions *get_vma_vulkan_functions();
 };

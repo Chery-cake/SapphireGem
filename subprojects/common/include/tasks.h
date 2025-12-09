@@ -30,7 +30,11 @@ public:
 
   template <typename F>
   std::future<std::invoke_result_t<std::decay_t<F>>>
-  add_task(F &&func, const BS::priority_t priority = 0) {
-    return pool.submit_task(std::forward<F>(func), priority);
-  }
+  add_task(F &&func, const BS::priority_t priority = 0);
 };
+
+template <typename F>
+std::future<std::invoke_result_t<std::decay_t<F>>>
+Tasks::add_task(F &&func, const BS::priority_t priority) {
+  return pool.submit_task(std::forward<F>(func), priority);
+}

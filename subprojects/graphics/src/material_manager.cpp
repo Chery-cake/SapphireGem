@@ -1,16 +1,14 @@
 #include "material_manager.h"
-#include "BS_thread_pool.hpp"
-#include "devices_manager.h"
+#include "device_manager.h"
 #include "material.h"
-#include "tasks.h"
 #include <algorithm>
 #include <cassert>
 #include <memory>
 #include <print>
 #include <vector>
 
-MaterialManager::MaterialManager(DevicesManager *devicesManager)
-    : devicesManager(devicesManager) {}
+MaterialManager::MaterialManager(DeviceManager *deviceManager)
+    : deviceManager(deviceManager) {}
 
 MaterialManager::~MaterialManager() {
 
@@ -22,7 +20,7 @@ MaterialManager::~MaterialManager() {
 void MaterialManager::add_material(Material::MaterialCreateInfo createInfo) {
   materials.insert(materials.end(),
                    std::make_unique<Material>(
-                       devicesManager->get_all_logical_devices(), createInfo));
+                       deviceManager->get_all_logical_devices(), createInfo));
 }
 
 void MaterialManager::remove_material(std::string identifier) {
@@ -36,7 +34,7 @@ void MaterialManager::remove_material(std::string identifier) {
 
 void MaterialManager::reload_materials() {
   for (const auto &material : materials) {
-    material->reinitialize();
+    material->reinitialize(); // TODO decide to use single or multi-thread here
     //    Tasks::get_instance().add_task([&material]() { material->initialize();
     //    },                                   BS::pr::high);
   }
