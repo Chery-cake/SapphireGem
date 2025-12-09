@@ -45,12 +45,17 @@ Config::Config()
                         vk::KHRSynchronization2ExtensionName,
                         vk::KHRCreateRenderpass2ExtensionName,
                         vk::KHRDynamicRenderingExtensionName}),
+      optionalInstanceExtensions({}),
+      optionalDeviceExtensions({}),
       maxFramesInFligth(2), reload(false),
       vmaVulkanFunctionsInitialized(false) {
   if (enableValidationLayers) {
     instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
     instanceExtensions.push_back(vk::EXTDebugUtilsExtensionName);
   }
+  
+  // Initialize VMA functions early
+  initialize_vma_functions();
 }
 
 Config::~Config() { std::print("Config destructor executed\n"); };
@@ -91,8 +96,11 @@ Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
 }
 
 bool Config::validate_instance_requirements(
-    const vk::raii::Context &context) const {
+    const vk::raii::Context &context) {
   auto layersPresent = context.enumerateInstanceLayerProperties();
+
+  std::print("Validating instance requirements...\n");
+  std::print("Available layers: {}\n", layersPresent.size());
 
   for (const auto &requiredLayer : instanceLayers) {
     bool found = std::ranges::any_of(
@@ -100,12 +108,17 @@ bool Config::validate_instance_requirements(
           return strcmp(available.layerName, requiredLayer) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Instance required layer not supported: " +
-                               std::string(requiredLayer));
+      std::string error = "Instance required layer not supported: " + 
+                         std::string(requiredLayer);
+      std::print(std::cerr, "ERROR: {}\n", error);
+      throw std::runtime_error(error);
+    } else {
+      std::print("  ✓ Layer found: {}\n", requiredLayer);
     }
   }
 
   auto extensionsPresent = context.enumerateInstanceExtensionProperties();
+  std::print("Available extensions: {}\n", extensionsPresent.size());
 
   for (const auto &requiredExtension : instanceExtensions) {
     bool found = std::ranges::any_of(
@@ -113,8 +126,12 @@ bool Config::validate_instance_requirements(
           return strcmp(available.extensionName, requiredExtension) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Instance required extension not supported:" +
-                               std::string(requiredExtension));
+      std::string error = "Instance required extension not supported: " +
+                         std::string(requiredExtension);
+      std::print(std::cerr, "ERROR: {}\n", error);
+      throw std::runtime_error(error);
+    } else {
+      std::print("  ✓ Extension found: {}\n", requiredExtension);
     }
   }
 
@@ -122,9 +139,12 @@ bool Config::validate_instance_requirements(
 }
 
 bool Config::validate_device_requirements(
-    const vk::raii::PhysicalDevice &device) const {
+    const vk::raii::PhysicalDevice &device) {
 
   auto layersPresent = device.enumerateDeviceLayerProperties();
+
+  std::print("Validating device requirements...\n");
+  std::print("Available device layers: {}\n", layersPresent.size());
 
   for (const auto &requiredLayer : deviceLayers) {
     bool found = std::ranges::any_of(
@@ -132,12 +152,17 @@ bool Config::validate_device_requirements(
           return strcmp(available.layerName, requiredLayer) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Device required layer not supported: " +
-                               std::string(requiredLayer));
+      std::string error = "Device required layer not supported: " +
+                         std::string(requiredLayer);
+      std::print(std::cerr, "ERROR: {}\n", error);
+      throw std::runtime_error(error);
+    } else {
+      std::print("  ✓ Device layer found: {}\n", requiredLayer);
     }
   }
 
   auto extensionsPresent = device.enumerateDeviceExtensionProperties();
+  std::print("Available device extensions: {}\n", extensionsPresent.size());
 
   for (const auto &requiredExtension : deviceExtensions) {
     bool found = std::ranges::any_of(
@@ -145,8 +170,12 @@ bool Config::validate_device_requirements(
           return strcmp(available.extensionName, requiredExtension) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Device required extension not supported:" +
-                               std::string(requiredExtension));
+      std::string error = "Device required extension not supported: " +
+                         std::string(requiredExtension);
+      std::print(std::cerr, "ERROR: {}\n", error);
+      throw std::runtime_error(error);
+    } else {
+      std::print("  ✓ Device extension found: {}\n", requiredExtension);
     }
   }
 
@@ -223,10 +252,80 @@ const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
     return &vmaVulkanFunctions;
   }
 
+  initialize_vma_functions();
+  return &vmaVulkanFunctions;
+}
+
+void Config::initialize_vma_functions() {
+  if (vmaVulkanFunctionsInitialized) {
+    return;
+  }
+
   vmaVulkanFunctions.vkGetInstanceProcAddr =
       VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
   vmaVulkanFunctions.vkGetDeviceProcAddr =
       VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
 
-  return &vmaVulkanFunctions;
+  vmaVulkanFunctionsInitialized = true;
+  std::print("VMA Vulkan functions initialized\n");
+}
+
+void Config::check_and_enable_optional_instance_extensions(
+    const vk::raii::Context &context) {
+  auto extensionsPresent = context.enumerateInstanceExtensionProperties();
+
+  std::print("Checking optional instance extensions...\n");
+  for (const auto &optionalExtension : optionalInstanceExtensions) {
+    bool found = std::ranges::any_of(
+        extensionsPresent, [&optionalExtension](const auto &available) {
+          return strcmp(available.extensionName, optionalExtension) == 0;
+        });
+    if (found) {
+      std::print("  ✓ Optional extension available, enabling: {}\n", 
+                 optionalExtension);
+      instanceExtensions.push_back(optionalExtension);
+    } else {
+      std::print("  ⚠ Optional extension not available: {}\n", 
+                 optionalExtension);
+    }
+  }
+  optionalInstanceExtensions.clear();
+}
+
+void Config::check_and_enable_optional_device_extensions(
+    const vk::raii::PhysicalDevice &device) {
+  auto extensionsPresent = device.enumerateDeviceExtensionProperties();
+
+  std::print("Checking optional device extensions...\n");
+  for (const auto &optionalExtension : optionalDeviceExtensions) {
+    bool found = std::ranges::any_of(
+        extensionsPresent, [&optionalExtension](const auto &available) {
+          return strcmp(available.extensionName, optionalExtension) == 0;
+        });
+    if (found) {
+      std::print("  ✓ Optional extension available, enabling: {}\n", 
+                 optionalExtension);
+      deviceExtensions.push_back(optionalExtension);
+    } else {
+      std::print("  ⚠ Optional extension not available: {}\n", 
+                 optionalExtension);
+    }
+  }
+  optionalDeviceExtensions.clear();
+}
+
+void Config::add_optional_instance_extension(const char *extension) {
+  optionalInstanceExtensions.push_back(extension);
+}
+
+void Config::add_optional_device_extension(const char *extension) {
+  optionalDeviceExtensions.push_back(extension);
+}
+
+bool Config::needs_reload() const {
+  return reload;
+}
+
+void Config::mark_reload_complete() {
+  reload = false;
 }

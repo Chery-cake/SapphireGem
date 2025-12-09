@@ -49,6 +49,54 @@ Renderer::~Renderer() {
   std::print("Renderer destructor executed\n");
 }
 
+void Renderer::reload() {
+  std::print("Reloading rendering system...\n");
+  
+  // Wait for all devices to be idle
+  if (deviceManager) {
+    deviceManager->wait_idle();
+  }
+  
+  // Cleanup in reverse order
+  bufferManager.reset();
+  materialManager.reset();
+  
+  // Check if we need to reload instance (layers/extensions changed)
+  if (Config::get_instance().needs_reload()) {
+    std::print("Full reload required - recreating instance...\n");
+    
+    // Clean up everything
+    deviceManager.reset();
+    debugMessanger = nullptr;
+    surface = nullptr;
+    instance = nullptr;
+    
+    // Reinitialize everything
+    init_instance();
+    VULKAN_HPP_DEFAULT_DISPATCHER.init(*instance);
+    
+    init_debug();
+    init_surface();
+    
+    Config::get_instance().mark_reload_complete();
+  } else {
+    std::print("Partial reload - keeping instance...\n");
+    // Just reload devices if instance doesn't need recreation
+    deviceManager.reset();
+  }
+  
+  // Recreate device manager and downstream resources
+  init_device();
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(
+      *deviceManager->get_primary_device()->get_device());
+  
+  init_swap_chain();
+  init_materials();
+  create_buffers();
+  
+  std::print("Reload complete!\n");
+}
+
 void Renderer::init_instance() {
   vk::ApplicationInfo appInfo;
   appInfo.pApplicationName = "Vulkan Learning";
@@ -57,7 +105,11 @@ void Renderer::init_instance() {
   appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
   appInfo.apiVersion = VK_API_VERSION_1_4;
 
+  // Validate required extensions and layers
   Config::get_instance().validate_instance_requirements(context);
+  
+  // Check and enable optional extensions
+  Config::get_instance().check_and_enable_optional_instance_extensions(context);
 
   vk::InstanceCreateInfo createInfo;
   createInfo.pApplicationInfo = &appInfo;
@@ -70,7 +122,12 @@ void Renderer::init_instance() {
   createInfo.ppEnabledExtensionNames =
       Config::get_instance().get_instance_extension().data();
 
+  std::print("Creating Vulkan instance with {} layers and {} extensions\n",
+             createInfo.enabledLayerCount, createInfo.enabledExtensionCount);
+
   instance = vk::raii::Instance(context, createInfo);
+  
+  std::print("Vulkan instance created successfully\n");
 }
 
 void Renderer::init_surface() {

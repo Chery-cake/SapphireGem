@@ -4,6 +4,7 @@
 #include "physical_device.h"
 #include <GLFW/glfw3.h>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -20,6 +21,8 @@ private:
   std::vector<LogicalDevice *> secondaryDevices;
   LogicalDevice *primaryDevice;
   bool multiGPUEnabled;
+  
+  mutable std::mutex deviceMutex;
 
   PhysicalDevice *select_primary_device() const;
   uint32_t find_graphics_queue_index(PhysicalDevice *device) const;

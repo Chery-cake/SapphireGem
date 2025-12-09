@@ -31,27 +31,76 @@ PhysicalDevice *DeviceManager::select_primary_device() const {
   PhysicalDevice *bestDevice = nullptr;
   int bestScore = -1;
 
+  std::print("Selecting primary device from {} candidates...\n", 
+             physicalDevices.size());
+
   for (const auto &device : physicalDevices) {
-    if (Config::get_instance().validate_device_requirements(
-            device->get_device()) &&
-        device->supports_required_features()) {
-      int score = device->calculate_score(surface);
-      if (score > bestScore) {
-        bestScore = score;
-        bestDevice = device.get();
+    std::print("\nEvaluating device: {}\n", 
+               device->get_properties().deviceName.data());
+    
+    // Validate device requirements
+    try {
+      if (!Config::get_instance().validate_device_requirements(
+              device->get_device())) {
+        std::print("  Device failed validation requirements\n");
+        continue;
       }
+    } catch (const std::exception &e) {
+      std::print("  Device validation error: {}\n", e.what());
+      continue;
+    }
+    
+    // Check optional extensions
+    Config::get_instance().check_and_enable_optional_device_extensions(
+        device->get_device());
+    
+    // Check required features
+    if (!device->supports_required_features()) {
+      std::print("  Device missing required features\n");
+      continue;
+    }
+    
+    int score = device->calculate_score(surface);
+    std::print("  Device score: {}\n", score);
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestDevice = device.get();
+      std::print("  ✓ New best device candidate\n");
     }
   }
+  
+  if (bestDevice) {
+    std::print("\nSelected primary device: {} (score: {})\n",
+               bestDevice->get_properties().deviceName.data(), bestScore);
+  }
+  
   return bestDevice;
 }
 
 uint32_t
 DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
   uint32_t queueIndex;
+  
+  std::print("Finding graphics queue for device: {}\n",
+             device->get_properties().deviceName.data());
+  
+  auto queueFamilies = device->get_queue_families();
+  std::print("  Available queue families: {}\n", queueFamilies.size());
+  
+  for (uint32_t i = 0; i < queueFamilies.size(); i++) {
+    std::print("  Queue family {}: flags={}, count={}\n", 
+               i, 
+               to_string(queueFamilies[i].queueFlags),
+               queueFamilies[i].queueCount);
+  }
+  
   if (!device->has_graphic_queue(surface, &queueIndex)) {
     throw std::runtime_error(
         "Device does not support graphics queue with presentation");
   }
+  
+  std::print("  ✓ Using graphics queue family index: {}\n", queueIndex);
   return queueIndex;
 }
 
@@ -135,9 +184,13 @@ void DeviceManager::initialize_devices() {
   }
 }
 
-void DeviceManager::switch_multi_GPU(bool enable) { multiGPUEnabled = enable; }
+void DeviceManager::switch_multi_GPU(bool enable) { 
+  std::lock_guard<std::mutex> lock(deviceMutex);
+  multiGPUEnabled = enable; 
+}
 
 void DeviceManager::wait_idle() {
+  std::lock_guard<std::mutex> lock(deviceMutex);
   for (auto &device : logicalDevices) {
     device->get_device().waitIdle();
   }

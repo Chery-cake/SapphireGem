@@ -48,9 +48,17 @@ int PhysicalDevice::calculate_score(vk::raii::SurfaceKHR &surface) const {
 bool PhysicalDevice::supports_required_features() {
   auto features2 = Config::get_features(device);
 
-  return features2.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
-         features2.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
-             .extendedDynamicState;
+  bool hasDynamicRendering = 
+      features2.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
+  bool hasExtendedDynamicState = 
+      features2.get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()
+          .extendedDynamicState;
+
+  std::print("Device {} feature check:\n", properties.deviceName.data());
+  std::print("  Dynamic Rendering: {}\n", hasDynamicRendering ? "✓" : "✗");
+  std::print("  Extended Dynamic State: {}\n", hasExtendedDynamicState ? "✓" : "✗");
+
+  return hasDynamicRendering && hasExtendedDynamicState;
 }
 
 bool PhysicalDevice::has_graphic_queue(vk::raii::SurfaceKHR &surface,
