@@ -12,18 +12,16 @@
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
-    vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-    vk::DebugUtilsMessageTypeFlagsEXT type,
-    const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
-  if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
-      severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
+  if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
     std::print(std::cerr, "validation layer: type {0} msg: {1}\n",
-               to_string(type), pCallbackData->pMessage);
-    ;
+               static_cast<uint32_t>(type), pCallbackData->pMessage);
   }
 
-  return vk::False;
+  return VK_FALSE;
 }
 
 Config &Config::get_instance() {
@@ -40,11 +38,7 @@ Config::Config()
                                          glfwExtensions + glfwExtensionCount);
       }()),
       deviceLayers({}),
-      deviceExtensions({vk::KHRSwapchainExtensionName,
-                        vk::KHRSpirv14ExtensionName,
-                        vk::KHRSynchronization2ExtensionName,
-                        vk::KHRCreateRenderpass2ExtensionName,
-                        vk::KHRDynamicRenderingExtensionName}),
+      deviceExtensions({vk::KHRSwapchainExtensionName}),
       optionalInstanceExtensions({}),
       optionalDeviceExtensions({}),
       maxFramesInFligth(2), reload(false),
@@ -83,10 +77,9 @@ Config::set_up_debug_messanger(vk::raii::Instance &instance) {
 
 vk::StructureChain<PhysicalDeviceFeaturesList>
 Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
-  if (physicalDevice == nullptr) {
+  if (*physicalDevice == VK_NULL_HANDLE) {
     vk::StructureChain<PhysicalDeviceFeaturesList> featureChain = {
         {}, // vk::PhysicalDeviceFeatures2
-        {}, // vk::PhysicalDeviceVulkan14Features
         {.extendedDynamicState = true},
         {.bufferDeviceAddress = true},
         {.synchronization2 = true, .dynamicRendering = true}};

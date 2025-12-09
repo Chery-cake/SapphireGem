@@ -124,7 +124,7 @@ void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
       .device = *device,
       .pVulkanFunctions = Config::get_instance().get_vma_vulkan_functions(),
       .instance = *instance,
-      .vulkanApiVersion = VK_API_VERSION_1_4};
+      .vulkanApiVersion = VK_API_VERSION_1_3};
 
   // Enable specific features if available
   auto features = Config::get_features(physicalDevice->get_device());
@@ -163,7 +163,7 @@ void LogicalDevice::initialize_command_pool(
 
 void LogicalDevice::create_command_buffer() {
   vk::CommandBufferAllocateInfo allocInfo{
-      .commandPool = commandPool,
+      .commandPool = *commandPool,
       .level = vk::CommandBufferLevel::ePrimary,
       .commandBufferCount = Config::get_instance().get_max_frames()};
   commandBuffers = vk::raii::CommandBuffers(device, allocInfo);

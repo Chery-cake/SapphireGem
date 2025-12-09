@@ -249,7 +249,7 @@ void Material::bind(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                              *resources.pipeline);
 
-  if (resources.descriptorSet != nullptr) {
+  if (*resources.descriptorSet != VK_NULL_HANDLE) {
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                      *resources.pipelineLayout, 0,
                                      {*resources.descriptorSet}, {});

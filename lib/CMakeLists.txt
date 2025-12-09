@@ -9,6 +9,12 @@ target_compile_definitions(glfw INTERFACE
 
 find_package(glm CONFIG REQUIRED)
 
+# Create interface target for GLM (header-only library)
+if(NOT TARGET glm)
+  add_library(glm INTERFACE)
+  target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIRS})
+endif()
+
 find_package(Vulkan REQUIRED)
 add_library(vulkan INTERFACE)
 

@@ -103,7 +103,7 @@ void Renderer::init_instance() {
   appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
   appInfo.pEngineName = "No Engine";
   appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  appInfo.apiVersion = VK_API_VERSION_1_4;
+  appInfo.apiVersion = VK_API_VERSION_1_3;
 
   // Validate required extensions and layers
   Config::get_instance().validate_instance_requirements(context);

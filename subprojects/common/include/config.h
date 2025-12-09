@@ -16,7 +16,7 @@ private:
 #endif
 
 #define PhysicalDeviceFeaturesList                                             \
-  vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan14Features,             \
+  vk::PhysicalDeviceFeatures2,                                                 \
       vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT,                       \
       vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan13Features
 
