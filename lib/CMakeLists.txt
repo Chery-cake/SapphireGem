@@ -7,12 +7,11 @@ target_compile_definitions(glfw INTERFACE
     GLFW_INCLUDE_VULKAN
 )
 
-find_package(glm CONFIG REQUIRED)
-
-# Create interface target for GLM (header-only library)
+# GLM is header-only, create an interface target
 if(NOT TARGET glm)
   add_library(glm INTERFACE)
-  target_include_directories(glm INTERFACE ${GLM_INCLUDE_DIRS})
+  # GLM is typically in system include paths
+  # If needed, add: target_include_directories(glm INTERFACE /usr/include)
 endif()
 
 find_package(Vulkan REQUIRED)

@@ -103,7 +103,23 @@ void Renderer::init_instance() {
   appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
   appInfo.pEngineName = "No Engine";
   appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-  appInfo.apiVersion = VK_API_VERSION_1_3;
+  
+  // Query available Vulkan API version
+  uint32_t instanceVersion = context.enumerateInstanceVersion();
+  std::print("Available Vulkan instance version: {}.{}.{}\n",
+             VK_API_VERSION_MAJOR(instanceVersion),
+             VK_API_VERSION_MINOR(instanceVersion),
+             VK_API_VERSION_PATCH(instanceVersion));
+  
+  // Request Vulkan 1.3 if available, otherwise use what's available
+  appInfo.apiVersion = (instanceVersion >= VK_API_VERSION_1_3) 
+      ? VK_API_VERSION_1_3 
+      : instanceVersion;
+  
+  std::print("Requesting Vulkan API version: {}.{}.{}\n",
+             VK_API_VERSION_MAJOR(appInfo.apiVersion),
+             VK_API_VERSION_MINOR(appInfo.apiVersion),
+             VK_API_VERSION_PATCH(appInfo.apiVersion));
 
   // Validate required extensions and layers
   Config::get_instance().validate_instance_requirements(context);
