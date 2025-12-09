@@ -22,6 +22,7 @@ private:
   // swap chain without presentation
   vk::raii::Image image;
   vk::raii::ImageView imageView;
+  vk::raii::DeviceMemory imageMemory;
 
   vk::SurfaceFormatKHR surfaceFormat;
   vk::Extent2D extent2D;
