@@ -240,7 +240,7 @@ bool Material::reinitialize() {
 }
 
 void Material::bind(vk::raii::CommandBuffer &commandBuffer,
-                    uint32_t deviceIndex) {
+                    uint32_t frameIndex, uint32_t deviceIndex) {
   if (!initialized || deviceIndex >= deviceResources.size()) {
     return;
   }
@@ -249,11 +249,82 @@ void Material::bind(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                              *resources.pipeline);
 
-  if (*resources.descriptorSet != VK_NULL_HANDLE) {
+  if (frameIndex < resources.descriptorSets.size() &&
+      *resources.descriptorSets[frameIndex] != VK_NULL_HANDLE) {
     commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                      *resources.pipelineLayout, 0,
-                                     {*resources.descriptorSet}, {});
+                                     {*resources.descriptorSets[frameIndex]}, {});
   }
+}
+
+void Material::allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
+                                       uint32_t count,
+                                       uint32_t deviceIndex) {
+  std::lock_guard lock(materialMutex);
+
+  if (deviceIndex >= deviceResources.size()) {
+    std::print("Invalid device index {} for material {}\n", deviceIndex,
+               identifier);
+    return;
+  }
+
+  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
+
+  // Allocate descriptor sets
+  std::vector<vk::DescriptorSetLayout> layouts(count,
+                                               *resources.descriptorLayout);
+  vk::DescriptorSetAllocateInfo allocInfo{
+      .descriptorPool = *pool,
+      .descriptorSetCount = static_cast<uint32_t>(layouts.size()),
+      .pSetLayouts = layouts.data()};
+
+  try {
+    resources.descriptorSets =
+        logicalDevices[deviceIndex]->get_device().allocateDescriptorSets(
+            allocInfo);
+    std::print("✓ Allocated {} descriptor set(s) for material {} device {}\n",
+               count, identifier, deviceIndex);
+  } catch (const std::exception &e) {
+    std::print("Failed to allocate descriptor sets for material {} device {}: "
+               "{}\n",
+               identifier, deviceIndex, e.what());
+  }
+}
+
+void Material::update_descriptor_set(uint32_t binding, VkBuffer buffer,
+                                     vk::DeviceSize offset,
+                                     vk::DeviceSize range, uint32_t frameIndex,
+                                     uint32_t deviceIndex) {
+  std::lock_guard lock(materialMutex);
+
+  if (deviceIndex >= deviceResources.size()) {
+    std::print("Invalid device index {} for material {}\n", deviceIndex,
+               identifier);
+    return;
+  }
+
+  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
+
+  if (frameIndex >= resources.descriptorSets.size()) {
+    std::print("Invalid frame index {} for material {}\n", frameIndex,
+               identifier);
+    return;
+  }
+
+  vk::DescriptorBufferInfo bufferInfo{.buffer = buffer,
+                                      .offset = offset,
+                                      .range = range};
+
+  vk::WriteDescriptorSet descriptorWrite{
+      .dstSet = *resources.descriptorSets[frameIndex],
+      .dstBinding = binding,
+      .dstArrayElement = 0,
+      .descriptorCount = 1,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .pBufferInfo = &bufferInfo};
+
+  logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
+      descriptorWrite, {});
 }
 
 void Material::set_color(const glm::vec4 &newColor) {

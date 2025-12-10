@@ -51,7 +51,7 @@ public:
     vk::raii::DescriptorSetLayout descriptorLayout{nullptr};
     vk::raii::ShaderModule vertexShader{nullptr};
     vk::raii::ShaderModule fragmentShader{nullptr};
-    vk::raii::DescriptorSet descriptorSet{nullptr};
+    std::vector<vk::raii::DescriptorSet> descriptorSets; // One per frame in flight
   };
 
 private:
@@ -86,7 +86,15 @@ public:
   bool reinitialize();
 
   // Multi-device support
-  void bind(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex = 0);
+  void bind(vk::raii::CommandBuffer &commandBuffer, uint32_t frameIndex = 0,
+            uint32_t deviceIndex = 0);
+
+  // Descriptor set management
+  void allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
+                                uint32_t count, uint32_t deviceIndex = 0);
+  void update_descriptor_set(uint32_t binding, VkBuffer buffer,
+                            vk::DeviceSize offset, vk::DeviceSize range,
+                            uint32_t frameIndex = 0, uint32_t deviceIndex = 0);
 
   void set_color(const glm::vec4 &newColor);
   void set_roughness(const float &newRougthness);

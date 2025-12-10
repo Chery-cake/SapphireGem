@@ -1,6 +1,7 @@
 #pragma once
 
 #include "buffer_manager.h"
+#include "descriptor_pool_manager.h"
 #include "device_manager.h"
 #include "material_manager.h"
 #include <GLFW/glfw3.h>
@@ -13,7 +14,7 @@ class Renderer {
 
 private:
   GLFWwindow *window;
-  vk::detail::DynamicLoader dl;
+  vk::DynamicLoader dl;
 
   vk::raii::Context context;
   vk::raii::Instance instance;
@@ -23,6 +24,7 @@ private:
 
   std::unique_ptr<DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
+  std::unique_ptr<DescriptorPoolManager> descriptorPoolManager;
 
   std::unique_ptr<BufferManager> bufferManager;
 
@@ -30,6 +32,7 @@ private:
   void init_surface();
   void init_device();
   void init_swap_chain();
+  void init_descriptor_pools();
   void init_materials();
 
   void init_debug();

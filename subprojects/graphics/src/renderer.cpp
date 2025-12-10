@@ -2,6 +2,7 @@
 #include "buffer.h"
 #include "buffer_manager.h"
 #include "config.h"
+#include "descriptor_pool_manager.h"
 #include "device_manager.h"
 #include "material.h"
 #include "material_manager.h"
@@ -20,7 +21,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr) {
+      debugMessanger(nullptr), deviceManager(nullptr),
+      descriptorPoolManager(nullptr), bufferManager(nullptr) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -36,6 +38,7 @@ Renderer::Renderer(GLFWwindow *window)
       *deviceManager->get_primary_device()->get_device());
 
   init_swap_chain();
+  init_descriptor_pools();
   init_materials();
 
   create_buffers();
@@ -44,6 +47,7 @@ Renderer::Renderer(GLFWwindow *window)
 Renderer::~Renderer() {
   bufferManager.reset();
   materialManager.reset();
+  descriptorPoolManager.reset();
   deviceManager.reset();
 
   std::print("Renderer destructor executed\n");
@@ -119,6 +123,30 @@ void Renderer::init_swap_chain() {
   deviceManager->create_command_pool();
 }
 
+void Renderer::init_descriptor_pools() {
+  std::print("Initializing descriptor pools...\n");
+  
+  // Get max frames in flight from config
+  uint32_t maxFrames = Config::get_instance().get_max_frames();
+  
+  descriptorPoolManager =
+      std::make_unique<DescriptorPoolManager>(deviceManager.get(), maxFrames);
+  
+  // Define the descriptor pool sizes based on expected usage
+  DescriptorPoolManager::DescriptorPoolSizes poolSizes{
+      .uniformBufferCount = 10,  // Support for multiple uniform buffers
+      .storageBufferCount = 5,
+      .combinedImageSamplerCount = 10,
+      .storageImageCount = 0,
+      .inputAttachmentCount = 0};
+  
+  if (!descriptorPoolManager->initialize(poolSizes)) {
+    throw std::runtime_error("Failed to initialize descriptor pools");
+  }
+  
+  std::print("✓ Descriptor pools initialized\n");
+}
+
 void Renderer::init_materials() {
   materialManager = std::make_unique<MaterialManager>(deviceManager.get());
 
@@ -177,30 +205,37 @@ void Renderer::init_debug() {
 void Renderer::create_buffers() {
   bufferManager = std::make_unique<BufferManager>(deviceManager.get());
 
-  const std::vector<Material::Vertex2D> vertices = {
-      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
+  std::print("Creating example buffers for triangle rendering...\n");
 
-  Buffer::BufferCreateInfo vertInfo = {.identifier = "vertices",
+  // Create vertex buffer with triangle vertices
+  const std::vector<Material::Vertex2D> vertices = {
+      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
+      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
+      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}}; // Top-left (white)
+
+  Buffer::BufferCreateInfo vertInfo = {.identifier = "triangle-vertices",
                                        .type = Buffer::BufferType::VERTEX,
                                        .usage = Buffer::BufferUsage::STATIC,
                                        .size = std::size(vertices),
-                                       .initialData = &vertices};
+                                       .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
+  std::print("✓ Created vertex buffer with {} vertices\n", vertices.size());
 
+  // Create index buffer for drawing two triangles (a quad)
   const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-  Buffer::BufferCreateInfo indInfo = {.identifier = "indices",
+  Buffer::BufferCreateInfo indInfo = {.identifier = "triangle-indices",
                                       .type = Buffer::BufferType::INDEX,
                                       .usage = Buffer::BufferUsage::STATIC,
                                       .size = std::size(indices),
-                                      .initialData = &indices};
+                                      .initialData = indices.data()};
 
   bufferManager->create_buffer(indInfo);
+  std::print("✓ Created index buffer with {} indices\n", indices.size());
 
+  // Material uniform buffer structure
   struct MaterialUniformData {
     glm::vec4 color;
     float roughness;
@@ -208,27 +243,55 @@ void Renderer::create_buffers() {
     float padding[2]; // Padding for alignment (vec4 alignment)
   };
 
-  // Get the first material (or iterate through all if needed)
+  // Get the first material and allocate descriptor sets for it
   if (!materialManager->get_materials().empty()) {
     Material *material = materialManager->get_materials()[0];
 
+    // Create uniform buffer for material properties
     MaterialUniformData materialData = {
-        .color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Default white
+        .color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), // Magenta for testing
         .roughness = 0.5f,
         .metallic = 0.0f,
         .padding = {0.0f, 0.0f}};
 
-    Buffer::BufferCreateInfo matInfo = {.identifier = "material-test",
-                                        .type = Buffer::BufferType::UNIFORM,
-                                        .usage = Buffer::BufferUsage::DYNAMIC,
-                                        .size = sizeof(MaterialUniformData),
-                                        .elementSize =
-                                            sizeof(MaterialUniformData),
-                                        .initialData = &materialData};
+    Buffer::BufferCreateInfo matInfo = {
+        .identifier = "material-uniform-test",
+        .type = Buffer::BufferType::UNIFORM,
+        .usage = Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(MaterialUniformData),
+        .elementSize = sizeof(MaterialUniformData),
+        .initialData = &materialData};
 
-    bufferManager->create_buffer(matInfo);
+    Buffer *uniformBuffer = bufferManager->create_buffer(matInfo);
+    std::print("✓ Created material uniform buffer\n");
+
+    // Allocate descriptor sets for all devices and frames
+    auto logicalDevices = deviceManager->get_all_logical_devices();
+    uint32_t maxFrames = descriptorPoolManager->get_max_frames_in_flight();
+
+    for (size_t deviceIndex = 0; deviceIndex < logicalDevices.size();
+         ++deviceIndex) {
+      // Allocate descriptor sets (one per frame in flight)
+      auto &pool = descriptorPoolManager->get_pool(deviceIndex, 0);
+      material->allocate_descriptor_sets(pool, maxFrames, deviceIndex);
+
+      // Update each descriptor set to bind the uniform buffer
+      for (uint32_t frameIndex = 0; frameIndex < maxFrames; ++frameIndex) {
+        VkBuffer buffer = uniformBuffer->get_buffer(deviceIndex);
+        material->update_descriptor_set(
+            0, buffer, 0, sizeof(MaterialUniformData), frameIndex, deviceIndex);
+      }
+
+      std::print("✓ Allocated and updated {} descriptor set(s) for device {}\n",
+                 maxFrames, deviceIndex);
+    }
+
+    std::print("✓ Material descriptor sets configured\n");
   }
+
+  std::print("✓ All example buffers created successfully\n");
 }
+
 
 void Renderer::reload() {
   std::print("Reloading rendering system...\n");
@@ -241,6 +304,7 @@ void Renderer::reload() {
   // Cleanup in reverse order
   bufferManager.reset();
   materialManager.reset();
+  descriptorPoolManager.reset();
   deviceManager.reset();
 
   // Check if we need to reload instance (layers/extensions changed)
@@ -271,6 +335,7 @@ void Renderer::reload() {
       *deviceManager->get_primary_device()->get_device());
 
   init_swap_chain();
+  init_descriptor_pools();
   init_materials();
   create_buffers();
 
