@@ -238,3 +238,81 @@ const std::vector<vk::Image> &SwapChain::get_images() const {
 const std::vector<vk::raii::ImageView> &SwapChain::get_image_views() const {
   return swapChainImageViews;
 }
+
+std::pair<vk::Result, uint32_t>
+SwapChain::acquire_next_image(const vk::raii::Semaphore &semaphore) {
+  return swapChain.acquireNextImage(UINT64_MAX, *semaphore, nullptr);
+}
+
+void SwapChain::transition_image_for_rendering(
+    vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
+  vk::ImageMemoryBarrier barrier{
+      .srcAccessMask = vk::AccessFlagBits::eNone,
+      .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+      .oldLayout = vk::ImageLayout::eUndefined,
+      .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .image = swapChainImages[imageIndex],
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+
+  commandBuffer.pipelineBarrier(
+      vk::PipelineStageFlagBits::eTopOfPipe,
+      vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, nullptr, nullptr,
+      barrier);
+}
+
+void SwapChain::transition_image_for_present(
+    vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
+  vk::ImageMemoryBarrier presentBarrier{
+      .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+      .dstAccessMask = vk::AccessFlagBits::eNone,
+      .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .newLayout = vk::ImageLayout::ePresentSrcKHR,
+      .image = swapChainImages[imageIndex],
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+
+  commandBuffer.pipelineBarrier(
+      vk::PipelineStageFlagBits::eColorAttachmentOutput,
+      vk::PipelineStageFlagBits::eBottomOfPipe, {}, nullptr, nullptr,
+      presentBarrier);
+}
+
+void SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
+                                uint32_t imageIndex) {
+  vk::RenderingAttachmentInfo colorAttachment{
+      .imageView = *swapChainImageViews[imageIndex],
+      .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .loadOp = vk::AttachmentLoadOp::eClear,
+      .storeOp = vk::AttachmentStoreOp::eStore,
+      .clearValue = vk::ClearValue(vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f))};
+
+  vk::RenderingInfo renderInfo{.renderArea = vk::Rect2D({0, 0}, extent2D),
+                               .layerCount = 1,
+                               .colorAttachmentCount = 1,
+                               .pColorAttachments = &colorAttachment};
+
+  commandBuffer.beginRendering(renderInfo);
+
+  // Set dynamic viewport and scissor
+  vk::Viewport viewport{.x = 0.0f,
+                        .y = 0.0f,
+                        .width = static_cast<float>(extent2D.width),
+                        .height = static_cast<float>(extent2D.height),
+                        .minDepth = 0.0f,
+                        .maxDepth = 1.0f};
+  commandBuffer.setViewport(0, viewport);
+
+  vk::Rect2D scissor{.offset = {0, 0}, .extent = extent2D};
+  commandBuffer.setScissor(0, scissor);
+}
+
+void SwapChain::end_rendering(vk::raii::CommandBuffer &commandBuffer) {
+  commandBuffer.endRendering();
+}

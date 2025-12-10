@@ -61,6 +61,13 @@ public:
   void wait_idle();
   template <typename F> void submit_task(F &&task);
 
+  // Frame rendering methods
+  bool wait_for_fence(uint32_t frameIndex);
+  void reset_fence(uint32_t frameIndex);
+  void begin_command_buffer(uint32_t frameIndex);
+  void end_command_buffer(uint32_t frameIndex);
+  void submit_command_buffer(uint32_t frameIndex, bool withSemaphores);
+
   PhysicalDevice *get_physical_device() const;
   const vk::raii::Device &get_device() const;
   vk::raii::Queue &get_graphics_queue();

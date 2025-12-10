@@ -280,3 +280,51 @@ LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
 std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
   return commandBuffers;
 }
+
+bool LogicalDevice::wait_for_fence(uint32_t frameIndex) {
+  auto result = device.waitForFences(*inFlightFences[frameIndex], VK_TRUE,
+                                      UINT64_MAX);
+  if (result != vk::Result::eSuccess) {
+    std::print("Failed to wait for fence (frame {}): {}\n", frameIndex,
+               vk::to_string(result));
+    return false;
+  }
+  return true;
+}
+
+void LogicalDevice::reset_fence(uint32_t frameIndex) {
+  device.resetFences(*inFlightFences[frameIndex]);
+}
+
+void LogicalDevice::begin_command_buffer(uint32_t frameIndex) {
+  commandBuffers[frameIndex].reset();
+  vk::CommandBufferBeginInfo beginInfo{};
+  commandBuffers[frameIndex].begin(beginInfo);
+}
+
+void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
+  commandBuffers[frameIndex].end();
+}
+
+void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
+                                          bool withSemaphores) {
+  if (withSemaphores) {
+    vk::PipelineStageFlags waitStages[] = {
+        vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    vk::SubmitInfo submitInfo{
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &*imageAvailableSemaphores[frameIndex],
+        .pWaitDstStageMask = waitStages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*commandBuffers[frameIndex],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &*renderFinishedSemaphores[frameIndex]};
+
+    graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
+  } else {
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1,
+                              .pCommandBuffers = &*commandBuffers[frameIndex]};
+
+    graphicsQueue.submit(submitInfo, nullptr);
+  }
+}

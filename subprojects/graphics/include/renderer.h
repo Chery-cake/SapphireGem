@@ -27,6 +27,7 @@ private:
   std::unique_ptr<BufferManager> bufferManager;
 
   uint32_t currentFrame;
+  uint32_t frameCount; // Total frames rendered, used for AFR
 
   void init_instance();
   void init_surface();
@@ -37,6 +38,10 @@ private:
   void init_debug();
 
   void create_buffers();
+
+  // Helper methods for drawFrame
+  bool acquire_next_image(LogicalDevice *device, uint32_t &imageIndex);
+  void present_frame(LogicalDevice *device, uint32_t imageIndex);
 
 public:
   Renderer(GLFWwindow *window);
