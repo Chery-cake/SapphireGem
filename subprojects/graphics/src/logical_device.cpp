@@ -276,3 +276,7 @@ LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
   }
   return inFlightFences[frameIndex];
 }
+
+std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
+  return commandBuffers;
+}

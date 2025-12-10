@@ -76,12 +76,12 @@ bool Material::create_pipeline(LogicalDevice *device,
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eVertex,
         .module = *resources.vertexShader,
-        .pName = "vertMain"};
+        .pName = "main"};
 
     vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eFragment,
         .module = *resources.fragmentShader,
-        .pName = "fragMain"};
+        .pName = "main"};
 
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
         vertShaderStageInfo, fragShaderStageInfo};

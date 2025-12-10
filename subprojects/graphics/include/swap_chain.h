@@ -45,4 +45,7 @@ public:
 
   vk::SurfaceFormatKHR get_surface_format();
   vk::Extent2D get_extent2D();
+  vk::raii::SwapchainKHR &get_swap_chain();
+  const std::vector<vk::Image> &get_images() const;
+  const std::vector<vk::raii::ImageView> &get_image_views() const;
 };

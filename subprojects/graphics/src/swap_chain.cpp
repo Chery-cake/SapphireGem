@@ -228,3 +228,13 @@ void SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
 vk::SurfaceFormatKHR SwapChain::get_surface_format() { return surfaceFormat; }
 
 vk::Extent2D SwapChain::get_extent2D() { return extent2D; }
+
+vk::raii::SwapchainKHR &SwapChain::get_swap_chain() { return swapChain; }
+
+const std::vector<vk::Image> &SwapChain::get_images() const {
+  return swapChainImages;
+}
+
+const std::vector<vk::raii::ImageView> &SwapChain::get_image_views() const {
+  return swapChainImageViews;
+}

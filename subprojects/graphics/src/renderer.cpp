@@ -20,7 +20,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr) {
+      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
+      currentFrame(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -139,8 +140,8 @@ void Renderer::init_materials() {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
-      .vertexShaders = "slang.spv",
-      .fragmentShaders = "slang.spv",
+      .vertexShaders = "slang_vert.spv",
+      .fragmentShaders = "slang_frag.spv",
       .descriptorBindings = {bidingInfo},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
@@ -278,3 +279,185 @@ void Renderer::reload() {
 }
 
 DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
+
+void Renderer::drawFrame() {
+  const uint32_t maxFrames = Config::get_instance().get_max_frames();
+  LogicalDevice *device =
+      const_cast<LogicalDevice *>(deviceManager->get_primary_device());
+
+  // Wait for the previous frame to finish
+  auto result = device->get_device().waitForFences(
+      *device->get_in_flight_fence(currentFrame), VK_TRUE, UINT64_MAX);
+
+  if (result != vk::Result::eSuccess) {
+    std::print("Failed to wait for fence\n");
+    return;
+  }
+
+  device->get_device().resetFences(*device->get_in_flight_fence(currentFrame));
+
+  // Acquire an image from the swap chain
+  uint32_t imageIndex;
+  vk::Result acquireResult;
+  try {
+    auto result = device->get_swap_chain().get_swap_chain().acquireNextImage(
+        UINT64_MAX, *device->get_image_available_semaphore(currentFrame),
+        nullptr);
+    acquireResult = result.first;
+    imageIndex = result.second;
+  } catch (const vk::OutOfDateKHRError &) {
+    deviceManager->recreate_swap_chain();
+    return;
+  }
+
+  if (acquireResult != vk::Result::eSuccess &&
+      acquireResult != vk::Result::eSuboptimalKHR) {
+    std::print("Failed to acquire swap chain image\n");
+    return;
+  }
+
+  // Get the command buffer
+  vk::raii::CommandBuffer &commandBuffer =
+      device->get_command_buffers()[currentFrame];
+
+  // Reset and begin recording command buffer
+  commandBuffer.reset();
+  vk::CommandBufferBeginInfo beginInfo{};
+  commandBuffer.begin(beginInfo);
+
+  // Get swap chain extent and format
+  vk::Extent2D extent = device->get_swap_chain().get_extent2D();
+  vk::SurfaceFormatKHR surfaceFormat =
+      device->get_swap_chain().get_surface_format();
+
+  // Begin dynamic rendering
+  vk::RenderingAttachmentInfo colorAttachment{
+      .imageView = *device->get_swap_chain().get_image_views()[imageIndex],
+      .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .loadOp = vk::AttachmentLoadOp::eClear,
+      .storeOp = vk::AttachmentStoreOp::eStore,
+      .clearValue = vk::ClearValue(vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f))};
+
+  vk::RenderingInfo renderInfo{.renderArea = vk::Rect2D({0, 0}, extent),
+                               .layerCount = 1,
+                               .colorAttachmentCount = 1,
+                               .pColorAttachments = &colorAttachment};
+
+  // Transition image layout to color attachment optimal
+  vk::ImageMemoryBarrier barrier{
+      .srcAccessMask = vk::AccessFlagBits::eNone,
+      .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+      .oldLayout = vk::ImageLayout::eUndefined,
+      .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .image = device->get_swap_chain().get_images()[imageIndex],
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+
+  commandBuffer.pipelineBarrier(
+      vk::PipelineStageFlagBits::eTopOfPipe,
+      vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, nullptr, nullptr,
+      barrier);
+
+  // Begin rendering
+  commandBuffer.beginRendering(renderInfo);
+
+  // Set dynamic viewport and scissor
+  vk::Viewport viewport{.x = 0.0f,
+                        .y = 0.0f,
+                        .width = static_cast<float>(extent.width),
+                        .height = static_cast<float>(extent.height),
+                        .minDepth = 0.0f,
+                        .maxDepth = 1.0f};
+  commandBuffer.setViewport(0, viewport);
+
+  vk::Rect2D scissor{.offset = {0, 0}, .extent = extent};
+  commandBuffer.setScissor(0, scissor);
+
+  // Bind the material (pipeline)
+  if (!materialManager->get_materials().empty()) {
+    Material *material = materialManager->get_materials()[0];
+    material->bind(commandBuffer, 0, currentFrame);
+
+    // Bind vertex buffer
+    Buffer *vertexBuffer = bufferManager->get_buffer("vertices");
+    if (vertexBuffer) {
+      vertexBuffer->bind_vertex(commandBuffer, 0, 0, 0);
+    }
+
+    // Bind index buffer
+    Buffer *indexBuffer = bufferManager->get_buffer("indices");
+    if (indexBuffer) {
+      indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0, 0);
+    }
+
+    // Draw the triangle
+    commandBuffer.drawIndexed(6, 1, 0, 0, 0);
+  }
+
+  // End rendering
+  commandBuffer.endRendering();
+
+  // Transition image layout to present
+  vk::ImageMemoryBarrier presentBarrier{
+      .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+      .dstAccessMask = vk::AccessFlagBits::eNone,
+      .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+      .newLayout = vk::ImageLayout::ePresentSrcKHR,
+      .image = device->get_swap_chain().get_images()[imageIndex],
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+
+  commandBuffer.pipelineBarrier(
+      vk::PipelineStageFlagBits::eColorAttachmentOutput,
+      vk::PipelineStageFlagBits::eBottomOfPipe, {}, nullptr, nullptr,
+      presentBarrier);
+
+  // End command buffer recording
+  commandBuffer.end();
+
+  // Submit command buffer
+  vk::PipelineStageFlags waitStages[] = {
+      vk::PipelineStageFlagBits::eColorAttachmentOutput};
+  vk::SubmitInfo submitInfo{
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &*device->get_image_available_semaphore(currentFrame),
+      .pWaitDstStageMask = waitStages,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &*commandBuffer,
+      .signalSemaphoreCount = 1,
+      .pSignalSemaphores =
+          &*device->get_render_finished_semaphore(currentFrame)};
+
+  device->get_graphics_queue().submit(
+      submitInfo, *device->get_in_flight_fence(currentFrame));
+
+  // Present the image
+  vk::PresentInfoKHR presentInfo{
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores =
+          &*device->get_render_finished_semaphore(currentFrame),
+      .swapchainCount = 1,
+      .pSwapchains = &*device->get_swap_chain().get_swap_chain(),
+      .pImageIndices = &imageIndex};
+
+  vk::Result presentResult;
+  try {
+    presentResult = device->get_graphics_queue().presentKHR(presentInfo);
+  } catch (const vk::OutOfDateKHRError &) {
+    deviceManager->recreate_swap_chain();
+    currentFrame = (currentFrame + 1) % maxFrames;
+    return;
+  }
+
+  if (presentResult == vk::Result::eSuboptimalKHR) {
+    deviceManager->recreate_swap_chain();
+  }
+
+  currentFrame = (currentFrame + 1) % maxFrames;
+}

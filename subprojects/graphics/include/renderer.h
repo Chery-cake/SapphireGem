@@ -13,7 +13,7 @@ class Renderer {
 
 private:
   GLFWwindow *window;
-  vk::detail::DynamicLoader dl;
+  vk::DynamicLoader dl;
 
   vk::raii::Context context;
   vk::raii::Instance instance;
@@ -25,6 +25,8 @@ private:
   std::unique_ptr<MaterialManager> materialManager;
 
   std::unique_ptr<BufferManager> bufferManager;
+
+  uint32_t currentFrame;
 
   void init_instance();
   void init_surface();
@@ -41,6 +43,7 @@ public:
   ~Renderer();
 
   void reload();
+  void drawFrame();
 
   DeviceManager &get_device_manager();
 };

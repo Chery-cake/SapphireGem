@@ -70,6 +70,7 @@ public:
   VmaAllocator get_allocator() const;
   const vk::raii::CommandPool &get_command_pool() const;
   const vk::raii::DescriptorPool &get_descriptor_pool() const;
+  std::vector<vk::raii::CommandBuffer> &get_command_buffers();
 
   // Synchronization getters
   const vk::raii::Semaphore &
