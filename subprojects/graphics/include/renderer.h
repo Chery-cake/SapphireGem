@@ -10,16 +10,14 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-// Handle different Vulkan SDK versions for DynamicLoader location
-// Older SDKs (< 1.3.275) have it in vk::detail, newer in vk::
-#ifndef VULKAN_HPP_NAMESPACE_STRING
-  // Very old SDK
-  using VulkanDynamicLoader = vk::detail::DynamicLoader;
-#elif VK_HEADER_VERSION >= 275
-  // Newer SDK (1.3.275+)
+// Handle different Vulkan-HPP header versions for DynamicLoader location
+// Starting with VK_HEADER_VERSION 301, DynamicLoader moved to vk::detail namespace
+// See: https://github.com/KhronosGroup/Vulkan-Hpp/issues/1596
+#if !defined(VK_HEADER_VERSION) || VK_HEADER_VERSION < 301
+  // Older Vulkan-HPP (< 301): DynamicLoader is in vk namespace
   using VulkanDynamicLoader = vk::DynamicLoader;
 #else
-  // Older SDK
+  // Newer Vulkan-HPP (>= 301): DynamicLoader is in vk::detail namespace
   using VulkanDynamicLoader = vk::detail::DynamicLoader;
 #endif
 
