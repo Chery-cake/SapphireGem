@@ -282,12 +282,20 @@ DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
 
 void Renderer::drawFrame() {
   const uint32_t maxFrames = Config::get_instance().get_max_frames();
-  LogicalDevice *device =
+  
+  // Get all devices for multi-GPU support
+  auto allDevices = deviceManager->get_all_logical_devices();
+  if (allDevices.empty()) {
+    return;
+  }
+  
+  // Primary device handles presentation
+  LogicalDevice *primaryDevice =
       const_cast<LogicalDevice *>(deviceManager->get_primary_device());
 
-  // Wait for the previous frame to finish
-  auto result = device->get_device().waitForFences(
-      *device->get_in_flight_fence(currentFrame), VK_TRUE, UINT64_MAX);
+  // Wait for the previous frame to finish on the primary device
+  auto result = primaryDevice->get_device().waitForFences(
+      *primaryDevice->get_in_flight_fence(currentFrame), VK_TRUE, UINT64_MAX);
 
   if (result != vk::Result::eSuccess) {
     std::print("Failed to wait for fence (frame {}): {}\n", currentFrame,
@@ -295,15 +303,18 @@ void Renderer::drawFrame() {
     return;
   }
 
-  device->get_device().resetFences(*device->get_in_flight_fence(currentFrame));
+  primaryDevice->get_device().resetFences(
+      *primaryDevice->get_in_flight_fence(currentFrame));
 
-  // Acquire an image from the swap chain
+  // Acquire an image from the primary swap chain
   uint32_t imageIndex;
   vk::Result acquireResult;
   try {
-    auto result = device->get_swap_chain().get_swap_chain().acquireNextImage(
-        UINT64_MAX, *device->get_image_available_semaphore(currentFrame),
-        nullptr);
+    auto result =
+        primaryDevice->get_swap_chain().get_swap_chain().acquireNextImage(
+            UINT64_MAX,
+            *primaryDevice->get_image_available_semaphore(currentFrame),
+            nullptr);
     acquireResult = result.first;
     imageIndex = result.second;
   } catch (const vk::OutOfDateKHRError &) {
@@ -318,140 +329,162 @@ void Renderer::drawFrame() {
     return;
   }
 
-  // Get the command buffer
-  vk::raii::CommandBuffer &commandBuffer =
-      device->get_command_buffers()[currentFrame];
+  // Record rendering commands on all devices (multi-GPU support)
+  for (size_t deviceIndex = 0; deviceIndex < allDevices.size(); ++deviceIndex) {
+    LogicalDevice *device = const_cast<LogicalDevice *>(allDevices[deviceIndex]);
 
-  // Reset and begin recording command buffer
-  commandBuffer.reset();
-  vk::CommandBufferBeginInfo beginInfo{};
-  commandBuffer.begin(beginInfo);
+    // Get the command buffer for this device
+    vk::raii::CommandBuffer &commandBuffer =
+        device->get_command_buffers()[currentFrame];
 
-  // Get swap chain extent and format
-  vk::Extent2D extent = device->get_swap_chain().get_extent2D();
-  vk::SurfaceFormatKHR surfaceFormat =
-      device->get_swap_chain().get_surface_format();
+    // Reset and begin recording command buffer
+    commandBuffer.reset();
+    vk::CommandBufferBeginInfo beginInfo{};
+    commandBuffer.begin(beginInfo);
 
-  // Begin dynamic rendering
-  vk::RenderingAttachmentInfo colorAttachment{
-      .imageView = *device->get_swap_chain().get_image_views()[imageIndex],
-      .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-      .loadOp = vk::AttachmentLoadOp::eClear,
-      .storeOp = vk::AttachmentStoreOp::eStore,
-      .clearValue = vk::ClearValue(vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f))};
+    // Get swap chain extent and format
+    vk::Extent2D extent = device->get_swap_chain().get_extent2D();
 
-  vk::RenderingInfo renderInfo{.renderArea = vk::Rect2D({0, 0}, extent),
-                               .layerCount = 1,
-                               .colorAttachmentCount = 1,
-                               .pColorAttachments = &colorAttachment};
+    // Begin dynamic rendering
+    vk::RenderingAttachmentInfo colorAttachment{
+        .imageView = *device->get_swap_chain().get_image_views()[imageIndex],
+        .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .loadOp = vk::AttachmentLoadOp::eClear,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .clearValue =
+            vk::ClearValue(vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f))};
 
-  // Transition image layout to color attachment optimal
-  vk::ImageMemoryBarrier barrier{
-      .srcAccessMask = vk::AccessFlagBits::eNone,
-      .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-      .oldLayout = vk::ImageLayout::eUndefined,
-      .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
-      .image = device->get_swap_chain().get_images()[imageIndex],
-      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                           .baseMipLevel = 0,
-                           .levelCount = 1,
-                           .baseArrayLayer = 0,
-                           .layerCount = 1}};
+    vk::RenderingInfo renderInfo{.renderArea = vk::Rect2D({0, 0}, extent),
+                                 .layerCount = 1,
+                                 .colorAttachmentCount = 1,
+                                 .pColorAttachments = &colorAttachment};
 
-  commandBuffer.pipelineBarrier(
-      vk::PipelineStageFlagBits::eTopOfPipe,
-      vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, nullptr, nullptr,
-      barrier);
+    // Transition image layout to color attachment optimal
+    vk::ImageMemoryBarrier barrier{
+        .srcAccessMask = vk::AccessFlagBits::eNone,
+        .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+        .oldLayout = vk::ImageLayout::eUndefined,
+        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .image = device->get_swap_chain().get_images()[imageIndex],
+        .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                             .baseMipLevel = 0,
+                             .levelCount = 1,
+                             .baseArrayLayer = 0,
+                             .layerCount = 1}};
 
-  // Begin rendering
-  commandBuffer.beginRendering(renderInfo);
+    commandBuffer.pipelineBarrier(
+        vk::PipelineStageFlagBits::eTopOfPipe,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, nullptr, nullptr,
+        barrier);
 
-  // Set dynamic viewport and scissor
-  vk::Viewport viewport{.x = 0.0f,
-                        .y = 0.0f,
-                        .width = static_cast<float>(extent.width),
-                        .height = static_cast<float>(extent.height),
-                        .minDepth = 0.0f,
-                        .maxDepth = 1.0f};
-  commandBuffer.setViewport(0, viewport);
+    // Begin rendering
+    commandBuffer.beginRendering(renderInfo);
 
-  vk::Rect2D scissor{.offset = {0, 0}, .extent = extent};
-  commandBuffer.setScissor(0, scissor);
+    // Set dynamic viewport and scissor
+    vk::Viewport viewport{.x = 0.0f,
+                          .y = 0.0f,
+                          .width = static_cast<float>(extent.width),
+                          .height = static_cast<float>(extent.height),
+                          .minDepth = 0.0f,
+                          .maxDepth = 1.0f};
+    commandBuffer.setViewport(0, viewport);
 
-  // Bind the material (pipeline)
-  if (!materialManager->get_materials().empty()) {
-    Material *material = materialManager->get_materials()[0];
-    material->bind(commandBuffer, 0, currentFrame);
+    vk::Rect2D scissor{.offset = {0, 0}, .extent = extent};
+    commandBuffer.setScissor(0, scissor);
 
-    // Bind vertex buffer
-    Buffer *vertexBuffer = bufferManager->get_buffer("vertices");
-    if (vertexBuffer) {
-      vertexBuffer->bind_vertex(commandBuffer, 0, 0, 0);
+    // Bind the material (pipeline) with device-specific resources
+    if (!materialManager->get_materials().empty()) {
+      Material *material = materialManager->get_materials()[0];
+      material->bind(commandBuffer, deviceIndex, currentFrame);
+
+      // Bind vertex buffer for this device
+      Buffer *vertexBuffer = bufferManager->get_buffer("vertices");
+      if (vertexBuffer) {
+        vertexBuffer->bind_vertex(commandBuffer, 0, 0, deviceIndex);
+      }
+
+      // Bind index buffer for this device
+      Buffer *indexBuffer = bufferManager->get_buffer("indices");
+      if (indexBuffer) {
+        indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0,
+                                deviceIndex);
+      }
+
+      // Draw the triangle (actually a quad made of 2 triangles, so 6 indices)
+      const uint32_t QUAD_INDEX_COUNT = 6;
+      commandBuffer.drawIndexed(QUAD_INDEX_COUNT, 1, 0, 0, 0);
     }
 
-    // Bind index buffer
-    Buffer *indexBuffer = bufferManager->get_buffer("indices");
-    if (indexBuffer) {
-      indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0, 0);
+    // End rendering
+    commandBuffer.endRendering();
+
+    // Transition image layout to present (only for primary device)
+    if (deviceIndex == 0) {
+      vk::ImageMemoryBarrier presentBarrier{
+          .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+          .dstAccessMask = vk::AccessFlagBits::eNone,
+          .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
+          .newLayout = vk::ImageLayout::ePresentSrcKHR,
+          .image = device->get_swap_chain().get_images()[imageIndex],
+          .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
+                               .baseMipLevel = 0,
+                               .levelCount = 1,
+                               .baseArrayLayer = 0,
+                               .layerCount = 1}};
+
+      commandBuffer.pipelineBarrier(
+          vk::PipelineStageFlagBits::eColorAttachmentOutput,
+          vk::PipelineStageFlagBits::eBottomOfPipe, {}, nullptr, nullptr,
+          presentBarrier);
     }
 
-    // Draw the triangle (actually a quad made of 2 triangles, so 6 indices)
-    const uint32_t QUAD_INDEX_COUNT = 6;
-    commandBuffer.drawIndexed(QUAD_INDEX_COUNT, 1, 0, 0, 0);
+    // End command buffer recording
+    commandBuffer.end();
+
+    // Submit command buffer (each device submits to its own queue)
+    if (deviceIndex == 0) {
+      // Primary device waits for image available and signals render finished
+      vk::PipelineStageFlags waitStages[] = {
+          vk::PipelineStageFlagBits::eColorAttachmentOutput};
+      vk::SubmitInfo submitInfo{
+          .waitSemaphoreCount = 1,
+          .pWaitSemaphores =
+              &*device->get_image_available_semaphore(currentFrame),
+          .pWaitDstStageMask = waitStages,
+          .commandBufferCount = 1,
+          .pCommandBuffers = &*commandBuffer,
+          .signalSemaphoreCount = 1,
+          .pSignalSemaphores =
+              &*device->get_render_finished_semaphore(currentFrame)};
+
+      device->get_graphics_queue().submit(
+          submitInfo, *device->get_in_flight_fence(currentFrame));
+    } else {
+      // Secondary devices submit independently (for multi-GPU workloads)
+      // They don't participate in presentation, so no semaphores needed
+      vk::SubmitInfo submitInfo{.commandBufferCount = 1,
+                                .pCommandBuffers = &*commandBuffer};
+
+      // Submit asynchronously using device's task queue for thread safety
+      device->submit_task([device, submitInfo]() {
+        device->get_graphics_queue().submit(submitInfo, nullptr);
+      });
+    }
   }
 
-  // End rendering
-  commandBuffer.endRendering();
-
-  // Transition image layout to present
-  vk::ImageMemoryBarrier presentBarrier{
-      .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
-      .dstAccessMask = vk::AccessFlagBits::eNone,
-      .oldLayout = vk::ImageLayout::eColorAttachmentOptimal,
-      .newLayout = vk::ImageLayout::ePresentSrcKHR,
-      .image = device->get_swap_chain().get_images()[imageIndex],
-      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eColor,
-                           .baseMipLevel = 0,
-                           .levelCount = 1,
-                           .baseArrayLayer = 0,
-                           .layerCount = 1}};
-
-  commandBuffer.pipelineBarrier(
-      vk::PipelineStageFlagBits::eColorAttachmentOutput,
-      vk::PipelineStageFlagBits::eBottomOfPipe, {}, nullptr, nullptr,
-      presentBarrier);
-
-  // End command buffer recording
-  commandBuffer.end();
-
-  // Submit command buffer
-  vk::PipelineStageFlags waitStages[] = {
-      vk::PipelineStageFlagBits::eColorAttachmentOutput};
-  vk::SubmitInfo submitInfo{
-      .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &*device->get_image_available_semaphore(currentFrame),
-      .pWaitDstStageMask = waitStages,
-      .commandBufferCount = 1,
-      .pCommandBuffers = &*commandBuffer,
-      .signalSemaphoreCount = 1,
-      .pSignalSemaphores =
-          &*device->get_render_finished_semaphore(currentFrame)};
-
-  device->get_graphics_queue().submit(
-      submitInfo, *device->get_in_flight_fence(currentFrame));
-
-  // Present the image
+  // Present the image from the primary device
   vk::PresentInfoKHR presentInfo{
       .waitSemaphoreCount = 1,
       .pWaitSemaphores =
-          &*device->get_render_finished_semaphore(currentFrame),
+          &*primaryDevice->get_render_finished_semaphore(currentFrame),
       .swapchainCount = 1,
-      .pSwapchains = &*device->get_swap_chain().get_swap_chain(),
+      .pSwapchains = &*primaryDevice->get_swap_chain().get_swap_chain(),
       .pImageIndices = &imageIndex};
 
   vk::Result presentResult;
   try {
-    presentResult = device->get_graphics_queue().presentKHR(presentInfo);
+    presentResult =
+        primaryDevice->get_graphics_queue().presentKHR(presentInfo);
   } catch (const vk::OutOfDateKHRError &) {
     deviceManager->recreate_swap_chain();
     currentFrame = (currentFrame + 1) % maxFrames;

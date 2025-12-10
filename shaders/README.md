@@ -1,6 +1,6 @@
 # Shaders
 
-This directory contains the GLSL shader source files for the SapphireGem engine.
+This directory contains the Slang shader source files for the SapphireGem engine.
 
 ## Compiling Shaders
 
@@ -8,14 +8,19 @@ To compile the shaders, run:
 
 ```bash
 cd shaders
-./compile_shaders.sh
+./compile_slang.sh
 ```
 
-This will compile the shaders using glslangValidator and output them to the `bin/` directory as:
-- `slang_vert.spv` - Vertex shader
-- `slang_frag.spv` - Fragment shader
+This will compile the shaders using slangc and output them to the `bin/` directory as:
+- `slang_vert.spv` - Vertex shader (SPIR-V)
+- `slang_frag.spv` - Fragment shader (SPIR-V)
 
 ## Shader Files
 
-- `shader.vert` - Vertex shader source
-- `shader.frag` - Fragment shader source
+- `slang.slang` - Main shader source file containing both vertex and fragment shaders
+
+## About Slang
+
+Slang is a shading language that allows you to define multiple shader stages in a single file.
+The `slang.slang` file contains both `vertexMain` and `fragmentMain` entry points, which are
+compiled separately to their respective SPIR-V modules.
