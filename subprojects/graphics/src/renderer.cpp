@@ -271,12 +271,12 @@ void Renderer::create_buffers() {
 
     for (size_t deviceIndex = 0; deviceIndex < logicalDevices.size();
          ++deviceIndex) {
-      // Allocate descriptor sets (one per frame in flight)
-      auto &pool = descriptorPoolManager->get_pool(deviceIndex, 0);
-      material->allocate_descriptor_sets(pool, maxFrames, deviceIndex);
-
-      // Update each descriptor set to bind the uniform buffer
+      // Allocate descriptor sets from the appropriate pool for each frame
       for (uint32_t frameIndex = 0; frameIndex < maxFrames; ++frameIndex) {
+        auto &pool = descriptorPoolManager->get_pool(deviceIndex, frameIndex);
+        material->allocate_descriptor_sets(pool, 1, frameIndex, deviceIndex);
+        
+        // Update the descriptor set to bind the uniform buffer
         VkBuffer buffer = uniformBuffer->get_buffer(deviceIndex);
         material->update_descriptor_set(
             0, buffer, 0, sizeof(MaterialUniformData), frameIndex, deviceIndex);

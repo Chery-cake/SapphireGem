@@ -91,7 +91,8 @@ public:
 
   // Descriptor set management
   void allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
-                                uint32_t count, uint32_t deviceIndex = 0);
+                                uint32_t count, uint32_t frameIndex,
+                                uint32_t deviceIndex = 0);
   void update_descriptor_set(uint32_t binding, VkBuffer buffer,
                             vk::DeviceSize offset, vk::DeviceSize range,
                             uint32_t frameIndex = 0, uint32_t deviceIndex = 0);

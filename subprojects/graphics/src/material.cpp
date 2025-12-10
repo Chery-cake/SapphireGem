@@ -259,6 +259,7 @@ void Material::bind(vk::raii::CommandBuffer &commandBuffer,
 
 void Material::allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
                                        uint32_t count,
+                                       uint32_t frameIndex,
                                        uint32_t deviceIndex) {
   std::lock_guard lock(materialMutex);
 
@@ -270,7 +271,16 @@ void Material::allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
 
   DeviceMaterialResources &resources = *deviceResources[deviceIndex];
 
-  // Allocate descriptor sets
+  // Ensure the descriptor sets vector is large enough
+  if (frameIndex >= resources.descriptorSets.size()) {
+    // Resize the vector to accommodate the new frame index
+    // Initialize new slots with null handles
+    while (resources.descriptorSets.size() <= frameIndex) {
+      resources.descriptorSets.emplace_back(nullptr);
+    }
+  }
+
+  // Allocate descriptor sets for a specific frame
   std::vector<vk::DescriptorSetLayout> layouts(count,
                                                *resources.descriptorLayout);
   vk::DescriptorSetAllocateInfo allocInfo{
@@ -279,15 +289,20 @@ void Material::allocate_descriptor_sets(vk::raii::DescriptorPool &pool,
       .pSetLayouts = layouts.data()};
 
   try {
-    resources.descriptorSets =
-        logicalDevices[deviceIndex]->get_device().allocateDescriptorSets(
+    auto sets = logicalDevices[deviceIndex]->get_device().allocateDescriptorSets(
             allocInfo);
-    std::print("✓ Allocated {} descriptor set(s) for material {} device {}\n",
-               count, identifier, deviceIndex);
+    
+    // Store at the specific frame index (assuming count == 1 for simplicity)
+    if (count == 1 && !sets.empty()) {
+      resources.descriptorSets[frameIndex] = std::move(sets[0]);
+    }
+    
+    std::print("✓ Allocated {} descriptor set(s) for material {} device {} frame {}\n",
+               count, identifier, deviceIndex, frameIndex);
   } catch (const std::exception &e) {
-    std::print("Failed to allocate descriptor sets for material {} device {}: "
+    std::print("Failed to allocate descriptor sets for material {} device {} frame {}: "
                "{}\n",
-               identifier, deviceIndex, e.what());
+               identifier, deviceIndex, frameIndex, e.what());
   }
 }
 

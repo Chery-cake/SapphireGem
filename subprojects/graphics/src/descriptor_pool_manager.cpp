@@ -131,7 +131,7 @@ bool DescriptorPoolManager::initialize(const DescriptorPoolSizes &sizes) {
 std::vector<vk::raii::DescriptorSet>
 DescriptorPoolManager::allocate_descriptor_sets(
     vk::raii::DescriptorSetLayout &layout, uint32_t count,
-    uint32_t deviceIndex) {
+    uint32_t frameIndex, uint32_t deviceIndex) {
   std::lock_guard lock(poolMutex);
   
   if (deviceIndex >= deviceResources.size()) {
@@ -144,12 +144,15 @@ DescriptorPoolManager::allocate_descriptor_sets(
     throw std::runtime_error("Descriptor pools not initialized");
   }
   
+  if (frameIndex >= resources.descriptorPools.size()) {
+    throw std::runtime_error("Invalid frame index");
+  }
+  
   std::vector<vk::raii::DescriptorSet> allSets;
   allSets.reserve(count);
   
-  // Allocate from the first pool (frame 0)
-  // For multiple frames, caller should call this multiple times
-  auto &pool = resources.descriptorPools[0];
+  // Allocate from the pool for the specified frame
+  auto &pool = resources.descriptorPools[frameIndex];
   
   std::vector<vk::DescriptorSetLayout> layouts(count, *layout);
   vk::DescriptorSetAllocateInfo allocInfo{
@@ -161,11 +164,11 @@ DescriptorPoolManager::allocate_descriptor_sets(
     allSets = logicalDevices[deviceIndex]->get_device().allocateDescriptorSets(
         allocInfo);
     
-    std::print("✓ Allocated {} descriptor set(s) for device {}\n", count,
-               deviceIndex);
+    std::print("✓ Allocated {} descriptor set(s) for device {} frame {}\n", 
+               count, deviceIndex, frameIndex);
   } catch (const std::exception &e) {
-    std::print("Failed to allocate descriptor sets for device {}: {}\n",
-               deviceIndex, e.what());
+    std::print("Failed to allocate descriptor sets for device {} frame {}: {}\n",
+               deviceIndex, frameIndex, e.what());
     throw;
   }
   

@@ -58,6 +58,7 @@ public:
   std::vector<vk::raii::DescriptorSet> 
   allocate_descriptor_sets(vk::raii::DescriptorSetLayout &layout,
                           uint32_t count,
+                          uint32_t frameIndex,
                           uint32_t deviceIndex = 0);
   
   // Reset pools (for full reload)
