@@ -42,6 +42,7 @@ public:
     bool isMapped;
     bool isPersistentlyMapped;
     std::vector<vk::raii::DescriptorSet> descriptorSets;
+    vk::raii::DescriptorSetLayout descriptorSetLayout{nullptr};
 
     BufferResources()
         : buffer(VK_NULL_HANDLE), allocation(VK_NULL_HANDLE),

@@ -229,10 +229,10 @@ bool Buffer::create_descriptor_sets_for_buffer(LogicalDevice *device, BufferReso
         .bindingCount = 1,
         .pBindings = &binding};
 
-    auto descriptorSetLayout = device->get_device().createDescriptorSetLayout(layoutInfo);
+    resources.descriptorSetLayout = device->get_device().createDescriptorSetLayout(layoutInfo);
 
     // Allocate descriptor sets
-    std::vector<vk::DescriptorSetLayout> layouts(maxFrames, *descriptorSetLayout);
+    std::vector<vk::DescriptorSetLayout> layouts(maxFrames, *resources.descriptorSetLayout);
 
     vk::DescriptorSetAllocateInfo allocInfo{
         .descriptorPool = *device->get_descriptor_pool(),
