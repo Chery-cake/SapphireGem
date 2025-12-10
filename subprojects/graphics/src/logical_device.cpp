@@ -29,7 +29,7 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
                              uint32_t graphicsQueueIndex)
     : stopThread(false), physicalDevice(physicalDevice), device(nullptr),
       graphicsQueue(nullptr), graphicsQueueIndex(graphicsQueueIndex),
-      commandPool(nullptr) {
+      commandPool(nullptr), descriptorPool(nullptr) {
 
   // Query for required features
   auto featureChain = Config::get_features();
@@ -56,6 +56,8 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
              physicalDevice->get_properties().deviceName.data());
 
   initialize_vma_allocator(instance);
+  create_descriptor_pool();
+  create_sync_objects();
 
   thread = std::jthread(&LogicalDevice::thread_loop, this);
 }
@@ -142,6 +144,49 @@ void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
              physicalDevice->get_properties().deviceName.data());
 }
 
+void LogicalDevice::create_descriptor_pool() {
+  uint32_t maxFrames = Config::get_instance().get_max_frames();
+
+  // Define pool sizes for different descriptor types
+  std::vector<vk::DescriptorPoolSize> poolSizes = {
+      {vk::DescriptorType::eUniformBuffer, maxFrames * 100},
+      {vk::DescriptorType::eStorageBuffer, maxFrames * 100},
+      {vk::DescriptorType::eCombinedImageSampler, maxFrames * 100},
+      {vk::DescriptorType::eSampledImage, maxFrames * 100},
+      {vk::DescriptorType::eStorageImage, maxFrames * 100}};
+
+  vk::DescriptorPoolCreateInfo poolInfo{
+      .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+      .maxSets = maxFrames * 100,
+      .poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+      .pPoolSizes = poolSizes.data()};
+
+  descriptorPool = device.createDescriptorPool(poolInfo);
+
+  std::print("Descriptor pool created for device: {}\n",
+             physicalDevice->get_properties().deviceName.data());
+}
+
+void LogicalDevice::create_sync_objects() {
+  uint32_t maxFrames = Config::get_instance().get_max_frames();
+
+  imageAvailableSemaphores.reserve(maxFrames);
+  renderFinishedSemaphores.reserve(maxFrames);
+  inFlightFences.reserve(maxFrames);
+
+  vk::SemaphoreCreateInfo semaphoreInfo{};
+  vk::FenceCreateInfo fenceInfo{.flags = vk::FenceCreateFlagBits::eSignaled};
+
+  for (uint32_t i = 0; i < maxFrames; ++i) {
+    imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+    renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+    inFlightFences.push_back(device.createFence(fenceInfo));
+  }
+
+  std::print("Synchronization objects created for device: {} ({} frames)\n",
+             physicalDevice->get_properties().deviceName.data(), maxFrames);
+}
+
 void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
                                           vk::raii::SurfaceKHR &surface) {
   swapChain = std::make_unique<SwapChain>(this, window, surface);
@@ -200,4 +245,34 @@ VmaAllocator LogicalDevice::get_allocator() const { return allocator; }
 
 const vk::raii::CommandPool &LogicalDevice::get_command_pool() const {
   return commandPool;
+}
+
+const vk::raii::DescriptorPool &LogicalDevice::get_descriptor_pool() const {
+  return descriptorPool;
+}
+
+const vk::raii::Semaphore &
+LogicalDevice::get_image_available_semaphore(uint32_t frameIndex) const {
+  if (frameIndex >= imageAvailableSemaphores.size()) {
+    throw std::out_of_range(
+        "Frame index out of range for image available semaphore");
+  }
+  return imageAvailableSemaphores[frameIndex];
+}
+
+const vk::raii::Semaphore &
+LogicalDevice::get_render_finished_semaphore(uint32_t frameIndex) const {
+  if (frameIndex >= renderFinishedSemaphores.size()) {
+    throw std::out_of_range(
+        "Frame index out of range for render finished semaphore");
+  }
+  return renderFinishedSemaphores[frameIndex];
+}
+
+const vk::raii::Fence &
+LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
+  if (frameIndex >= inFlightFences.size()) {
+    throw std::out_of_range("Frame index out of range for in-flight fence");
+  }
+  return inFlightFences[frameIndex];
 }

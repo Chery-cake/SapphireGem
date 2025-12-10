@@ -31,6 +31,7 @@ public:
     VmaMemoryUsage memoryUsage;
     VmaAllocationCreateFlags allocationFlags = 0;
     const void *initialData;
+    bool createDescriptorSets = false;
   };
 
   struct BufferResources {
@@ -40,10 +41,13 @@ public:
     void *mappedData;
     bool isMapped;
     bool isPersistentlyMapped;
+    std::vector<vk::raii::DescriptorSet> descriptorSets;
+    vk::raii::DescriptorSetLayout descriptorSetLayout;
 
     BufferResources()
         : buffer(VK_NULL_HANDLE), allocation(VK_NULL_HANDLE),
-          mappedData(nullptr), isMapped(false), isPersistentlyMapped(false) {}
+          mappedData(nullptr), isMapped(false), isPersistentlyMapped(false),
+          descriptorSetLayout(nullptr) {}
   };
 
 private:
@@ -62,6 +66,8 @@ private:
   bool create_buffer(LogicalDevice *device, BufferResources &resources,
                      const void *initialData);
   void destroy_buffer(LogicalDevice *device, BufferResources &resources);
+  bool create_descriptor_sets_for_buffer(LogicalDevice *device,
+                                         BufferResources &resources);
 
   static vk::BufferUsageFlags get_buffer_usage_flags(BufferType type);
   static VmaMemoryUsage get_memory_usage(BufferUsage usage);

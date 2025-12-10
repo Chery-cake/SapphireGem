@@ -1,5 +1,6 @@
 #include "material.h"
 #include "common.h"
+#include "config.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
@@ -142,6 +143,21 @@ bool Material::create_pipeline(LogicalDevice *device,
     resources.pipeline = device->get_device().createGraphicsPipeline(
         nullptr, pipelineCreateInfo);
 
+    // Allocate descriptor sets if needed
+    if (!createInfo.descriptorBindings.empty()) {
+      uint32_t maxFrames = Config::get_instance().get_max_frames();
+      std::vector<vk::DescriptorSetLayout> layouts(maxFrames,
+                                                   *resources.descriptorLayout);
+
+      vk::DescriptorSetAllocateInfo allocInfo{
+          .descriptorPool = *device->get_descriptor_pool(),
+          .descriptorSetCount = maxFrames,
+          .pSetLayouts = layouts.data()};
+
+      resources.descriptorSets =
+          vk::raii::DescriptorSets(device->get_device(), allocInfo);
+    }
+
     return true;
   } catch (const std::exception &e) {
     std::print(
@@ -240,7 +256,7 @@ bool Material::reinitialize() {
 }
 
 void Material::bind(vk::raii::CommandBuffer &commandBuffer,
-                    uint32_t deviceIndex) {
+                    uint32_t deviceIndex, uint32_t frameIndex) {
   if (!initialized || deviceIndex >= deviceResources.size()) {
     return;
   }
@@ -249,10 +265,11 @@ void Material::bind(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                              *resources.pipeline);
 
-  if (*resources.descriptorSet != VK_NULL_HANDLE) {
-    commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                     *resources.pipelineLayout, 0,
-                                     {*resources.descriptorSet}, {});
+  if (resources.descriptorSets.empty() &&
+      frameIndex < resources.descriptorSets.size()) {
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics, *resources.pipelineLayout, 0,
+        {*resources.descriptorSets[frameIndex]}, {});
   }
 }
 

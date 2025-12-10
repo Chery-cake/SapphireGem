@@ -21,7 +21,6 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
   if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
     std::fprintf(stderr, "validation layer: type %u msg: %s\n",
                  static_cast<uint32_t>(type), pCallbackData->pMessage);
-    ;
   }
 
   return VK_FALSE;

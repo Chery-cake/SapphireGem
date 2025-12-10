@@ -1,11 +1,11 @@
 #include "buffer.h"
+#include "config.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <cstddef>
 #include <future>
 #include <memory>
 #include <print>
-#include <utility>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
@@ -31,9 +31,15 @@ Buffer::Buffer(std::vector<LogicalDevice *> logicalDevices,
     futures.push_back(promise->get_future());
 
     device->submit_task([this, device, &resources,
-                         initialData = createInfo.initialData, promise]() {
+                         initialData = createInfo.initialData,
+                         createDescriptorSets = createInfo.createDescriptorSets,
+                         promise]() {
       try {
-        promise->set_value(create_buffer(device, resources, initialData));
+        bool success = create_buffer(device, resources, initialData);
+        if (success && createDescriptorSets) {
+          success = create_descriptor_sets_for_buffer(device, resources);
+        }
+        promise->set_value(success);
       } catch (const std::exception &e) {
         std::print(
             "Failed to create buffer on device {}: {}\n",
@@ -195,6 +201,70 @@ void Buffer::destroy_buffer(LogicalDevice *device, BufferResources &resources) {
     resources.buffer = VK_NULL_HANDLE;
     resources.allocation = VK_NULL_HANDLE;
     resources.mappedData = nullptr;
+  }
+}
+
+bool Buffer::create_descriptor_sets_for_buffer(LogicalDevice *device,
+                                               BufferResources &resources) {
+  try {
+    // Only create descriptor sets for uniform and storage buffers
+    if (type != BufferType::UNIFORM && type != BufferType::STORAGE) {
+      return true; // Not an error, just not needed
+    }
+
+    uint32_t maxFrames = Config::get_instance().get_max_frames();
+
+    // Create a simple descriptor set layout for this buffer
+    vk::DescriptorType descriptorType =
+        (type == BufferType::UNIFORM) ? vk::DescriptorType::eUniformBuffer
+                                      : vk::DescriptorType::eStorageBuffer;
+
+    vk::DescriptorSetLayoutBinding binding{
+        .binding = 0,
+        .descriptorType = descriptorType,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eVertex |
+                      vk::ShaderStageFlagBits::eFragment};
+
+    vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1,
+                                                 .pBindings = &binding};
+
+    resources.descriptorSetLayout =
+        device->get_device().createDescriptorSetLayout(layoutInfo);
+
+    // Allocate descriptor sets
+    std::vector<vk::DescriptorSetLayout> layouts(
+        maxFrames, *resources.descriptorSetLayout);
+
+    vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool =
+                                                *device->get_descriptor_pool(),
+                                            .descriptorSetCount = maxFrames,
+                                            .pSetLayouts = layouts.data()};
+
+    resources.descriptorSets =
+        vk::raii::DescriptorSets(device->get_device(), allocInfo);
+
+    // Update descriptor sets to point to this buffer
+    for (uint32_t i = 0; i < maxFrames; ++i) {
+      vk::DescriptorBufferInfo bufferInfo{
+          .buffer = resources.buffer, .offset = 0, .range = size};
+
+      vk::WriteDescriptorSet descriptorWrite{.dstSet =
+                                                 *resources.descriptorSets[i],
+                                             .dstBinding = 0,
+                                             .dstArrayElement = 0,
+                                             .descriptorCount = 1,
+                                             .descriptorType = descriptorType,
+                                             .pBufferInfo = &bufferInfo};
+
+      device->get_device().updateDescriptorSets(descriptorWrite, nullptr);
+    }
+
+    return true;
+  } catch (const std::exception &e) {
+    std::print("Failed to create descriptor sets for buffer {}: {}\n",
+               identifier, e.what());
+    return false;
   }
 }
 
