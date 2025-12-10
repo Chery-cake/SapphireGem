@@ -36,8 +36,18 @@ private:
   vk::raii::CommandPool commandPool;
   std::vector<vk::raii::CommandBuffer> commandBuffers;
 
+  // Descriptor pool
+  vk::raii::DescriptorPool descriptorPool;
+
+  // Synchronization primitives (per frame in flight)
+  std::vector<vk::raii::Semaphore> imageAvailableSemaphores;
+  std::vector<vk::raii::Semaphore> renderFinishedSemaphores;
+  std::vector<vk::raii::Fence> inFlightFences;
+
   void thread_loop();
   void initialize_vma_allocator(vk::raii::Instance &instance);
+  void create_descriptor_pool();
+  void create_sync_objects();
 
 public:
   LogicalDevice(vk::raii::Instance &instance, PhysicalDevice *physicalDevice,
@@ -61,6 +71,12 @@ public:
 
   VmaAllocator get_allocator() const;
   const vk::raii::CommandPool &get_command_pool() const;
+  const vk::raii::DescriptorPool &get_descriptor_pool() const;
+
+  // Synchronization getters
+  const vk::raii::Semaphore &get_image_available_semaphore(uint32_t frameIndex) const;
+  const vk::raii::Semaphore &get_render_finished_semaphore(uint32_t frameIndex) const;
+  const vk::raii::Fence &get_in_flight_fence(uint32_t frameIndex) const;
 };
 
 template <typename F> void LogicalDevice::submit_task(F &&task) {
