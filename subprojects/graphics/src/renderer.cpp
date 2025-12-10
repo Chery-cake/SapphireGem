@@ -290,7 +290,8 @@ void Renderer::drawFrame() {
       *device->get_in_flight_fence(currentFrame), VK_TRUE, UINT64_MAX);
 
   if (result != vk::Result::eSuccess) {
-    std::print("Failed to wait for fence\n");
+    std::print("Failed to wait for fence (frame {}): {}\n", currentFrame,
+               vk::to_string(result));
     return;
   }
 
@@ -312,7 +313,8 @@ void Renderer::drawFrame() {
 
   if (acquireResult != vk::Result::eSuccess &&
       acquireResult != vk::Result::eSuboptimalKHR) {
-    std::print("Failed to acquire swap chain image\n");
+    std::print("Failed to acquire swap chain image: {}\n",
+               vk::to_string(acquireResult));
     return;
   }
 
@@ -393,8 +395,9 @@ void Renderer::drawFrame() {
       indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0, 0);
     }
 
-    // Draw the triangle
-    commandBuffer.drawIndexed(6, 1, 0, 0, 0);
+    // Draw the triangle (actually a quad made of 2 triangles, so 6 indices)
+    const uint32_t QUAD_INDEX_COUNT = 6;
+    commandBuffer.drawIndexed(QUAD_INDEX_COUNT, 1, 0, 0, 0);
   }
 
   // End rendering
