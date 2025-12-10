@@ -4,12 +4,15 @@
 #include "physical_device.h"
 #include <GLFW/glfw3.h>
 #include <memory>
+#include <mutex>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
 class DeviceManager {
 
 private:
+  std::mutex deviceMutex;
+
   GLFWwindow *window;
 
   vk::raii::Instance &instance;

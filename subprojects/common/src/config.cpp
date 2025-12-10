@@ -1,14 +1,16 @@
 #include "config.h"
+#include "vulkan/vulkan.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <print>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -16,14 +18,13 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
     vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
     vk::DebugUtilsMessageTypeFlagsEXT type,
     const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
-  if (severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eError ||
-      severity == vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
-    std::print(std::cerr, "validation layer: type {0} msg: {1}\n",
-               to_string(type), pCallbackData->pMessage);
+  if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+    std::fprintf(stderr, "validation layer: type %u msg: %s\n",
+                 static_cast<uint32_t>(type), pCallbackData->pMessage);
     ;
   }
 
-  return vk::False;
+  return VK_FALSE;
 }
 
 Config &Config::get_instance() {
@@ -39,12 +40,8 @@ Config::Config()
         return std::vector<const char *>(glfwExtensions,
                                          glfwExtensions + glfwExtensionCount);
       }()),
-      deviceLayers({}),
-      deviceExtensions({vk::KHRSwapchainExtensionName,
-                        vk::KHRSpirv14ExtensionName,
-                        vk::KHRSynchronization2ExtensionName,
-                        vk::KHRCreateRenderpass2ExtensionName,
-                        vk::KHRDynamicRenderingExtensionName}),
+      deviceLayers({}), deviceExtensions({vk::KHRSwapchainExtensionName}),
+      optionalInstanceExtensions({}), optionalDeviceExtensions({}),
       maxFramesInFligth(2), reload(false),
       vmaVulkanFunctionsInitialized(false) {
   if (enableValidationLayers) {
@@ -76,23 +73,39 @@ Config::set_up_debug_messanger(vk::raii::Instance &instance) {
       debugUtilsMessengerCreateInfoEXT);
 }
 
+void Config::initialize_vma_functions() {
+  vmaVulkanFunctions.vkGetInstanceProcAddr =
+      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
+  vmaVulkanFunctions.vkGetDeviceProcAddr =
+      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+
+  vmaVulkanFunctionsInitialized = true;
+
+  std::print("VMA Vulkan functions initialized\n");
+}
+
 vk::StructureChain<PhysicalDeviceFeaturesList>
 Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
-  if (physicalDevice == nullptr) {
+  if (*physicalDevice == VK_NULL_HANDLE) {
     vk::StructureChain<PhysicalDeviceFeaturesList> featureChain = {
-        {}, // vk::PhysicalDeviceFeatures2
-        {}, // vk::PhysicalDeviceVulkan14Features
-        {.extendedDynamicState = true},
-        {.bufferDeviceAddress = true},
-        {.synchronization2 = true, .dynamicRendering = true}};
+        {},                            // vk::PhysicalDeviceFeatures2
+        {},                            // vk::PhysicalDeviceVulkan11Features
+        {.bufferDeviceAddress = true}, // vk::PhysicalDeviceVulkan12Features
+        {.synchronization2 = true,
+         .dynamicRendering = true}, // vk::PhysicalDeviceVulkan13Features
+        {.extendedDynamicState =
+             true} // vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT
+    };
     return featureChain;
   }
   return physicalDevice.getFeatures2<PhysicalDeviceFeaturesList>();
 }
 
-bool Config::validate_instance_requirements(
-    const vk::raii::Context &context) const {
+bool Config::validate_instance_requirements(const vk::raii::Context &context) {
   auto layersPresent = context.enumerateInstanceLayerProperties();
+
+  std::print("Validating instance requirements...\n");
+  std::print("Available layers: {}\n", layersPresent.size());
 
   for (const auto &requiredLayer : instanceLayers) {
     bool found = std::ranges::any_of(
@@ -100,12 +113,17 @@ bool Config::validate_instance_requirements(
           return strcmp(available.layerName, requiredLayer) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Instance required layer not supported: " +
-                               std::string(requiredLayer));
+      std::string error = "Instance required layer not supported: " +
+                          std::string(requiredLayer);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
+      throw std::runtime_error(error);
+    } else {
+      std::print("✓ Layer found: {}\n", requiredLayer);
     }
   }
 
   auto extensionsPresent = context.enumerateInstanceExtensionProperties();
+  std::print("Available extensions: {}\n", extensionsPresent.size());
 
   for (const auto &requiredExtension : instanceExtensions) {
     bool found = std::ranges::any_of(
@@ -113,8 +131,12 @@ bool Config::validate_instance_requirements(
           return strcmp(available.extensionName, requiredExtension) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Instance required extension not supported:" +
-                               std::string(requiredExtension));
+      std::string error = "Instance required extension not supported: " +
+                          std::string(requiredExtension);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
+      throw std::runtime_error(error);
+    } else {
+      std::print("✓ Extension found: {}\n", requiredExtension);
     }
   }
 
@@ -122,9 +144,12 @@ bool Config::validate_instance_requirements(
 }
 
 bool Config::validate_device_requirements(
-    const vk::raii::PhysicalDevice &device) const {
+    const vk::raii::PhysicalDevice &device) {
 
   auto layersPresent = device.enumerateDeviceLayerProperties();
+
+  std::print("Validating device requirements...\n");
+  std::print("Available device layers: {}\n", layersPresent.size());
 
   for (const auto &requiredLayer : deviceLayers) {
     bool found = std::ranges::any_of(
@@ -132,12 +157,17 @@ bool Config::validate_device_requirements(
           return strcmp(available.layerName, requiredLayer) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Device required layer not supported: " +
-                               std::string(requiredLayer));
+      std::string error =
+          "Device required layer not supported: " + std::string(requiredLayer);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
+      throw std::runtime_error(error);
+    } else {
+      std::print("✓ Device layer found: {}\n", requiredLayer);
     }
   }
 
   auto extensionsPresent = device.enumerateDeviceExtensionProperties();
+  std::print("Available device extensions: {}\n", extensionsPresent.size());
 
   for (const auto &requiredExtension : deviceExtensions) {
     bool found = std::ranges::any_of(
@@ -145,12 +175,58 @@ bool Config::validate_device_requirements(
           return strcmp(available.extensionName, requiredExtension) == 0;
         });
     if (!found) {
-      throw std::runtime_error("Device required extension not supported:" +
-                               std::string(requiredExtension));
+      std::string error = "Device required extension not supported: " +
+                          std::string(requiredExtension);
+      std::fprintf(stderr, "ERROR: %s\n", error.c_str());
+      throw std::runtime_error(error);
+    } else {
+      std::print("✓ Device extension found: {}\n", requiredExtension);
     }
   }
 
   return true;
+}
+
+void Config::check_and_enable_optional_instance_extensions(
+    const vk::raii::Context &context) {
+  auto extensionsPresent = context.enumerateInstanceExtensionProperties();
+
+  std::print("Checking optional instance extensions...\n");
+  for (const auto &optionalExtension : optionalInstanceExtensions) {
+    bool found = std::ranges::any_of(
+        extensionsPresent, [&optionalExtension](const auto &available) {
+          return strcmp(available.extensionName, optionalExtension) == 0;
+        });
+    if (found) {
+      std::print("✓ Optional extension available, enabling: {}\n",
+                 optionalExtension);
+      instanceExtensions.push_back(optionalExtension);
+    } else {
+      std::print("⚠ Optional extension not available: {}\n", optionalExtension);
+    }
+  }
+  optionalInstanceExtensions.clear();
+}
+
+void Config::check_and_enable_optional_device_extensions(
+    const vk::raii::PhysicalDevice &device) {
+  auto extensionsPresent = device.enumerateDeviceExtensionProperties();
+
+  std::print("Checking optional device extensions...\n");
+  for (const auto &optionalExtension : optionalDeviceExtensions) {
+    bool found = std::ranges::any_of(
+        extensionsPresent, [&optionalExtension](const auto &available) {
+          return strcmp(available.extensionName, optionalExtension) == 0;
+        });
+    if (found) {
+      std::print("✓ Optional extension available, enabling: {}\n",
+                 optionalExtension);
+      deviceExtensions.push_back(optionalExtension);
+    } else {
+      std::print("⚠ Optional extension not available: {}\n", optionalExtension);
+    }
+  }
+  optionalDeviceExtensions.clear();
 }
 
 void Config::add_instance_layer(const char *layer) {
@@ -215,6 +291,17 @@ const std::vector<const char *> &Config::get_device_extension() const {
   return deviceExtensions;
 }
 
+void Config::add_optional_instance_extension(const char *extension) {
+  optionalInstanceExtensions.push_back(extension);
+}
+
+void Config::add_optional_device_extension(const char *extension) {
+  optionalDeviceExtensions.push_back(extension);
+}
+
+void Config::set_api_version(uint32_t &version) { apiVersion = version; }
+const uint32_t Config::get_api_version() const { return apiVersion; }
+
 void Config::set_max_frames(uint8_t &max) { maxFramesInFligth = max; }
 const uint8_t &Config::get_max_frames() const { return maxFramesInFligth; }
 
@@ -223,10 +310,13 @@ const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
     return &vmaVulkanFunctions;
   }
 
-  vmaVulkanFunctions.vkGetInstanceProcAddr =
-      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
-  vmaVulkanFunctions.vkGetDeviceProcAddr =
-      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
-
+  initialize_vma_functions();
   return &vmaVulkanFunctions;
+}
+
+bool Config::needs_reload() const { return reload; }
+
+void Config::mark_reload_complete() {
+  reload = false;
+  initialize_vma_functions();
 }

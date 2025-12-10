@@ -7,7 +7,9 @@ target_compile_definitions(glfw INTERFACE
     GLFW_INCLUDE_VULKAN
 )
 
-find_package(glm CONFIG REQUIRED)
+if(NOT TARGET glm)
+  add_library(glm INTERFACE)
+endif()
 
 find_package(Vulkan REQUIRED)
 add_library(vulkan INTERFACE)

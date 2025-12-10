@@ -40,5 +40,7 @@ public:
   Renderer(GLFWwindow *window);
   ~Renderer();
 
+  void reload();
+
   DeviceManager &get_device_manager();
 };

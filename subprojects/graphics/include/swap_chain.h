@@ -9,7 +9,7 @@ class LogicalDevice;
 
 class SwapChain {
 private:
-  LogicalDevice* logicalDevice;
+  LogicalDevice *logicalDevice;
 
   GLFWwindow *window;
   vk::raii::SurfaceKHR *surface;
@@ -22,6 +22,7 @@ private:
   // swap chain without presentation
   vk::raii::Image image;
   vk::raii::ImageView imageView;
+  vk::raii::DeviceMemory imageMemory;
 
   vk::SurfaceFormatKHR surfaceFormat;
   vk::Extent2D extent2D;
@@ -29,10 +30,10 @@ private:
   void set_surface_format(std::vector<vk::SurfaceFormatKHR> availableFormats);
 
 public:
-  SwapChain(LogicalDevice* logicalDevice, GLFWwindow *window,
+  SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
             vk::raii::SurfaceKHR &surface);
-  SwapChain(LogicalDevice* logicalDevice,
-            vk::SurfaceFormatKHR format, vk::Extent2D extent2D);
+  SwapChain(LogicalDevice *logicalDevice, vk::SurfaceFormatKHR format,
+            vk::Extent2D extent2D);
   ~SwapChain();
 
   void create_swap_chain();

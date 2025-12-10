@@ -8,13 +8,14 @@
 SwapChain::SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
                      vk::raii::SurfaceKHR &surface)
     : logicalDevice(logicalDevice), window(window), surface(&surface),
-      swapChain(nullptr), image(nullptr), imageView(nullptr) {}
+      swapChain(nullptr), image(nullptr), imageView(nullptr),
+      imageMemory(nullptr) {}
 
 SwapChain::SwapChain(LogicalDevice *logicalDevice, vk::SurfaceFormatKHR format,
                      vk::Extent2D extent2D)
     : logicalDevice(logicalDevice), window(nullptr), surface(nullptr),
       swapChain(nullptr), image(nullptr), imageView(nullptr),
-      surfaceFormat(format), extent2D(extent2D) {}
+      imageMemory(nullptr), surfaceFormat(format), extent2D(extent2D) {}
 
 SwapChain::~SwapChain() {
 
@@ -42,45 +43,46 @@ void SwapChain::create_swap_chain() {
   if (surface != nullptr) {
     auto surfaceCapabilities = logicalDevice->get_physical_device()
                                    ->get_device()
-                                   .getSurfaceCapabilitiesKHR(*surface);
+                                   .getSurfaceCapabilitiesKHR(**surface);
 
-    extent2D = [capabilities = &surfaceCapabilities,
-                window = window]() -> vk::Extent2D {
-      if (capabilities->currentExtent.width != 0xFFFFFFFF) {
-        return capabilities->currentExtent;
+    extent2D = [&surfaceCapabilities, window = window]() -> vk::Extent2D {
+      if (surfaceCapabilities.currentExtent.width != 0xFFFFFFFF) {
+        return surfaceCapabilities.currentExtent;
       }
       int width = 0;
       int height = 0;
       glfwGetFramebufferSize(window, &width, &height);
 
-      return {std::clamp<uint32_t>(width, capabilities->minImageExtent.width,
-                                   capabilities->maxImageExtent.width),
-              std::clamp<uint32_t>(height, capabilities->minImageExtent.height,
-                                   capabilities->maxImageExtent.height)};
+      return {std::clamp<uint32_t>(width,
+                                   surfaceCapabilities.minImageExtent.width,
+                                   surfaceCapabilities.maxImageExtent.width),
+              std::clamp<uint32_t>(height,
+                                   surfaceCapabilities.minImageExtent.height,
+                                   surfaceCapabilities.maxImageExtent.height)};
     }();
 
     set_surface_format(
         logicalDevice->get_physical_device()->get_device().getSurfaceFormatsKHR(
-            *surface));
+            **surface));
 
-    auto swapChainPresentMode = [availablePresentModes =
-                                     logicalDevice->get_physical_device()
-                                         ->get_device()
-                                         .getSurfacePresentModesKHR(
-                                             *surface)]() {
-      assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) {
-        return presentMode == vk::PresentModeKHR::eFifo;
-      }));
-      return std::ranges::any_of(availablePresentModes,
-                                 [](const vk::PresentModeKHR value) {
-                                   return vk::PresentModeKHR::eMailbox == value;
-                                 })
-                 ? vk::PresentModeKHR::eMailbox
-                 : vk::PresentModeKHR::eFifo;
-    }();
+    auto availablePresentModes = logicalDevice->get_physical_device()
+                                     ->get_device()
+                                     .getSurfacePresentModesKHR(**surface);
+
+    assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) {
+      return presentMode == vk::PresentModeKHR::eFifo;
+    }));
+
+    auto swapChainPresentMode =
+        std::ranges::any_of(availablePresentModes,
+                            [](const vk::PresentModeKHR value) {
+                              return vk::PresentModeKHR::eMailbox == value;
+                            })
+            ? vk::PresentModeKHR::eMailbox
+            : vk::PresentModeKHR::eFifo;
 
     vk::SwapchainCreateInfoKHR swapChainCreateInfo{
-        .surface = *surface,
+        .surface = **surface,
         .minImageCount = ((surfaceCapabilities.maxImageCount > 0) &&
                           (surfaceCapabilities.maxImageCount <
                            surfaceCapabilities.minImageCount))
@@ -124,6 +126,37 @@ void SwapChain::create_swap_chain() {
 
   image = logicalDevice->get_device().createImage(imageInfo);
 
+  // Allocate memory for the image using underlying device
+  VkDevice vkDevice = *logicalDevice->get_device();
+  VkImage vkImage = *image;
+
+  VkMemoryRequirements memReqs;
+  vkGetImageMemoryRequirements(vkDevice, vkImage, &memReqs);
+
+  vk::MemoryAllocateInfo allocInfo{
+      .allocationSize = memReqs.size, .memoryTypeIndex = [&]() {
+        auto memProperties = logicalDevice->get_physical_device()
+                                 ->get_device()
+                                 .getMemoryProperties();
+        vk::MemoryPropertyFlags requiredProps =
+            vk::MemoryPropertyFlagBits::eDeviceLocal;
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+          if ((memReqs.memoryTypeBits & (1 << i)) &&
+              (memProperties.memoryTypes[i].propertyFlags & requiredProps) ==
+                  requiredProps) {
+            return i;
+          }
+        }
+        throw std::runtime_error(
+            "Failed to find suitable memory type for image!");
+      }()};
+
+  imageMemory = logicalDevice->get_device().allocateMemory(allocInfo);
+
+  VkDeviceMemory vkMemory = *imageMemory;
+  vkBindImageMemory(vkDevice, vkImage, vkMemory, 0);
+
   vk::ImageViewCreateInfo viewInfo{
       .image = *image,
       .viewType = vk::ImageViewType::e2D,
@@ -151,6 +184,7 @@ void SwapChain::clear_swap_chain() {
 
   imageView.clear();
   image.clear();
+  imageMemory.clear();
 }
 
 void SwapChain::create_swap_image_views() {

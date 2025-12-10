@@ -1,5 +1,5 @@
-#include "config.h"
 #include "device_manager.h"
+#include "config.h"
 #include "logical_device.h"
 #include "physical_device.h"
 #include "tasks.h"
@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <print>
 #include <utility>
 #include <vector>
@@ -31,32 +32,85 @@ PhysicalDevice *DeviceManager::select_primary_device() const {
   PhysicalDevice *bestDevice = nullptr;
   int bestScore = -1;
 
+  std::print("Selecting primary device from {} candidates...\n",
+             physicalDevices.size());
+
   for (const auto &device : physicalDevices) {
-    if (Config::get_instance().validate_device_requirements(
-            device->get_device()) &&
-        device->supports_required_features()) {
-      int score = device->calculate_score(surface);
-      if (score > bestScore) {
-        bestScore = score;
-        bestDevice = device.get();
+    std::print("\nEvaluating device: {}\n",
+               device->get_properties().deviceName.data());
+
+    // Validate device requirements
+    try {
+      if (!Config::get_instance().validate_device_requirements(
+              device->get_device())) {
+        std::print("Device failed validation requirements\n");
+        continue;
       }
+    } catch (const std::exception &e) {
+      std::print("Device validation error: {}\n", e.what());
+      continue;
+    }
+
+    // Check optional extensions
+    Config::get_instance().check_and_enable_optional_device_extensions(
+        device->get_device());
+
+    // Check required features
+    if (!device->supports_required_features()) {
+      std::print("Device missing required features\n");
+      continue;
+    }
+
+    int score = device->calculate_score(surface);
+    std::print("Device score: {}\n", score);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestDevice = device.get();
+      std::print("✓ New best device candidate\n");
     }
   }
+
+  if (bestDevice) {
+    std::print("\nSelected primary device: {} (score: {})\n",
+               bestDevice->get_properties().deviceName.data(), bestScore);
+  }
+
   return bestDevice;
 }
 
 uint32_t
 DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
   uint32_t queueIndex;
+
+  std::print("Finding graphics queue for device: {}\n",
+             device->get_properties().deviceName.data());
+
+  auto queueFamilies = device->get_queue_families();
+  std::print("Available queue families: {}\n", queueFamilies.size());
+
+  for (uint32_t i = 0; i < queueFamilies.size(); i++) {
+    std::print("Queue family {}: flags={}, count={}\n", i,
+               to_string(queueFamilies[i].queueFlags),
+               queueFamilies[i].queueCount);
+  }
+
   if (!device->has_graphic_queue(surface, &queueIndex)) {
     throw std::runtime_error(
         "Device does not support graphics queue with presentation");
   }
+
+  std::print("✓ Using graphics queue family index: {}\n", queueIndex);
+
   return queueIndex;
 }
 
 void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
+  std::lock_guard<std::mutex> lock(deviceMutex);
+
   if (primaryDevice->get_physical_device() == physicalDevice) {
+    std::print("Skipping primary device (already initialized): {}\n",
+               physicalDevice->get_properties().deviceName.data());
     return;
   }
 
@@ -65,26 +119,34 @@ void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
   for (auto &secondaryDevice : secondaryDevices) {
     if (secondaryDevice->get_physical_device() == physicalDevice) {
       equal = true;
+      break;
     }
   }
 
   if (!equal) {
     try {
+      std::print("Initializing secondary device: {}\n",
+                 physicalDevice->get_properties().deviceName.data());
+
       uint32_t secondaryQueueIndex = find_graphics_queue_index(physicalDevice);
       auto logicalDevice = std::make_unique<LogicalDevice>(
           instance, physicalDevice, secondaryQueueIndex);
 
+      auto devicePtr = logicalDevice.get();
       logicalDevices.push_back(std::move(logicalDevice));
-      secondaryDevices.push_back(logicalDevice.get());
+      secondaryDevices.push_back(std::move(devicePtr));
 
       Tasks::get_instance().add_gpu();
 
-      std::print("Secondary device added: {}\n",
+      std::print("✓ Secondary device added: {}\n",
                  physicalDevice->get_properties().deviceName.data());
     } catch (const std::exception &e) {
       std::print("Failed to create logical device for {}: {}\n",
                  physicalDevice->get_properties().deviceName.data(), e.what());
     }
+  } else {
+    std::print("Secondary device already initialized: {}\n",
+               physicalDevice->get_properties().deviceName.data());
   }
 }
 
@@ -102,15 +164,21 @@ void DeviceManager::enumerate_physical_devices() {
   if (physicalDevices.empty()) {
     throw std::runtime_error("No Vulkan-capable devices found!");
   }
-  if (physicalDevices.size() > 1) { // TODO properly implement swapchains for
-                                    // rendering only for secondery GPUs
-    // multiGPUEnabled = true;
+
+  std::print("Found {} physical device(s)\n", physicalDevices.size());
+
+  if (physicalDevices.size() > 1) {
+    std::print("Multiple GPUs detected - multi-GPU support available\n");
+    // Multi-GPU will be enabled when switch_multi_GPU(true) is called
   }
 }
 
 void DeviceManager::initialize_devices() {
   logicalDevices.clear();
   secondaryDevices.clear();
+
+  std::print("Initializing devices (multi-GPU: {})\n",
+             multiGPUEnabled ? "enabled" : "disabled");
 
   // Always create primary device
   auto primaryPhysical = select_primary_device();
@@ -119,53 +187,89 @@ void DeviceManager::initialize_devices() {
   }
 
   uint32_t queueIndex = find_graphics_queue_index(primaryPhysical);
+
+  std::print("Creating primary logical device...\n");
   auto primary =
       std::make_unique<LogicalDevice>(instance, primaryPhysical, queueIndex);
   primaryDevice = primary.get();
   logicalDevices.push_back(std::move(primary));
 
-  std::print("Primary device selected: {}\n",
+  std::print("✓ Primary device initialized: {}\n",
              primaryPhysical->get_properties().deviceName.data());
 
   // For multi-GPU, create logical devices for secondary GPUs
   if (multiGPUEnabled) {
+    std::print("Initializing secondary devices...\n");
     for (const auto &physicalDevice : physicalDevices) {
       add_device(physicalDevice.get());
     }
+    std::print("Multi-GPU initialization complete: {} secondary device(s)\n",
+               secondaryDevices.size());
   }
 }
 
-void DeviceManager::switch_multi_GPU(bool enable) { multiGPUEnabled = enable; }
+void DeviceManager::switch_multi_GPU(bool enable) {
+  std::lock_guard<std::mutex> lock(deviceMutex);
+  multiGPUEnabled = enable;
+}
 
 void DeviceManager::wait_idle() {
+  std::lock_guard<std::mutex> lock(deviceMutex);
   for (auto &device : logicalDevices) {
     device->get_device().waitIdle();
   }
 }
 
 void DeviceManager::create_swap_chains() {
+  std::print("Creating swap chains...\n");
+
   primaryDevice->initialize_swap_chain(window, surface);
+  std::print("✓ Primary device swap chain created\n");
 
   if (multiGPUEnabled) {
+    std::print("Creating swap chains for {} secondary device(s)...\n",
+               secondaryDevices.size());
     for (auto &device : secondaryDevices) {
-      device->initialize_swap_chain(
-          primaryDevice->get_swap_chain().get_surface_format(),
-          primaryDevice->get_swap_chain().get_extent2D());
+      try {
+        device->initialize_swap_chain(
+            primaryDevice->get_swap_chain().get_surface_format(),
+            primaryDevice->get_swap_chain().get_extent2D());
+        std::print(
+            "✓ Secondary device swap chain created: {}\n",
+            device->get_physical_device()->get_properties().deviceName.data());
+      } catch (const std::exception &e) {
+        std::fprintf(
+            stderr, "✗ Failed to create swap chain for %s: %s\n",
+            device->get_physical_device()->get_properties().deviceName.data(),
+            e.what());
+      }
     }
   }
 }
 
 void DeviceManager::recreate_swap_chain() {
 
+  std::print("Recreating swap chains...\n");
   wait_idle();
 
   primaryDevice->get_swap_chain().recreate_swap_chain();
+  std::print("✓ Primary device swap chain recreated\n");
 
   if (multiGPUEnabled) {
     for (auto &device : secondaryDevices) {
-      device->get_swap_chain().recreate_swap_chain(
-          primaryDevice->get_swap_chain().get_surface_format(),
-          primaryDevice->get_swap_chain().get_extent2D());
+      try {
+        device->get_swap_chain().recreate_swap_chain(
+            primaryDevice->get_swap_chain().get_surface_format(),
+            primaryDevice->get_swap_chain().get_extent2D());
+        std::print(
+            "✓ Secondary device swap chain recreated: {}\n",
+            device->get_physical_device()->get_properties().deviceName.data());
+      } catch (const std::exception &e) {
+        std::fprintf(
+            stderr, "✗ Failed to recreate swap chain for %s: %s\n",
+            device->get_physical_device()->get_properties().deviceName.data(),
+            e.what());
+      }
     }
   }
 }
@@ -175,11 +279,23 @@ void DeviceManager::create_command_pool() {
   vk::CommandPoolCreateInfo createInfo{
       .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer};
 
+  std::print("Creating command pools...\n");
   primaryDevice->initialize_command_pool(createInfo);
+  std::print("✓ Primary device command pool created\n");
 
   if (multiGPUEnabled) {
     for (const auto &device : secondaryDevices) {
-      device->initialize_command_pool(createInfo);
+      try {
+        device->initialize_command_pool(createInfo);
+        std::print(
+            "✓ Secondary device command pool created: {}\n",
+            device->get_physical_device()->get_properties().deviceName.data());
+      } catch (const std::exception &e) {
+        std::fprintf(
+            stderr, "✗ Failed to create command pool for %s: %s\n",
+            device->get_physical_device()->get_properties().deviceName.data(),
+            e.what());
+      }
     }
   }
 }
