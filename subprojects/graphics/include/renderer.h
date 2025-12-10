@@ -10,11 +10,24 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
+// Handle different Vulkan SDK versions for DynamicLoader location
+// Older SDKs (< 1.3.275) have it in vk::detail, newer in vk::
+#ifndef VULKAN_HPP_NAMESPACE_STRING
+  // Very old SDK
+  using VulkanDynamicLoader = vk::detail::DynamicLoader;
+#elif VK_HEADER_VERSION >= 275
+  // Newer SDK (1.3.275+)
+  using VulkanDynamicLoader = vk::DynamicLoader;
+#else
+  // Older SDK
+  using VulkanDynamicLoader = vk::detail::DynamicLoader;
+#endif
+
 class Renderer {
 
 private:
   GLFWwindow *window;
-  vk::DynamicLoader dl;
+  VulkanDynamicLoader dl;
 
   vk::raii::Context context;
   vk::raii::Instance instance;
