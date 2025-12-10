@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <print>
+#include <stdexcept>
 #include <thread>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_hpp_macros.hpp>
@@ -253,13 +254,22 @@ const vk::raii::DescriptorPool &LogicalDevice::get_descriptor_pool() const {
 }
 
 const vk::raii::Semaphore &LogicalDevice::get_image_available_semaphore(uint32_t frameIndex) const {
+  if (frameIndex >= imageAvailableSemaphores.size()) {
+    throw std::out_of_range("Frame index out of range for image available semaphore");
+  }
   return imageAvailableSemaphores[frameIndex];
 }
 
 const vk::raii::Semaphore &LogicalDevice::get_render_finished_semaphore(uint32_t frameIndex) const {
+  if (frameIndex >= renderFinishedSemaphores.size()) {
+    throw std::out_of_range("Frame index out of range for render finished semaphore");
+  }
   return renderFinishedSemaphores[frameIndex];
 }
 
 const vk::raii::Fence &LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
+  if (frameIndex >= inFlightFences.size()) {
+    throw std::out_of_range("Frame index out of range for in-flight fence");
+  }
   return inFlightFences[frameIndex];
 }
