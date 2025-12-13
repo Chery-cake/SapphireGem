@@ -68,8 +68,13 @@ void Window::create_scene_objects() {
 }
 
 void Window::update_scene_objects() {
+  static double lastTime = glfwGetTime();
+  double currentTime = glfwGetTime();
+  float deltaTime = static_cast<float>(currentTime - lastTime);
+  lastTime = currentTime;
+
   static float time = 0.0f;
-  time += 0.016f; // Approximately 60 FPS
+  time += deltaTime;
 
   if (triangle) {
     // Rotate triangle around Z axis

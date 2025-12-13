@@ -554,18 +554,21 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
   // Define a 3D cube vertices (8 vertices, using 2D positions but arranged for
   // 3D effect)
   // For a simple 3D cube representation in 2D projection
+  constexpr float cubeSize = 0.5f;
+  constexpr float depthOffset = 0.2f; // Offset for back face to create 3D effect
+  
   const std::vector<Material::Vertex2D> vertices = {
       // Front face
-      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}},  // 3: Top-left
+      {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left
+      {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right
+      {{cubeSize, cubeSize}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right
+      {{-cubeSize, cubeSize}, {1.0f, 1.0f, 0.0f}},  // 3: Top-left
 
       // Back face (offset for 3D effect)
-      {{-0.3f, -0.3f}, {1.0f, 0.0f, 1.0f}}, // 4: Bottom-left
-      {{0.7f, -0.3f}, {0.0f, 1.0f, 1.0f}},  // 5: Bottom-right
-      {{0.7f, 0.7f}, {1.0f, 1.0f, 1.0f}},   // 6: Top-right
-      {{-0.3f, 0.7f}, {0.5f, 0.5f, 0.5f}}   // 7: Top-left
+      {{-cubeSize + depthOffset, -cubeSize + depthOffset}, {1.0f, 0.0f, 1.0f}}, // 4: Bottom-left
+      {{cubeSize + depthOffset, -cubeSize + depthOffset}, {0.0f, 1.0f, 1.0f}},  // 5: Bottom-right
+      {{cubeSize + depthOffset, cubeSize + depthOffset}, {1.0f, 1.0f, 1.0f}},   // 6: Top-right
+      {{-cubeSize + depthOffset, cubeSize + depthOffset}, {0.5f, 0.5f, 0.5f}}   // 7: Top-left
   };
 
   // Cube indices for triangles (12 triangles, 2 per face, 6 faces)
