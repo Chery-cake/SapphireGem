@@ -2,8 +2,11 @@
 
 #include "buffer_manager.h"
 #include "device_manager.h"
+#include "logical_device.h"
 #include "material_manager.h"
+#include "object_manager.h"
 #include <GLFW/glfw3.h>
+#include <cstdint>
 #include <memory>
 #include <sys/types.h>
 #include <vulkan/vulkan.hpp>
@@ -21,10 +24,16 @@ private:
 
   vk::raii::DebugUtilsMessengerEXT debugMessanger;
 
+  ObjectManager::MultiGPUConfig gpuConfig;
+
   std::unique_ptr<DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
 
   std::unique_ptr<BufferManager> bufferManager;
+  std::unique_ptr<ObjectManager> objectManager;
+
+  uint32_t currentFrame;
+  uint32_t frameCount; // total frames rendered
 
   void init_instance();
   void init_surface();
@@ -36,11 +45,29 @@ private:
 
   void create_buffers();
 
+  // Helper methods for drawFrame
+  bool acquire_next_image(LogicalDevice *device, uint32_t &imageIndex);
+  void present_frame(LogicalDevice *device, uint32_t imageIndex);
+
+  // Strategy-specific rendering
+  void draw_frame_single_gpu(LogicalDevice *device);
+  void draw_frame_afr();
+  void draw_frame_sfr(uint32_t imageIndex);
+  void draw_frame_hybrid();
+  void draw_frame_multi_queue_streaming();
+
 public:
   Renderer(GLFWwindow *window);
   ~Renderer();
 
   void reload();
+  void draw_frame();
+
+  void set_render_strategy(ObjectManager::RenderStrategy strategy);
+  void set_gpu_config(const ObjectManager::MultiGPUConfig &config);
 
   DeviceManager &get_device_manager();
+  MaterialManager &get_material_manager();
+  BufferManager &get_buffer_manager();
+  ObjectManager *get_object_manager();
 };

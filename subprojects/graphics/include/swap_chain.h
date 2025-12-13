@@ -43,6 +43,20 @@ public:
   void recreate_swap_chain();
   void recreate_swap_chain(vk::SurfaceFormatKHR format, vk::Extent2D extent);
 
+  // Frame rendering helpers
+  vk::ResultValue<uint32_t>
+  acquire_next_image(const vk::raii::Semaphore &semaphore);
+  void transition_image_for_rendering(vk::raii::CommandBuffer &commandBuffer,
+                                      uint32_t imageIndex);
+  void transition_image_for_present(vk::raii::CommandBuffer &commandBuffer,
+                                    uint32_t imageIndex);
+  void begin_rendering(vk::raii::CommandBuffer &commandBuffer,
+                       uint32_t imageIndex);
+  void end_rendering(vk::raii::CommandBuffer &commandBuffer);
+
   vk::SurfaceFormatKHR get_surface_format();
   vk::Extent2D get_extent2D();
+  vk::raii::SwapchainKHR &get_swap_chain();
+  const std::vector<vk::Image> &get_images() const;
+  const std::vector<vk::raii::ImageView> &get_image_views() const;
 };

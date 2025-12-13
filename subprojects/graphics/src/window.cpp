@@ -47,5 +47,7 @@ void Window::run() {
       frameBufferRezized = false;
       renderer->get_device_manager().recreate_swap_chain();
     }
+
+    renderer->draw_frame();
   };
 }

@@ -11,6 +11,7 @@
 #include <mutex>
 #include <print>
 #include <thread>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
@@ -227,6 +228,54 @@ void LogicalDevice::wait_idle() {
   device.waitIdle();
 }
 
+bool LogicalDevice::wait_for_fence(uint32_t frameIndex) {
+  auto result =
+      device.waitForFences(*inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
+  if (result != vk::Result::eSuccess) {
+    std::print("Failed to wait for fence (frame {}): {}\n", frameIndex,
+               vk::to_string(result));
+    return false;
+  }
+  return true;
+}
+
+void LogicalDevice::reset_fence(uint32_t frameIndex) {
+  device.resetFences(*inFlightFences[frameIndex]);
+}
+
+void LogicalDevice::begin_command_buffer(uint32_t frameIndex) {
+  commandBuffers[frameIndex].reset();
+  vk::CommandBufferBeginInfo beginInfo{};
+  commandBuffers[frameIndex].begin(beginInfo);
+}
+
+void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
+  commandBuffers[frameIndex].end();
+}
+
+void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
+                                          bool withSemaphores) {
+  if (withSemaphores) {
+    vk::PipelineStageFlags waitStages[] = {
+        vk::PipelineStageFlagBits::eColorAttachmentOutput};
+    vk::SubmitInfo submitInfo{
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &*imageAvailableSemaphores[frameIndex],
+        .pWaitDstStageMask = waitStages,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*commandBuffers[frameIndex],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &*renderFinishedSemaphores[frameIndex]};
+
+    graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
+  } else {
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1,
+                              .pCommandBuffers = &*commandBuffers[frameIndex]};
+
+    graphicsQueue.submit(submitInfo, nullptr);
+  }
+}
+
 PhysicalDevice *LogicalDevice::get_physical_device() const {
   return physicalDevice;
 }
@@ -249,6 +298,10 @@ const vk::raii::CommandPool &LogicalDevice::get_command_pool() const {
 
 const vk::raii::DescriptorPool &LogicalDevice::get_descriptor_pool() const {
   return descriptorPool;
+}
+
+std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
+  return commandBuffers;
 }
 
 const vk::raii::Semaphore &

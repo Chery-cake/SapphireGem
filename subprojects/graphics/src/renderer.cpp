@@ -3,8 +3,10 @@
 #include "buffer_manager.h"
 #include "config.h"
 #include "device_manager.h"
+#include "logical_device.h"
 #include "material.h"
 #include "material_manager.h"
+#include "object_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <iterator>
@@ -20,7 +22,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr) {
+      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
+      objectManager(nullptr), currentFrame(0), frameCount(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -39,9 +42,14 @@ Renderer::Renderer(GLFWwindow *window)
   init_materials();
 
   create_buffers();
+
+  objectManager = std::make_unique<ObjectManager>(
+      deviceManager.get(), materialManager.get(), bufferManager.get());
+  objectManager->set_gpu_config(gpuConfig);
 }
 
 Renderer::~Renderer() {
+  objectManager.reset();
   bufferManager.reset();
   materialManager.reset();
   deviceManager.reset();
@@ -230,6 +238,167 @@ void Renderer::create_buffers() {
   }
 }
 
+bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex) {
+  vk::Result acquireResult;
+  try {
+    auto result = device->get_swap_chain().acquire_next_image(
+        device->get_image_available_semaphore(currentFrame));
+    acquireResult = result.result;
+    imageIndex = result.value;
+  } catch (const vk::OutOfDateKHRError &) {
+    deviceManager->recreate_swap_chain();
+    return false;
+  }
+
+  if (acquireResult != vk::Result::eSuccess &&
+      acquireResult != vk::Result::eSuboptimalKHR) {
+    std::print("Failed to acquire swap chain image: {}\n",
+               vk::to_string(acquireResult));
+    return false;
+  }
+
+  return true;
+}
+
+void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex) {
+  vk::PresentInfoKHR presentInfo{
+      .waitSemaphoreCount = 1,
+      .pWaitSemaphores = &*device->get_render_finished_semaphore(currentFrame),
+      .swapchainCount = 1,
+      .pSwapchains = &*device->get_swap_chain().get_swap_chain(),
+      .pImageIndices = &imageIndex};
+
+  vk::Result presentResult;
+  try {
+    presentResult = device->get_graphics_queue().presentKHR(presentInfo);
+  } catch (const vk::OutOfDateKHRError &) {
+    deviceManager->recreate_swap_chain();
+    return;
+  }
+
+  if (presentResult == vk::Result::eSuboptimalKHR) {
+    deviceManager->recreate_swap_chain();
+  }
+}
+
+void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
+  if (device) {
+    return;
+  }
+
+  if (!device->wait_for_fence(currentFrame)) {
+    return;
+  }
+  device->reset_fence(currentFrame);
+
+  uint32_t imageIndex;
+  if (!acquire_next_image(device, imageIndex)) {
+    return;
+  }
+
+  device->begin_command_buffer(currentFrame);
+  vk::raii::CommandBuffer &commandBuffer =
+      device->get_command_buffers()[currentFrame];
+
+  device->get_swap_chain().transition_image_for_rendering(commandBuffer,
+                                                          imageIndex);
+  device->get_swap_chain().begin_rendering(commandBuffer, imageIndex);
+
+  objectManager->render_all_objects(commandBuffer, 0, currentFrame);
+
+  device->get_swap_chain().end_rendering(commandBuffer);
+  device->get_swap_chain().transition_image_for_present(commandBuffer,
+                                                        imageIndex);
+  device->end_command_buffer(currentFrame);
+  device->submit_command_buffer(currentFrame, true);
+  present_frame(device, imageIndex);
+}
+
+void Renderer::draw_frame_afr() {
+  // AFR: Each GPU renders different frames
+  auto allDevices = deviceManager->get_all_logical_devices();
+  if (allDevices.empty()) {
+    return;
+  }
+
+  const size_t renderingDeviceIndex = frameCount % allDevices.size();
+  draw_frame_single_gpu(
+      const_cast<LogicalDevice *>(allDevices[renderingDeviceIndex]));
+}
+
+void Renderer::draw_frame_sfr(uint32_t imageIndex) {
+  // SFR: Split frame across multiple GPUs
+  auto allDevices = deviceManager->get_all_logical_devices();
+  if (allDevices.size() < 2) {
+    // Fall back to single GPU if not enough devices
+    draw_frame_single_gpu(
+        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    return;
+  }
+
+  // For now, implement horizontal split (top/bottom)
+  LogicalDevice *primaryDevice =
+      const_cast<LogicalDevice *>(deviceManager->get_primary_device());
+  vk::Extent2D extent = primaryDevice->get_swap_chain().get_extent2D();
+
+  // Each device renders a portion of the screen
+  for (size_t i = 0; i < allDevices.size(); ++i) {
+    LogicalDevice *device = const_cast<LogicalDevice *>(allDevices[i]);
+
+    device->begin_command_buffer(currentFrame);
+    vk::raii::CommandBuffer &commandBuffer =
+        device->get_command_buffers()[currentFrame];
+
+    device->get_swap_chain().transition_image_for_rendering(commandBuffer,
+                                                            imageIndex);
+    device->get_swap_chain().begin_rendering(commandBuffer, imageIndex);
+
+    // Adjust viewport for this GPU's portion
+    float heightPerGPU = static_cast<float>(extent.height) / allDevices.size();
+    vk::Viewport viewport{.x = 0.0f,
+                          .y = heightPerGPU * i,
+                          .width = static_cast<float>(extent.width),
+                          .height = heightPerGPU,
+                          .minDepth = 0.0f,
+                          .maxDepth = 1.0f};
+    commandBuffer.setViewport(0, viewport);
+
+    vk::Rect2D scissor{
+        .offset = {0, static_cast<int32_t>(heightPerGPU * i)},
+        .extent = {extent.width, static_cast<uint32_t>(heightPerGPU)}};
+    commandBuffer.setScissor(0, scissor);
+
+    objectManager->render_all_objects(commandBuffer, i, currentFrame);
+
+    device->get_swap_chain().end_rendering(commandBuffer);
+
+    if (i == 0) {
+      device->get_swap_chain().transition_image_for_present(commandBuffer,
+                                                            imageIndex);
+    }
+
+    device->end_command_buffer(currentFrame);
+    device->submit_command_buffer(currentFrame, i == 0);
+  }
+
+  present_frame(
+      const_cast<LogicalDevice *>(deviceManager->get_primary_device()),
+      imageIndex);
+}
+
+void Renderer::draw_frame_hybrid() {
+  // Hybrid: Choose strategy based on workload
+  // For now, use AFR as default
+  draw_frame_afr();
+}
+
+void Renderer::draw_frame_multi_queue_streaming() {
+  // Multi-queue with resource streaming
+  // This is an advanced feature that would use async compute/transfer queues
+  // For now, fall back to AFR
+  draw_frame_afr();
+}
+
 void Renderer::reload() {
   std::print("Reloading rendering system...\n");
 
@@ -277,4 +446,66 @@ void Renderer::reload() {
   std::print("Reload complete!\n");
 }
 
+void Renderer::draw_frame() {
+  // Dispatch to strategy-specific implementation
+  switch (gpuConfig.strategy) {
+  case ObjectManager::RenderStrategy::SINGLE_GPU:
+    draw_frame_single_gpu(
+        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    break;
+  case ObjectManager::RenderStrategy::AFR:
+    draw_frame_afr();
+    break;
+  case ObjectManager::RenderStrategy::SFR:
+    // SFR needs image index
+    {
+      auto allDevices = deviceManager->get_all_logical_devices();
+      if (!allDevices.empty()) {
+        LogicalDevice *primaryDevice =
+            const_cast<LogicalDevice *>(deviceManager->get_primary_device());
+        if (primaryDevice->wait_for_fence(currentFrame)) {
+          primaryDevice->reset_fence(currentFrame);
+          uint32_t imageIndex;
+          if (acquire_next_image(primaryDevice, imageIndex)) {
+            draw_frame_sfr(imageIndex);
+          }
+        }
+      }
+    }
+    break;
+  case ObjectManager::RenderStrategy::HYBRID:
+    draw_frame_hybrid();
+    break;
+  case ObjectManager::RenderStrategy::MULTI_QUEUE_STREAMING:
+    draw_frame_multi_queue_streaming();
+    break;
+  default:
+    draw_frame_single_gpu(
+        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    break;
+  }
+
+  // Advance frame counters
+  const uint32_t maxFrames = Config::get_instance().get_max_frames();
+  currentFrame = (currentFrame + 1) % maxFrames;
+  frameCount++;
+}
+
+void Renderer::set_render_strategy(ObjectManager::RenderStrategy strategy) {
+  gpuConfig.strategy = strategy;
+  objectManager->set_render_strategy(strategy);
+  std::print("Render strategy changed to: {}\n", static_cast<int>(strategy));
+}
+
+void Renderer::set_gpu_config(const ObjectManager::MultiGPUConfig &config) {
+  gpuConfig = config;
+  objectManager->set_gpu_config(config);
+}
+
 DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
+
+MaterialManager &Renderer::get_material_manager() { return *materialManager; }
+
+BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
+
+ObjectManager *Renderer::get_object_manager() { return objectManager.get(); };
