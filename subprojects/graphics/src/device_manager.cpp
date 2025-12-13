@@ -281,12 +281,14 @@ void DeviceManager::create_command_pool() {
 
   std::print("Creating command pools...\n");
   primaryDevice->initialize_command_pool(createInfo);
+  primaryDevice->create_command_buffer();
   std::print("✓ Primary device command pool created\n");
 
   if (multiGPUEnabled) {
     for (const auto &device : secondaryDevices) {
       try {
         device->initialize_command_pool(createInfo);
+        device->create_command_buffer();
         std::print(
             "✓ Secondary device command pool created: {}\n",
             device->get_physical_device()->get_properties().deviceName.data());
