@@ -5,8 +5,10 @@
 #include "logical_device.h"
 #include "material_manager.h"
 #include "object_manager.h"
+#include "render_object.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <memory>
 #include <sys/types.h>
 #include <vulkan/vulkan.hpp>
@@ -16,7 +18,7 @@ class Renderer {
 
 private:
   GLFWwindow *window;
-  vk::detail::DynamicLoader dl;
+  vk::DynamicLoader dl;
 
   vk::raii::Context context;
   vk::raii::Instance instance;
@@ -70,4 +72,14 @@ public:
   MaterialManager &get_material_manager();
   BufferManager &get_buffer_manager();
   ObjectManager *get_object_manager();
+
+  // Helper functions to create objects
+  RenderObject *create_triangle_2d(const std::string &identifier,
+                                    const glm::vec3 &position = glm::vec3(0.0f),
+                                    const glm::vec3 &rotation = glm::vec3(0.0f),
+                                    const glm::vec3 &scale = glm::vec3(1.0f));
+  RenderObject *create_cube_3d(const std::string &identifier,
+                                const glm::vec3 &position = glm::vec3(0.0f),
+                                const glm::vec3 &rotation = glm::vec3(0.0f),
+                                const glm::vec3 &scale = glm::vec3(1.0f));
 };
