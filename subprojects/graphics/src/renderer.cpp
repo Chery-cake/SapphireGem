@@ -147,8 +147,8 @@ void Renderer::init_materials() {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
-      .vertexShaders = "slang.spv",
-      .fragmentShaders = "slang.spv",
+      .vertexShaders = "vert.spv",
+      .fragmentShaders = "frag.spv",
       .descriptorBindings = {bidingInfo},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
@@ -282,7 +282,7 @@ void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex) {
 }
 
 void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
-  if (device) {
+  if (!device) {
     return;
   }
 
@@ -508,4 +508,91 @@ MaterialManager &Renderer::get_material_manager() { return *materialManager; }
 
 BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
 
-ObjectManager *Renderer::get_object_manager() { return objectManager.get(); };
+ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
+
+RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
+                                           const glm::vec3 &position,
+                                           const glm::vec3 &rotation,
+                                           const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 2D triangle vertices (in NDC space, z=0)
+  const std::vector<Material::Vertex2D> vertices = {
+      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},   // Bottom vertex (red)
+      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},    // Top right vertex (green)
+      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}    // Top left vertex (blue)
+  };
+
+  const std::vector<uint16_t> indices = {0, 1, 2};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_2D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}
+
+RenderObject *Renderer::create_cube_3d(const std::string &identifier,
+                                        const glm::vec3 &position,
+                                        const glm::vec3 &rotation,
+                                        const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 3D cube vertices (8 vertices, using 2D positions but arranged for
+  // 3D effect)
+  // For a simple 3D cube representation in 2D projection
+  const std::vector<Material::Vertex2D> vertices = {
+      // Front face
+      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left
+      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right
+      {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}},  // 3: Top-left
+
+      // Back face (offset for 3D effect)
+      {{-0.3f, -0.3f}, {1.0f, 0.0f, 1.0f}}, // 4: Bottom-left
+      {{0.7f, -0.3f}, {0.0f, 1.0f, 1.0f}},  // 5: Bottom-right
+      {{0.7f, 0.7f}, {1.0f, 1.0f, 1.0f}},   // 6: Top-right
+      {{-0.3f, 0.7f}, {0.5f, 0.5f, 0.5f}}   // 7: Top-left
+  };
+
+  // Cube indices for triangles (12 triangles, 2 per face, 6 faces)
+  const std::vector<uint16_t> indices = {
+      // Front face
+      0, 1, 2, 2, 3, 0,
+      // Right face (connecting front-right to back-right)
+      1, 5, 6, 6, 2, 1,
+      // Back face
+      5, 4, 7, 7, 6, 5,
+      // Left face (connecting front-left to back-left)
+      4, 0, 3, 3, 7, 4,
+      // Top face
+      3, 2, 6, 6, 7, 3,
+      // Bottom face
+      4, 5, 1, 1, 0, 4};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_3D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}
