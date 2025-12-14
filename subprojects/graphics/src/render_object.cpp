@@ -21,21 +21,22 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   indexBufferName = identifier + "_indices";
 
   // Create vertex buffer
-  Buffer::BufferCreateInfo vertInfo = {.identifier = vertexBufferName,
-                                       .type = Buffer::BufferType::VERTEX,
-                                       .usage = Buffer::BufferUsage::STATIC,
-                                       .size = createInfo.vertices.size(),
-                                       .initialData =
-                                           createInfo.vertices.data()};
+  Buffer::BufferCreateInfo vertInfo = {
+      .identifier = vertexBufferName,
+      .type = Buffer::BufferType::VERTEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
+      .initialData = createInfo.vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
 
   // Create index buffer
-  Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
-                                      .type = Buffer::BufferType::INDEX,
-                                      .usage = Buffer::BufferUsage::STATIC,
-                                      .size = createInfo.indices.size(),
-                                      .initialData = createInfo.indices.data()};
+  Buffer::BufferCreateInfo indInfo = {
+      .identifier = indexBufferName,
+      .type = Buffer::BufferType::INDEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = createInfo.indices.size() * sizeof(uint16_t),
+      .initialData = createInfo.indices.data()};
 
   bufferManager->create_buffer(indInfo);
 

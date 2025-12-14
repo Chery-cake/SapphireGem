@@ -50,7 +50,7 @@ Renderer::Renderer(GLFWwindow *window)
 }
 
 Renderer::~Renderer() {
-  //  deviceManager->wait_idle();
+  deviceManager->wait_idle();
 
   objectManager.reset();
   bufferManager.reset();
@@ -194,21 +194,23 @@ void Renderer::create_buffers() {
       {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
       {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
 
-  Buffer::BufferCreateInfo vertInfo = {.identifier = "vertices",
-                                       .type = Buffer::BufferType::VERTEX,
-                                       .usage = Buffer::BufferUsage::STATIC,
-                                       .size = std::size(vertices),
-                                       .initialData = &vertices};
+  Buffer::BufferCreateInfo vertInfo = {
+      .identifier = "vertices",
+      .type = Buffer::BufferType::VERTEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = std::size(vertices) * sizeof(Material::Vertex2D),
+      .initialData = &vertices};
 
   bufferManager->create_buffer(vertInfo);
 
   const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-  Buffer::BufferCreateInfo indInfo = {.identifier = "indices",
-                                      .type = Buffer::BufferType::INDEX,
-                                      .usage = Buffer::BufferUsage::STATIC,
-                                      .size = std::size(indices),
-                                      .initialData = &indices};
+  Buffer::BufferCreateInfo indInfo = {
+      .identifier = "indices",
+      .type = Buffer::BufferType::INDEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = std::size(indices) * sizeof(uint16_t),
+      .initialData = &indices};
 
   bufferManager->create_buffer(indInfo);
 
