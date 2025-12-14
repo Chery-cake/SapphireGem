@@ -46,6 +46,7 @@ private:
   void initialize_vma_allocator(vk::raii::Instance &instance);
   void create_descriptor_pool();
   void create_sync_objects();
+  void create_swapchain_semaphores();
 
 public:
   LogicalDevice(vk::raii::Instance &instance, PhysicalDevice *physicalDevice,
@@ -66,7 +67,7 @@ public:
   void reset_fence(uint32_t frameIndex);
   void begin_command_buffer(uint32_t frameIndex);
   void end_command_buffer(uint32_t frameIndex);
-  void submit_command_buffer(uint32_t frameIndex, bool withSemaphores);
+  void submit_command_buffer(uint32_t frameIndex, uint32_t imageIndex, bool withSemaphores);
 
   PhysicalDevice *get_physical_device() const;
   const vk::raii::Device &get_device() const;

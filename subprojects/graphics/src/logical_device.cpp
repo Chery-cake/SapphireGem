@@ -171,16 +171,11 @@ void LogicalDevice::create_descriptor_pool() {
 void LogicalDevice::create_sync_objects() {
   uint32_t maxFrames = Config::get_instance().get_max_frames();
 
-  imageAvailableSemaphores.reserve(maxFrames);
-  renderFinishedSemaphores.reserve(maxFrames);
   inFlightFences.reserve(maxFrames);
 
-  vk::SemaphoreCreateInfo semaphoreInfo{};
   vk::FenceCreateInfo fenceInfo{.flags = vk::FenceCreateFlagBits::eSignaled};
 
   for (uint32_t i = 0; i < maxFrames; ++i) {
-    imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-    renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
     inFlightFences.push_back(device.createFence(fenceInfo));
   }
 
@@ -188,17 +183,44 @@ void LogicalDevice::create_sync_objects() {
              physicalDevice->get_properties().deviceName.data(), maxFrames);
 }
 
+void LogicalDevice::create_swapchain_semaphores() {
+  if (!swapChain) {
+    throw std::runtime_error("Swapchain must be created before semaphores");
+  }
+
+  // Clear any existing semaphores
+  imageAvailableSemaphores.clear();
+  renderFinishedSemaphores.clear();
+
+  uint32_t imageCount = static_cast<uint32_t>(swapChain->get_images().size());
+  
+  imageAvailableSemaphores.reserve(imageCount);
+  renderFinishedSemaphores.reserve(imageCount);
+
+  vk::SemaphoreCreateInfo semaphoreInfo{};
+
+  for (uint32_t i = 0; i < imageCount; ++i) {
+    imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+    renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+  }
+
+  std::print("Swapchain semaphores created for device: {} ({} images)\n",
+             physicalDevice->get_properties().deviceName.data(), imageCount);
+}
+
 void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
                                           vk::raii::SurfaceKHR &surface) {
   swapChain = std::make_unique<SwapChain>(this, window, surface);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  create_swapchain_semaphores();
 }
 void LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
                                           vk::Extent2D extent) {
   swapChain = std::make_unique<SwapChain>(this, format, extent);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  create_swapchain_semaphores();
 }
 
 void LogicalDevice::initialize_command_pool(
@@ -254,18 +276,19 @@ void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
 }
 
 void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
+                                          uint32_t imageIndex,
                                           bool withSemaphores) {
   if (withSemaphores) {
     vk::PipelineStageFlags waitStages[] = {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submitInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[frameIndex],
+        .pWaitSemaphores = &*imageAvailableSemaphores[imageIndex],
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[frameIndex],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[frameIndex]};
+        .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
 
     graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
   } else {

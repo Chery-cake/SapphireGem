@@ -23,7 +23,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
       debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
-      objectManager(nullptr), currentFrame(0), frameCount(0) {
+      objectManager(nullptr), currentFrame(0), frameCount(0), currentSemaphoreIndex(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -238,13 +238,22 @@ void Renderer::create_buffers() {
   }
 }
 
-bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex) {
+bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex, uint32_t &semaphoreIndex) {
   vk::Result acquireResult;
   try {
+    // Cycle through semaphores to avoid reusing one that's still in use
+    uint32_t imageCount = device->get_swap_chain().get_images().size();
+    currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
+    semaphoreIndex = currentSemaphoreIndex;
+    
+    // Acquire next swapchain image
+    // The semaphore at semaphoreIndex will be signaled when the image is ready
     auto result = device->get_swap_chain().acquire_next_image(
-        device->get_image_available_semaphore(currentFrame));
+        device->get_image_available_semaphore(semaphoreIndex));
     acquireResult = result.result;
     imageIndex = result.value;
+    
+    // Return both imageIndex (which image we got) and semaphoreIndex (which semaphore was signaled)
   } catch (const vk::OutOfDateKHRError &) {
     deviceManager->recreate_swap_chain();
     return false;
@@ -260,10 +269,10 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex) {
   return true;
 }
 
-void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex) {
+void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex, uint32_t semaphoreIndex) {
   vk::PresentInfoKHR presentInfo{
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &*device->get_render_finished_semaphore(currentFrame),
+      .pWaitSemaphores = &*device->get_render_finished_semaphore(semaphoreIndex),
       .swapchainCount = 1,
       .pSwapchains = &*device->get_swap_chain().get_swap_chain(),
       .pImageIndices = &imageIndex};
@@ -292,7 +301,8 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   device->reset_fence(currentFrame);
 
   uint32_t imageIndex;
-  if (!acquire_next_image(device, imageIndex)) {
+  uint32_t semaphoreIndex;
+  if (!acquire_next_image(device, imageIndex, semaphoreIndex)) {
     return;
   }
 
@@ -310,8 +320,8 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   device->get_swap_chain().transition_image_for_present(commandBuffer,
                                                         imageIndex);
   device->end_command_buffer(currentFrame);
-  device->submit_command_buffer(currentFrame, true);
-  present_frame(device, imageIndex);
+  device->submit_command_buffer(currentFrame, semaphoreIndex, true);
+  present_frame(device, imageIndex, semaphoreIndex);
 }
 
 void Renderer::draw_frame_afr() {
@@ -326,7 +336,7 @@ void Renderer::draw_frame_afr() {
       const_cast<LogicalDevice *>(allDevices[renderingDeviceIndex]));
 }
 
-void Renderer::draw_frame_sfr(uint32_t imageIndex) {
+void Renderer::draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex) {
   // SFR: Split frame across multiple GPUs
   auto allDevices = deviceManager->get_all_logical_devices();
   if (allDevices.size() < 2) {
@@ -378,12 +388,12 @@ void Renderer::draw_frame_sfr(uint32_t imageIndex) {
     }
 
     device->end_command_buffer(currentFrame);
-    device->submit_command_buffer(currentFrame, i == 0);
+    device->submit_command_buffer(currentFrame, semaphoreIndex, i == 0);
   }
 
   present_frame(
       const_cast<LogicalDevice *>(deviceManager->get_primary_device()),
-      imageIndex);
+      imageIndex, semaphoreIndex);
 }
 
 void Renderer::draw_frame_hybrid() {
@@ -466,8 +476,9 @@ void Renderer::draw_frame() {
         if (primaryDevice->wait_for_fence(currentFrame)) {
           primaryDevice->reset_fence(currentFrame);
           uint32_t imageIndex;
-          if (acquire_next_image(primaryDevice, imageIndex)) {
-            draw_frame_sfr(imageIndex);
+          uint32_t semaphoreIndex;
+          if (acquire_next_image(primaryDevice, imageIndex, semaphoreIndex)) {
+            draw_frame_sfr(imageIndex, semaphoreIndex);
           }
         }
       }
