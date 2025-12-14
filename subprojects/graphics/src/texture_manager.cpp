@@ -102,6 +102,14 @@ TextureManager::create_texture(const Texture::TextureCreateInfo &createInfo) {
   auto devices = deviceManager->get_all_logical_devices();
   auto texture = std::make_unique<Texture>(devices, createInfo);
 
+  // Load from file if imagePath is provided
+  if (!createInfo.imagePath.empty()) {
+    if (!texture->load()) {
+      std::print("Failed to load texture from path in createInfo\n");
+      return nullptr;
+    }
+  }
+
   Texture *ptr = texture.get();
   textures[createInfo.identifier] = std::move(texture);
 

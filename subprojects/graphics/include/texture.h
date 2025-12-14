@@ -32,6 +32,7 @@ public:
 private:
   std::string identifier;
   TextureType type;
+  std::string imagePath;
   std::shared_ptr<Image> image;
   std::vector<AtlasRegion> atlasRegions;
 

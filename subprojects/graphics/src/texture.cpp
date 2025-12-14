@@ -5,7 +5,8 @@
 Texture::Texture(const std::vector<LogicalDevice *> &devices,
                  const TextureCreateInfo &createInfo)
     : identifier(createInfo.identifier), type(createInfo.type),
-      atlasRegions(createInfo.atlasRegions), logicalDevices(devices) {
+      imagePath(createInfo.imagePath), atlasRegions(createInfo.atlasRegions),
+      logicalDevices(devices) {
 
   // Create the image object
   Image::ImageCreateInfo imageInfo;
@@ -22,9 +23,26 @@ Texture::~Texture() {
 }
 
 bool Texture::load() {
-  // For now, assume we're loading from a file path stored during construction
-  // In a real scenario, you'd pass the image path in the create info
-  std::print("Texture - {} - load method called\n", identifier);
+  if (imagePath.empty()) {
+    std::print("Texture - {} - no image path specified\n", identifier);
+    return false;
+  }
+
+  // Load the image from file
+  if (!image->load_from_file(imagePath)) {
+    std::print("Texture - {} - failed to load image from {}\n", identifier,
+               imagePath);
+    return false;
+  }
+
+  // Upload to GPU
+  if (!image->update_gpu_data()) {
+    std::print("Texture - {} - failed to upload to GPU\n", identifier);
+    return false;
+  }
+
+  std::print("Texture - {} - loaded successfully from {}\n", identifier,
+             imagePath);
   return true;
 }
 

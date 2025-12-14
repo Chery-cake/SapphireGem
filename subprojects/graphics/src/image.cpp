@@ -5,6 +5,8 @@
 #include <print>
 #include <stdexcept>
 
+// Define STB_IMAGE_IMPLEMENTATION once in this translation unit
+// This file is compiled once per build, so no multiple definition issues
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
