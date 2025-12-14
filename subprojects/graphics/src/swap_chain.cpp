@@ -228,7 +228,8 @@ void SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
 
 vk::ResultValue<uint32_t>
 SwapChain::acquire_next_image(const vk::raii::Semaphore &semaphore) {
-  return swapChain.acquireNextImage(UINT64_MAX, *semaphore, nullptr);
+  auto [result, imageIndex] = swapChain.acquireNextImage(UINT64_MAX, *semaphore, nullptr);
+  return vk::ResultValue<uint32_t>(result, imageIndex);
 }
 
 void SwapChain::transition_image_for_rendering(
