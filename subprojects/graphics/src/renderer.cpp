@@ -314,8 +314,13 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   }
 
   device->begin_command_buffer(currentFrame);
-  vk::raii::CommandBuffer &commandBuffer =
-      device->get_command_buffers()[currentFrame];
+  auto &commandBuffers = device->get_command_buffers();
+  if (currentFrame >= commandBuffers.size()) {
+    std::print(stderr, "ERROR: Frame index {} out of range for command buffers (size: {})\n",
+               currentFrame, commandBuffers.size());
+    return;
+  }
+  vk::raii::CommandBuffer &commandBuffer = commandBuffers[currentFrame];
 
   device->get_swap_chain().transition_image_for_rendering(commandBuffer,
                                                           imageIndex);
