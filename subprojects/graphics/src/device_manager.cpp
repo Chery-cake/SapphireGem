@@ -253,6 +253,8 @@ void DeviceManager::recreate_swap_chain() {
   wait_idle();
 
   primaryDevice->get_swap_chain().recreate_swap_chain();
+  // Recreate semaphores to match the new swapchain image count
+  primaryDevice->create_swapchain_semaphores();
   std::print("✓ Primary device swap chain recreated\n");
 
   if (multiGPUEnabled) {
@@ -261,6 +263,8 @@ void DeviceManager::recreate_swap_chain() {
         device->get_swap_chain().recreate_swap_chain(
             primaryDevice->get_swap_chain().get_surface_format(),
             primaryDevice->get_swap_chain().get_extent2D());
+        // Recreate semaphores for secondary device as well
+        device->create_swapchain_semaphores();
         std::print(
             "✓ Secondary device swap chain recreated: {}\n",
             device->get_physical_device()->get_properties().deviceName.data());

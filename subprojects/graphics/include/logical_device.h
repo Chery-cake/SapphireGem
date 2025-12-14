@@ -46,7 +46,6 @@ private:
   void initialize_vma_allocator(vk::raii::Instance &instance);
   void create_descriptor_pool();
   void create_sync_objects();
-  void create_swapchain_semaphores();
 
 public:
   LogicalDevice(vk::raii::Instance &instance, PhysicalDevice *physicalDevice,
@@ -55,6 +54,8 @@ public:
 
   void initialize_swap_chain(GLFWwindow *window, vk::raii::SurfaceKHR &surface);
   void initialize_swap_chain(vk::SurfaceFormatKHR format, vk::Extent2D extent);
+  
+  void create_swapchain_semaphores();
 
   void initialize_command_pool(vk::CommandPoolCreateInfo &createInfo);
   void create_command_buffer();
