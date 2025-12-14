@@ -198,7 +198,7 @@ void Renderer::create_buffers() {
       .type = Buffer::BufferType::VERTEX,
       .usage = Buffer::BufferUsage::STATIC,
       .size = std::size(vertices) * sizeof(Material::Vertex2D),
-      .initialData = &vertices};
+      .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
 
@@ -209,7 +209,7 @@ void Renderer::create_buffers() {
       .type = Buffer::BufferType::INDEX,
       .usage = Buffer::BufferUsage::STATIC,
       .size = std::size(indices) * sizeof(uint16_t),
-      .initialData = &indices};
+      .initialData = indices.data()};
 
   bufferManager->create_buffer(indInfo);
 
