@@ -82,9 +82,9 @@ public:
 
   // Synchronization getters
   const vk::raii::Semaphore &
-  get_image_available_semaphore(uint32_t frameIndex) const;
+  get_image_available_semaphore(uint32_t imageIndex) const;
   const vk::raii::Semaphore &
-  get_render_finished_semaphore(uint32_t frameIndex) const;
+  get_render_finished_semaphore(uint32_t imageIndex) const;
   const vk::raii::Fence &get_in_flight_fence(uint32_t frameIndex) const;
 };
 
