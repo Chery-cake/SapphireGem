@@ -6,7 +6,7 @@
 #include <stdexcept>
 
 Window::Window(int width, int height, std::string title)
-    : frameBufferRezized(false) {
+    : frameBufferRezized(false), triangle(nullptr), cube(nullptr) {
   glfwInit();
 
   if (!glfwVulkanSupported()) {
@@ -21,6 +21,8 @@ Window::Window(int width, int height, std::string title)
   glfwSetFramebufferSizeCallback(window, frame_buffer_resize_callback);
 
   renderer = std::make_unique<Renderer>(window);
+
+  create_scene_objects();
 }
 
 Window::~Window() {
@@ -48,6 +50,49 @@ void Window::run() {
       renderer->get_device_manager().recreate_swap_chain();
     }
 
+    update_scene_objects();
+
     renderer->draw_frame();
   };
+}
+
+void Window::create_scene_objects() {
+  if (!renderer) {
+    std::print("Error: Renderer not initialized\n");
+    return;
+  }
+
+  // Create a 2D triangle on the left side
+  triangle = renderer->create_triangle_2d(
+      "triangle", glm::vec3(-0.5f, 0.0f, 0.0f), // Position (left)
+      glm::vec3(0.0f, 0.0f, 0.0f),              // Rotation
+      glm::vec3(0.5f, 0.5f, 1.0f));             // Scale
+
+  // Create a 3D cube on the right side
+  cube = renderer->create_cube_3d(
+      "cube", glm::vec3(0.5f, 0.0f, 0.0f), // Position (right)
+      glm::vec3(0.0f, 0.0f, 0.0f),         // Rotation
+      glm::vec3(0.3f, 0.3f, 1.0f));        // Scale
+
+  std::print("Scene objects created: triangle and cube\n");
+}
+
+void Window::update_scene_objects() {
+  static double lastTime = glfwGetTime();
+  double currentTime = glfwGetTime();
+  float deltaTime = static_cast<float>(currentTime - lastTime);
+  lastTime = currentTime;
+
+  static float time = 0.0f;
+  time += deltaTime;
+
+  if (triangle) {
+    // Rotate triangle around Z axis
+    triangle->set_rotation(glm::vec3(0.0f, 0.0f, time));
+  }
+
+  if (cube) {
+    // Rotate cube around Z axis (faster than triangle)
+    cube->set_rotation(glm::vec3(0.0f, 0.0f, time * 1.5f));
+  }
 }

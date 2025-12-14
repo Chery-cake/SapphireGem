@@ -23,7 +23,8 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
       debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
-      objectManager(nullptr), currentFrame(0), frameCount(0) {
+      objectManager(nullptr), currentFrame(0), frameCount(0),
+      currentSemaphoreIndex(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -49,6 +50,8 @@ Renderer::Renderer(GLFWwindow *window)
 }
 
 Renderer::~Renderer() {
+  //  deviceManager->wait_idle();
+
   objectManager.reset();
   bufferManager.reset();
   materialManager.reset();
@@ -238,11 +241,20 @@ void Renderer::create_buffers() {
   }
 }
 
-bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex) {
+bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
+                                  uint32_t &semaphoreIndex) {
   vk::Result acquireResult;
   try {
+    // Cycle through semaphores to avoid reusing one that's still in use
+    uint32_t imageCount = device->get_swap_chain().get_images().size();
+    currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
+    semaphoreIndex = currentSemaphoreIndex;
+
+    // Acquire next swapchain image
+    // The semaphore at semaphoreIndex will be signaled when the image is
+    // ready
     auto result = device->get_swap_chain().acquire_next_image(
-        device->get_image_available_semaphore(currentFrame));
+        device->get_image_available_semaphore(semaphoreIndex));
     acquireResult = result.result;
     imageIndex = result.value;
   } catch (const vk::OutOfDateKHRError &) {
@@ -260,10 +272,12 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex) {
   return true;
 }
 
-void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex) {
+void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex,
+                             uint32_t semaphoreIndex) {
   vk::PresentInfoKHR presentInfo{
       .waitSemaphoreCount = 1,
-      .pWaitSemaphores = &*device->get_render_finished_semaphore(currentFrame),
+      .pWaitSemaphores =
+          &*device->get_render_finished_semaphore(semaphoreIndex),
       .swapchainCount = 1,
       .pSwapchains = &*device->get_swap_chain().get_swap_chain(),
       .pImageIndices = &imageIndex};
@@ -282,7 +296,7 @@ void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex) {
 }
 
 void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
-  if (device) {
+  if (!device) {
     return;
   }
 
@@ -291,8 +305,8 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   }
   device->reset_fence(currentFrame);
 
-  uint32_t imageIndex;
-  if (!acquire_next_image(device, imageIndex)) {
+  uint32_t imageIndex, semaphoreIndex;
+  if (!acquire_next_image(device, imageIndex, semaphoreIndex)) {
     return;
   }
 
@@ -310,8 +324,8 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   device->get_swap_chain().transition_image_for_present(commandBuffer,
                                                         imageIndex);
   device->end_command_buffer(currentFrame);
-  device->submit_command_buffer(currentFrame, true);
-  present_frame(device, imageIndex);
+  device->submit_command_buffer(currentFrame, semaphoreIndex, true);
+  present_frame(device, imageIndex, semaphoreIndex);
 }
 
 void Renderer::draw_frame_afr() {
@@ -326,7 +340,7 @@ void Renderer::draw_frame_afr() {
       const_cast<LogicalDevice *>(allDevices[renderingDeviceIndex]));
 }
 
-void Renderer::draw_frame_sfr(uint32_t imageIndex) {
+void Renderer::draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex) {
   // SFR: Split frame across multiple GPUs
   auto allDevices = deviceManager->get_all_logical_devices();
   if (allDevices.size() < 2) {
@@ -378,12 +392,12 @@ void Renderer::draw_frame_sfr(uint32_t imageIndex) {
     }
 
     device->end_command_buffer(currentFrame);
-    device->submit_command_buffer(currentFrame, i == 0);
+    device->submit_command_buffer(currentFrame, semaphoreIndex, i == 0);
   }
 
   present_frame(
       const_cast<LogicalDevice *>(deviceManager->get_primary_device()),
-      imageIndex);
+      imageIndex, semaphoreIndex);
 }
 
 void Renderer::draw_frame_hybrid() {
@@ -465,9 +479,9 @@ void Renderer::draw_frame() {
             const_cast<LogicalDevice *>(deviceManager->get_primary_device());
         if (primaryDevice->wait_for_fence(currentFrame)) {
           primaryDevice->reset_fence(currentFrame);
-          uint32_t imageIndex;
-          if (acquire_next_image(primaryDevice, imageIndex)) {
-            draw_frame_sfr(imageIndex);
+          uint32_t imageIndex, semaphoreIndex;
+          if (acquire_next_image(primaryDevice, imageIndex, semaphoreIndex)) {
+            draw_frame_sfr(imageIndex, semaphoreIndex);
           }
         }
       }
@@ -508,4 +522,98 @@ MaterialManager &Renderer::get_material_manager() { return *materialManager; }
 
 BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
 
-ObjectManager *Renderer::get_object_manager() { return objectManager.get(); };
+ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
+
+RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
+                                           const glm::vec3 &position,
+                                           const glm::vec3 &rotation,
+                                           const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 2D triangle vertices (in NDC space, z=0)
+  const std::vector<Material::Vertex2D> vertices = {
+      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom vertex (red)
+      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},  // Top right vertex (green)
+      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}  // Top left vertex (blue)
+  };
+
+  const std::vector<uint16_t> indices = {0, 1, 2};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_2D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}
+
+RenderObject *Renderer::create_cube_3d(const std::string &identifier,
+                                       const glm::vec3 &position,
+                                       const glm::vec3 &rotation,
+                                       const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 3D cube vertices (8 vertices, using 2D positions but arranged
+  // for 3D effect) For a simple 3D cube representation in 2D projection
+  constexpr float cubeSize = 0.5f;
+  constexpr float depthOffset =
+      0.2f; // Offset for back face to create 3D effect
+
+  const std::vector<Material::Vertex2D> vertices = {
+      // Front face
+      {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left
+      {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right
+      {{cubeSize, cubeSize}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right
+      {{-cubeSize, cubeSize}, {1.0f, 1.0f, 0.0f}},  // 3: Top-left
+
+      // Back face (offset for 3D effect)
+      {{-cubeSize + depthOffset, -cubeSize + depthOffset},
+       {1.0f, 0.0f, 1.0f}}, // 4: Bottom-left
+      {{cubeSize + depthOffset, -cubeSize + depthOffset},
+       {0.0f, 1.0f, 1.0f}}, // 5: Bottom-right
+      {{cubeSize + depthOffset, cubeSize + depthOffset},
+       {1.0f, 1.0f, 1.0f}}, // 6: Top-right
+      {{-cubeSize + depthOffset, cubeSize + depthOffset},
+       {0.5f, 0.5f, 0.5f}} // 7: Top-left
+  };
+
+  // Cube indices for triangles (12 triangles, 2 per face, 6 faces)
+  const std::vector<uint16_t> indices = {
+      // Front face
+      0, 1, 2, 2, 3, 0,
+      // Right face (connecting front-right to back-right)
+      1, 5, 6, 6, 2, 1,
+      // Back face
+      5, 4, 7, 7, 6, 5,
+      // Left face (connecting front-left to back-left)
+      4, 0, 3, 3, 7, 4,
+      // Top face
+      3, 2, 6, 6, 7, 3,
+      // Bottom face
+      4, 5, 1, 1, 0, 4};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_3D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}

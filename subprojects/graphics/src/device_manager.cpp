@@ -279,20 +279,23 @@ void DeviceManager::create_command_pool() {
   vk::CommandPoolCreateInfo createInfo{
       .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer};
 
-  std::print("Creating command pools...\n");
+  std::print("Creating command pools and buffers...\n");
   primaryDevice->initialize_command_pool(createInfo);
   std::print("✓ Primary device command pool created\n");
+  primaryDevice->create_command_buffer();
+  std::print("✓ Primary device command buffers created\n");
 
   if (multiGPUEnabled) {
     for (const auto &device : secondaryDevices) {
       try {
         device->initialize_command_pool(createInfo);
+        device->create_command_buffer();
         std::print(
-            "✓ Secondary device command pool created: {}\n",
+            "✓ Secondary device command pool and buffers created: {}\n",
             device->get_physical_device()->get_properties().deviceName.data());
       } catch (const std::exception &e) {
         std::fprintf(
-            stderr, "✗ Failed to create command pool for %s: %s\n",
+            stderr, "✗ Failed to create command pool and buffers for %s: %s\n",
             device->get_physical_device()->get_properties().deviceName.data(),
             e.what());
       }

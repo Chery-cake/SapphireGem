@@ -188,17 +188,44 @@ void LogicalDevice::create_sync_objects() {
              physicalDevice->get_properties().deviceName.data(), maxFrames);
 }
 
+void LogicalDevice::create_swapchain_semaphores() {
+  if (!swapChain) {
+    throw std::runtime_error("Swapchain must be created before semaphores");
+  }
+
+  // Clear any existing semaphores
+  imageAvailableSemaphores.clear();
+  renderFinishedSemaphores.clear();
+
+  uint32_t imageCount = static_cast<uint32_t>(swapChain->get_images().size());
+
+  imageAvailableSemaphores.reserve(imageCount);
+  renderFinishedSemaphores.reserve(imageCount);
+
+  vk::SemaphoreCreateInfo semaphoreInfo{};
+
+  for (uint32_t i = 0; i < imageCount; ++i) {
+    imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+    renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
+  }
+
+  std::print("Swapchain semaphores created for device: {} ({} images)\n",
+             physicalDevice->get_properties().deviceName.data(), imageCount);
+}
+
 void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
                                           vk::raii::SurfaceKHR &surface) {
   swapChain = std::make_unique<SwapChain>(this, window, surface);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  create_swapchain_semaphores();
 }
 void LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
                                           vk::Extent2D extent) {
   swapChain = std::make_unique<SwapChain>(this, format, extent);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  create_swapchain_semaphores();
 }
 
 void LogicalDevice::initialize_command_pool(
@@ -254,18 +281,19 @@ void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
 }
 
 void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
+                                          uint32_t imageIndex,
                                           bool withSemaphores) {
   if (withSemaphores) {
     vk::PipelineStageFlags waitStages[] = {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submitInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[frameIndex],
+        .pWaitSemaphores = &*imageAvailableSemaphores[imageIndex],
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[frameIndex],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[frameIndex]};
+        .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
 
     graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
   } else {
@@ -305,21 +333,21 @@ std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
 }
 
 const vk::raii::Semaphore &
-LogicalDevice::get_image_available_semaphore(uint32_t frameIndex) const {
-  if (frameIndex >= imageAvailableSemaphores.size()) {
+LogicalDevice::get_image_available_semaphore(uint32_t imageIndex) const {
+  if (imageIndex >= imageAvailableSemaphores.size()) {
     throw std::out_of_range(
         "Frame index out of range for image available semaphore");
   }
-  return imageAvailableSemaphores[frameIndex];
+  return imageAvailableSemaphores[imageIndex];
 }
 
 const vk::raii::Semaphore &
-LogicalDevice::get_render_finished_semaphore(uint32_t frameIndex) const {
-  if (frameIndex >= renderFinishedSemaphores.size()) {
+LogicalDevice::get_render_finished_semaphore(uint32_t imageIndex) const {
+  if (imageIndex >= renderFinishedSemaphores.size()) {
     throw std::out_of_range(
         "Frame index out of range for render finished semaphore");
   }
-  return renderFinishedSemaphores[frameIndex];
+  return renderFinishedSemaphores[imageIndex];
 }
 
 const vk::raii::Fence &

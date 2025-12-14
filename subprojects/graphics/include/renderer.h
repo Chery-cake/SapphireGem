@@ -34,6 +34,7 @@ private:
 
   uint32_t currentFrame;
   uint32_t frameCount; // total frames rendered
+  uint32_t currentSemaphoreIndex;
 
   void init_instance();
   void init_surface();
@@ -46,13 +47,15 @@ private:
   void create_buffers();
 
   // Helper methods for drawFrame
-  bool acquire_next_image(LogicalDevice *device, uint32_t &imageIndex);
-  void present_frame(LogicalDevice *device, uint32_t imageIndex);
+  bool acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
+                          uint32_t &semaphoreIndex);
+  void present_frame(LogicalDevice *device, uint32_t imageIndex,
+                     uint32_t semaphoreIndex);
 
   // Strategy-specific rendering
   void draw_frame_single_gpu(LogicalDevice *device);
   void draw_frame_afr();
-  void draw_frame_sfr(uint32_t imageIndex);
+  void draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex);
   void draw_frame_hybrid();
   void draw_frame_multi_queue_streaming();
 
@@ -70,4 +73,14 @@ public:
   MaterialManager &get_material_manager();
   BufferManager &get_buffer_manager();
   ObjectManager *get_object_manager();
+
+  // Helper functions to create objects
+  RenderObject *create_triangle_2d(const std::string &identifier,
+                                   const glm::vec3 &position = glm::vec3(0.0f),
+                                   const glm::vec3 &rotation = glm::vec3(0.0f),
+                                   const glm::vec3 &scale = glm::vec3(1.0f));
+  RenderObject *create_cube_3d(const std::string &identifier,
+                               const glm::vec3 &position = glm::vec3(0.0f),
+                               const glm::vec3 &rotation = glm::vec3(0.0f),
+                               const glm::vec3 &scale = glm::vec3(1.0f));
 };
