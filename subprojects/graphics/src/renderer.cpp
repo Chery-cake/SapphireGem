@@ -542,10 +542,11 @@ RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
   }
 
   // Define a 2D triangle vertices (in NDC space, z=0)
+  // Vertices ordered counter-clockwise for front-face visibility
   const std::vector<Material::Vertex2D> vertices = {
       {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom vertex (red)
-      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},  // Top right vertex (green)
-      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}  // Top left vertex (blue)
+      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}, // Top left vertex (blue)
+      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}   // Top right vertex (green)
   };
 
   const std::vector<uint16_t> indices = {0, 1, 2};
