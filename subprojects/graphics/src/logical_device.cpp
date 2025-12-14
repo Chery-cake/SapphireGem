@@ -346,7 +346,7 @@ const vk::raii::Semaphore &
 LogicalDevice::get_render_finished_semaphore(uint32_t imageIndex) const {
   if (imageIndex >= renderFinishedSemaphores.size()) {
     throw std::out_of_range(
-        "Frame index out of range for render finished semaphore");
+        "Image index out of range for render finished semaphore");
   }
   return renderFinishedSemaphores[imageIndex];
 }
