@@ -1,5 +1,6 @@
 #include "render_object.h"
 #include "buffer_manager.h"
+#include "material.h"
 #include "material_manager.h"
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
@@ -21,12 +22,12 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   indexBufferName = identifier + "_indices";
 
   // Create vertex buffer
-  Buffer::BufferCreateInfo vertInfo = {.identifier = vertexBufferName,
-                                       .type = Buffer::BufferType::VERTEX,
-                                       .usage = Buffer::BufferUsage::STATIC,
-                                       .size = createInfo.vertices.size(),
-                                       .initialData =
-                                           createInfo.vertices.data()};
+  Buffer::BufferCreateInfo vertInfo = {
+      .identifier = vertexBufferName,
+      .type = Buffer::BufferType::VERTEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
+      .initialData = createInfo.vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
 
@@ -34,7 +35,8 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
                                       .type = Buffer::BufferType::INDEX,
                                       .usage = Buffer::BufferUsage::STATIC,
-                                      .size = createInfo.indices.size(),
+                                      .size = createInfo.indices.size() *
+                                              sizeof(uint16_t),
                                       .initialData = createInfo.indices.data()};
 
   bufferManager->create_buffer(indInfo);

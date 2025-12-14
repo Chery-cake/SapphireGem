@@ -193,24 +193,17 @@ void LogicalDevice::create_swapchain_semaphores() {
     throw std::runtime_error("Swapchain must be created before semaphores");
   }
 
-  // Clear any existing semaphores
-  imageAvailableSemaphores.clear();
-  renderFinishedSemaphores.clear();
+  // Semaphores are already created in create_sync_objects() based on
+  // maxFrames. The synchronization model uses per-frame semaphores (not
+  // per-image) to properly handle frames in flight. This function maintains
+  // API compatibility for existing callers but no longer performs actual
+  // semaphore creation.
 
-  uint32_t imageCount = static_cast<uint32_t>(swapChain->get_images().size());
-
-  imageAvailableSemaphores.reserve(imageCount);
-  renderFinishedSemaphores.reserve(imageCount);
-
-  vk::SemaphoreCreateInfo semaphoreInfo{};
-
-  for (uint32_t i = 0; i < imageCount; ++i) {
-    imageAvailableSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-    renderFinishedSemaphores.push_back(device.createSemaphore(semaphoreInfo));
-  }
-
-  std::print("Swapchain semaphores created for device: {} ({} images)\n",
-             physicalDevice->get_properties().deviceName.data(), imageCount);
+  std::print("Swapchain created for device: {} ({} images, using {} frame "
+             "semaphores)\n",
+             physicalDevice->get_properties().deviceName.data(),
+             static_cast<uint32_t>(swapChain->get_images().size()),
+             imageAvailableSemaphores.size());
 }
 
 void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
@@ -281,19 +274,19 @@ void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
 }
 
 void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
-                                          uint32_t imageIndex,
+                                          uint32_t semaphoreIndex,
                                           bool withSemaphores) {
   if (withSemaphores) {
     vk::PipelineStageFlags waitStages[] = {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
     vk::SubmitInfo submitInfo{
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &*imageAvailableSemaphores[imageIndex],
+        .pWaitSemaphores = &*imageAvailableSemaphores[semaphoreIndex],
         .pWaitDstStageMask = waitStages,
         .commandBufferCount = 1,
         .pCommandBuffers = &*commandBuffers[frameIndex],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &*renderFinishedSemaphores[imageIndex]};
+        .pSignalSemaphores = &*renderFinishedSemaphores[semaphoreIndex]};
 
     graphicsQueue.submit(submitInfo, *inFlightFences[frameIndex]);
   } else {

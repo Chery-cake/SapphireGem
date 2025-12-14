@@ -50,7 +50,7 @@ Renderer::Renderer(GLFWwindow *window)
 }
 
 Renderer::~Renderer() {
-  //  deviceManager->wait_idle();
+  deviceManager->wait_idle();
 
   objectManager.reset();
   bufferManager.reset();
@@ -197,8 +197,9 @@ void Renderer::create_buffers() {
   Buffer::BufferCreateInfo vertInfo = {.identifier = "vertices",
                                        .type = Buffer::BufferType::VERTEX,
                                        .usage = Buffer::BufferUsage::STATIC,
-                                       .size = std::size(vertices),
-                                       .initialData = &vertices};
+                                       .size = std::size(vertices) *
+                                               sizeof(Material::Vertex2D),
+                                       .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
 
@@ -207,8 +208,9 @@ void Renderer::create_buffers() {
   Buffer::BufferCreateInfo indInfo = {.identifier = "indices",
                                       .type = Buffer::BufferType::INDEX,
                                       .usage = Buffer::BufferUsage::STATIC,
-                                      .size = std::size(indices),
-                                      .initialData = &indices};
+                                      .size =
+                                          std::size(indices) * sizeof(uint16_t),
+                                      .initialData = indices.data()};
 
   bufferManager->create_buffer(indInfo);
 
@@ -246,9 +248,9 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
   vk::Result acquireResult;
   try {
     // Cycle through semaphores to avoid reusing one that's still in use
-    uint32_t imageCount = device->get_swap_chain().get_images().size();
-    currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
-    semaphoreIndex = currentSemaphoreIndex;
+    // uint32_t imageCount = device->get_swap_chain().get_images().size();
+    // currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
+    semaphoreIndex = currentFrame;
 
     // Acquire next swapchain image
     // The semaphore at semaphoreIndex will be signaled when the image is

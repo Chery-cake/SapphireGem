@@ -67,7 +67,7 @@ public:
   void reset_fence(uint32_t frameIndex);
   void begin_command_buffer(uint32_t frameIndex);
   void end_command_buffer(uint32_t frameIndex);
-  void submit_command_buffer(uint32_t frameIndex, uint32_t imageIndex,
+  void submit_command_buffer(uint32_t frameIndex, uint32_t semaphoreIndex,
                              bool withSemaphores);
 
   PhysicalDevice *get_physical_device() const;
