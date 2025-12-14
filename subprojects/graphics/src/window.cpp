@@ -25,7 +25,6 @@ Window::Window(int width, int height, std::string title)
   renderer = std::make_unique<Renderer>(window);
 
   create_scene_objects();
-  
   std::print("Press 'T' to toggle between CPU (vertex) and GPU (matrix) transformation modes\n");
 }
 
@@ -48,7 +47,7 @@ void Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
 void Window::key_callback(GLFWwindow *window, int key, int scancode,
                          int action, int mods) {
   auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
-  
+
   if (action == GLFW_PRESS) {
     if (key == GLFW_KEY_T) {
       win->toggle_transform_mode();

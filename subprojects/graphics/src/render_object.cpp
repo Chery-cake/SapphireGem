@@ -176,8 +176,10 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     if (transformDirty) {
       update_model_matrix();
     }
-    // TODO: Push model matrix to shader via push constants or UBO
-    // For now, this is a placeholder - actual shader binding needs to be implemented
+    // NOTE: GPU matrix mode is currently a placeholder
+    // Full implementation requires passing model matrix to shader
+    // via push constants or uniform buffer objects (UBO)
+    // For now, objects will appear stationary in GPU mode
   }
 
   // Bind material
@@ -267,7 +269,7 @@ void RenderObject::restore_original_vertices() {
                              originalVertices.size() * sizeof(Material::Vertex2D),
                              0);
   }
-  
+
   // Reset transformed vertices to original
   transformedVertices = originalVertices;
   verticesDirty = false;
