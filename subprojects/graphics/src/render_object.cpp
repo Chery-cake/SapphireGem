@@ -20,7 +20,8 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
       materialManager(materialManager), 
       originalVertices(createInfo.vertices),
       transformedVertices(createInfo.vertices),
-      verticesDirty(true) {
+      verticesDirty(true),
+      transformMode(TransformMode::CPU_VERTICES) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -164,9 +165,19 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     return;
   }
 
-  // Update vertices if needed
-  if (verticesDirty) {
-    update_vertices();
+  // Update transformations based on mode
+  if (transformMode == TransformMode::CPU_VERTICES) {
+    // CPU-side: Update vertices if needed
+    if (verticesDirty) {
+      update_vertices();
+    }
+  } else {
+    // GPU-side: Update model matrix if needed
+    if (transformDirty) {
+      update_model_matrix();
+    }
+    // TODO: Push model matrix to shader via push constants or UBO
+    // For now, this is a placeholder - actual shader binding needs to be implemented
   }
 
   // Bind material
@@ -223,3 +234,41 @@ const glm::mat4 &RenderObject::get_model_matrix() {
 }
 
 Material *RenderObject::get_material() const { return material; }
+
+RenderObject::TransformMode RenderObject::get_transform_mode() const {
+  return transformMode;
+}
+
+void RenderObject::set_transform_mode(TransformMode mode) {
+  if (transformMode == mode) {
+    return;
+  }
+
+  transformMode = mode;
+
+  if (mode == TransformMode::CPU_VERTICES) {
+    // Switching to CPU mode: mark vertices as dirty to apply transformations
+    verticesDirty = true;
+  } else {
+    // Switching to GPU mode: restore original vertices and mark matrix as dirty
+    restore_original_vertices();
+    transformDirty = true;
+  }
+
+  std::print("Object '{}' transform mode changed to: {}\n", identifier,
+             mode == TransformMode::CPU_VERTICES ? "CPU_VERTICES" : "GPU_MATRIX");
+}
+
+void RenderObject::restore_original_vertices() {
+  // Restore original vertex positions to the buffer
+  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  if (vertexBuffer) {
+    vertexBuffer->update_data(originalVertices.data(),
+                             originalVertices.size() * sizeof(Material::Vertex2D),
+                             0);
+  }
+  
+  // Reset transformed vertices to original
+  transformedVertices = originalVertices;
+  verticesDirty = false;
+}

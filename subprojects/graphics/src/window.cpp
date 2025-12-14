@@ -6,7 +6,8 @@
 #include <stdexcept>
 
 Window::Window(int width, int height, std::string title)
-    : frameBufferRezized(false), triangle(nullptr), cube(nullptr) {
+    : frameBufferRezized(false), triangle(nullptr), cube(nullptr),
+      currentTransformMode(RenderObject::TransformMode::CPU_VERTICES) {
   glfwInit();
 
   if (!glfwVulkanSupported()) {
@@ -19,10 +20,13 @@ Window::Window(int width, int height, std::string title)
   window = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
   glfwSetWindowUserPointer(window, this);
   glfwSetFramebufferSizeCallback(window, frame_buffer_resize_callback);
+  glfwSetKeyCallback(window, key_callback);
 
   renderer = std::make_unique<Renderer>(window);
 
   create_scene_objects();
+  
+  std::print("Press 'T' to toggle between CPU (vertex) and GPU (matrix) transformation modes\n");
 }
 
 Window::~Window() {
@@ -39,6 +43,17 @@ void Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
                                           int height) {
   auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
   win->frameBufferRezized = true;
+}
+
+void Window::key_callback(GLFWwindow *window, int key, int scancode,
+                         int action, int mods) {
+  auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
+  
+  if (action == GLFW_PRESS) {
+    if (key == GLFW_KEY_T) {
+      win->toggle_transform_mode();
+    }
+  }
 }
 
 void Window::run() {
@@ -95,4 +110,26 @@ void Window::update_scene_objects() {
     // Rotate cube around Z axis (faster than triangle)
     cube->set_rotation(glm::vec3(0.0f, 0.0f, time * 1.5f));
   }
+}
+
+void Window::toggle_transform_mode() {
+  // Toggle between CPU and GPU modes
+  if (currentTransformMode == RenderObject::TransformMode::CPU_VERTICES) {
+    currentTransformMode = RenderObject::TransformMode::GPU_MATRIX;
+  } else {
+    currentTransformMode = RenderObject::TransformMode::CPU_VERTICES;
+  }
+
+  // Apply to all objects
+  if (triangle) {
+    triangle->set_transform_mode(currentTransformMode);
+  }
+  if (cube) {
+    cube->set_transform_mode(currentTransformMode);
+  }
+
+  std::print("Transform mode switched to: {}\n",
+             currentTransformMode == RenderObject::TransformMode::CPU_VERTICES
+                 ? "CPU (vertex transformation)"
+                 : "GPU (matrix transformation)");
 }
