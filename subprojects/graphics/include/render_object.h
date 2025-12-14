@@ -13,6 +13,8 @@ class RenderObject {
 public:
   enum class ObjectType { OBJECT_2D, OBJECT_3D };
 
+  enum class TransformMode { CPU_VERTICES, GPU_MATRIX };
+
   struct ObjectCreateInfo {
     std::string identifier;
     ObjectType type = ObjectType::OBJECT_3D;
@@ -60,7 +62,16 @@ private:
   BufferManager *bufferManager;
   MaterialManager *materialManager;
 
+  // Original vertices
+  std::vector<Material::Vertex2D> originalVertices;
+  std::vector<Material::Vertex2D> transformedVertices;
+  bool verticesDirty;
+
+  TransformMode transformMode;
+
   void update_model_matrix();
+  void update_vertices();
+  void restore_original_vertices();
 
 public:
   RenderObject(const ObjectCreateInfo createInfo, BufferManager *bufferManager,
@@ -76,6 +87,7 @@ public:
   void set_rotation(const glm::vec3 &rot);
   void set_scale(const glm::vec3 &scl);
   void set_visible(bool vis);
+  void set_transform_mode(TransformMode mode);
 
   // Getters
   const std::string &get_identifier() const;
@@ -83,4 +95,5 @@ public:
   bool is_visible() const;
   const glm::mat4 &get_model_matrix();
   Material *get_material() const;
+  TransformMode get_transform_mode() const;
 };

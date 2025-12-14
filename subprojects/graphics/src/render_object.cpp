@@ -16,7 +16,9 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager) {
+      materialManager(materialManager), originalVertices(createInfo.vertices),
+      transformedVertices(createInfo.vertices), verticesDirty(true),
+      transformMode(TransformMode::CPU_VERTICES) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -25,8 +27,9 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   Buffer::BufferCreateInfo vertInfo = {
       .identifier = vertexBufferName,
       .type = Buffer::BufferType::VERTEX,
-      .usage = Buffer::BufferUsage::STATIC,
+      .usage = Buffer::BufferUsage::DYNAMIC,
       .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
+      .elementSize = sizeof(Material::Vertex2D),
       .initialData = createInfo.vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
@@ -57,6 +60,7 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   }
 
   update_model_matrix();
+  update_vertices();
 }
 
 RenderObject::~RenderObject() {
@@ -81,10 +85,114 @@ void RenderObject::update_model_matrix() {
   transformDirty = false;
 }
 
+void RenderObject::update_vertices() {
+  if (!verticesDirty) {
+    return;
+  }
+
+  // Transform vertices based on position, rotation, and scale
+  for (size_t i = 0; i < originalVertices.size(); ++i) {
+    glm::vec2 originalPos = originalVertices[i].pos;
+
+    // Apply scale
+    glm::vec2 scaledPos = originalPos * glm::vec2(scale.x, scale.y);
+
+    if (type == ObjectType::OBJECT_2D) {
+      // 2D rotation (around Z axis only)
+      float cosZ = std::cos(rotation.z);
+      float sinZ = std::sin(rotation.z);
+
+      glm::vec2 rotatedPos;
+      rotatedPos.x = (scaledPos.x * cosZ) - (scaledPos.y * sinZ);
+      rotatedPos.y = (scaledPos.x * sinZ) + (scaledPos.y * cosZ);
+
+      // Apply translation
+      transformedVertices[i].pos =
+          rotatedPos + glm::vec2(position.x, position.y);
+    } else {
+      // 3D rotation (around X, Y, Z axes)
+      // Convert 2D position to 3D for rotation
+      glm::vec3 pos3d = glm::vec3(scaledPos.x, scaledPos.y, 0.0f);
+
+      // Rotate around X axis
+      float cosX = std::cos(rotation.x);
+      float sinX = std::sin(rotation.x);
+      glm::vec3 rotatedX;
+      rotatedX.x = pos3d.x;
+      rotatedX.y = (pos3d.y * cosX) - (pos3d.z * sinX);
+      rotatedX.z = (pos3d.y * sinX) + (pos3d.z * cosX);
+
+      // Rotate around Y axis
+      float cosY = std::cos(rotation.y);
+      float sinY = std::sin(rotation.y);
+      glm::vec3 rotatedY;
+      rotatedY.x = (rotatedX.x * cosY) + (rotatedX.z * sinY);
+      rotatedY.y = rotatedX.y;
+      rotatedY.z = (-rotatedX.x * sinY) + (rotatedX.z * cosY);
+
+      // Rotate around Z axis
+      float cosZ = std::cos(rotation.z);
+      float sinZ = std::sin(rotation.z);
+      glm::vec3 rotatedZ;
+      rotatedZ.x = (rotatedY.x * cosZ) - (rotatedY.y * sinZ);
+      rotatedZ.y = (rotatedY.x * sinZ) + (rotatedY.y * cosZ);
+      rotatedZ.z = rotatedY.z;
+
+      // Project back to 2D and apply translation
+      transformedVertices[i].pos =
+          glm::vec2(rotatedZ.x, rotatedZ.y) + glm::vec2(position.x, position.y);
+    }
+
+    // Keep the same color
+    transformedVertices[i].color = originalVertices[i].color;
+  }
+
+  // Update the vertex buffer with transformed vertices
+  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  if (vertexBuffer) {
+    vertexBuffer->update_data(
+        transformedVertices.data(),
+        transformedVertices.size() * sizeof(Material::Vertex2D), 0);
+  }
+
+  verticesDirty = false;
+}
+
+void RenderObject::restore_original_vertices() {
+  // Restore original vertex positions to the buffer
+  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  if (vertexBuffer) {
+    vertexBuffer->update_data(
+        originalVertices.data(),
+        originalVertices.size() * sizeof(Material::Vertex2D), 0);
+  }
+
+  // Reset transformed vertices to original
+  transformedVertices = originalVertices;
+  verticesDirty = false;
+}
+
 void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
                         uint32_t deviceIndex, uint32_t frameIndex) {
   if (!visible || !material) {
     return;
+  }
+
+  // Update transformations based on mode
+  if (transformMode == TransformMode::CPU_VERTICES) {
+    // CPU-side: Update vertices if needed
+    if (verticesDirty) {
+      update_vertices();
+    }
+  } else {
+    // GPU-side: Update model matrix if needed
+    if (transformDirty) {
+      update_model_matrix();
+    }
+    // NOTE: GPU matrix mode is currently a placeholder
+    // Full implementation requires passing model matrix to shader
+    // via push constants or uniform buffer objects (UBO)
+    // For now, objects will appear stationary in GPU mode
   }
 
   // Bind material
@@ -110,19 +218,45 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
 void RenderObject::set_position(const glm::vec3 &pos) {
   position = pos;
   transformDirty = true;
+  verticesDirty = true;
 }
 
 void RenderObject::set_rotation(const glm::vec3 &rot) {
   rotation = rot;
   transformDirty = true;
+  verticesDirty = true;
 }
 
 void RenderObject::set_scale(const glm::vec3 &scl) {
   scale = scl;
   transformDirty = true;
+  verticesDirty = true;
 }
 
 void RenderObject::set_visible(bool vis) { visible = vis; }
+
+void RenderObject::set_transform_mode(RenderObject::TransformMode mode) {
+  if (transformMode == mode) {
+    return;
+  }
+
+  transformMode = mode;
+
+  if (mode == TransformMode::CPU_VERTICES) {
+    // Switching to CPU mode: mark vertices as dirty to apply
+    // transformations
+    verticesDirty = true;
+  } else {
+    // Switching to GPU mode: restore original vertices and mark matrix as
+    // dirty
+    restore_original_vertices();
+    transformDirty = true;
+  }
+
+  std::print("Object '{}' transform mode changed to: {}\n", identifier,
+             mode == TransformMode::CPU_VERTICES ? "CPU_VERTICES"
+                                                 : "GPU_MATRIX");
+}
 
 const std::string &RenderObject::get_identifier() const { return identifier; }
 
@@ -138,3 +272,7 @@ const glm::mat4 &RenderObject::get_model_matrix() {
 }
 
 Material *RenderObject::get_material() const { return material; }
+
+RenderObject::TransformMode RenderObject::get_transform_mode() const {
+  return transformMode;
+}
