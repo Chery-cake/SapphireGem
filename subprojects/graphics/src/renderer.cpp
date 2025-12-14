@@ -247,18 +247,18 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
                                   uint32_t &semaphoreIndex) {
   vk::Result acquireResult;
   try {
-    // Cycle through semaphores to avoid reusing one that's still in use
-    // uint32_t imageCount = device->get_swap_chain().get_images().size();
-    // currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
-    semaphoreIndex = currentFrame;
 
-    // Acquire next swapchain image
-    // The semaphore at semaphoreIndex will be signaled when the image is
-    // ready
+    // Use per-frame semaphore for image acquisition
+    // This semaphore will be signaled when the image is available
     auto result = device->get_swap_chain().acquire_next_image(
-        device->get_image_available_semaphore(semaphoreIndex));
+        device->get_image_available_semaphore(currentFrame));
     acquireResult = result.result;
     imageIndex = result.value;
+
+    // The semaphoreIndex will be used to select the render finished
+    // semaphore For proper synchronization, we use the acquired image index
+    // for present semaphores
+    semaphoreIndex = imageIndex;
   } catch (const vk::OutOfDateKHRError &) {
     deviceManager->recreate_swap_chain();
     return false;
@@ -313,8 +313,16 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   }
 
   device->begin_command_buffer(currentFrame);
-  vk::raii::CommandBuffer &commandBuffer =
-      device->get_command_buffers()[currentFrame];
+
+  auto &commandBuffers = device->get_command_buffers();
+  if (currentFrame >= commandBuffers.size()) {
+    std::print(stderr,
+               "ERROR: Frame index {} out of range for command buffers "
+               "(size: {})\n",
+               currentFrame, commandBuffers.size());
+    return;
+  }
+  vk::raii::CommandBuffer &commandBuffer = commandBuffers[currentFrame];
 
   device->get_swap_chain().transition_image_for_rendering(commandBuffer,
                                                           imageIndex);
@@ -537,9 +545,9 @@ RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
 
   // Define a 2D triangle vertices (in NDC space, z=0)
   const std::vector<Material::Vertex2D> vertices = {
-      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom vertex (red)
-      {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},  // Top right vertex (green)
-      {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}  // Top left vertex (blue)
+      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
+      {{-0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
   };
 
   const std::vector<uint16_t> indices = {0, 1, 2};
