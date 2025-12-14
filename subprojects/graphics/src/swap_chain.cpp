@@ -233,6 +233,12 @@ SwapChain::acquire_next_image(const vk::raii::Semaphore &semaphore) {
 
 void SwapChain::transition_image_for_rendering(
     vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
+  if (imageIndex >= swapChainImages.size()) {
+    std::print(stderr, "ERROR: Image index {} out of range for swapchain images (size: {})\n",
+               imageIndex, swapChainImages.size());
+    throw std::out_of_range("Image index out of range for swapchain images");
+  }
+  
   vk::ImageMemoryBarrier barrier{
       .srcAccessMask = vk::AccessFlagBits::eNone,
       .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
@@ -253,6 +259,12 @@ void SwapChain::transition_image_for_rendering(
 
 void SwapChain::transition_image_for_present(
     vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
+  if (imageIndex >= swapChainImages.size()) {
+    std::print(stderr, "ERROR: Image index {} out of range for swapchain images (size: {})\n",
+               imageIndex, swapChainImages.size());
+    throw std::out_of_range("Image index out of range for swapchain images");
+  }
+  
   vk::ImageMemoryBarrier presentBarrier{
       .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
       .dstAccessMask = vk::AccessFlagBits::eNone,
@@ -273,6 +285,12 @@ void SwapChain::transition_image_for_present(
 
 void SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
                                 uint32_t imageIndex) {
+  if (imageIndex >= swapChainImageViews.size()) {
+    std::print(stderr, "ERROR: Image index {} out of range for swapchain image views (size: {})\n",
+               imageIndex, swapChainImageViews.size());
+    throw std::out_of_range("Image index out of range for swapchain image views");
+  }
+  
   vk::RenderingAttachmentInfo colorAttachment{
       .imageView = *swapChainImageViews[imageIndex],
       .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
