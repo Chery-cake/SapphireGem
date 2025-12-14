@@ -60,7 +60,13 @@ private:
   BufferManager *bufferManager;
   MaterialManager *materialManager;
 
+  // Original vertices (for CPU-based rotation)
+  std::vector<Material::Vertex2D> originalVertices;
+  std::vector<Material::Vertex2D> transformedVertices;
+  bool verticesDirty;
+
   void update_model_matrix();
+  void update_vertices();
 
 public:
   RenderObject(const ObjectCreateInfo createInfo, BufferManager *bufferManager,
