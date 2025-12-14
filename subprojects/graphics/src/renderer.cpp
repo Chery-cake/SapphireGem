@@ -23,8 +23,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
       debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
-      objectManager(nullptr), currentFrame(0), frameCount(0),
-      currentSemaphoreIndex(0) {
+      objectManager(nullptr), currentFrame(0), frameCount(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);

@@ -34,7 +34,6 @@ private:
 
   uint32_t currentFrame;
   uint32_t frameCount; // total frames rendered
-  uint32_t currentSemaphoreIndex;
 
   void init_instance();
   void init_surface();
