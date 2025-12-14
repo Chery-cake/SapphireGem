@@ -7,8 +7,10 @@ target_compile_definitions(glfw INTERFACE
     GLFW_INCLUDE_VULKAN
 )
 
+find_package(glm REQUIRED)
 if(NOT TARGET glm)
   add_library(glm INTERFACE)
+  target_include_directories(glm INTERFACE /usr/include)
 endif()
 
 find_package(Vulkan REQUIRED)
@@ -90,4 +92,27 @@ target_include_directories(btp INTERFACE
 )
 target_link_libraries(btp INTERFACE
     Threads::Threads
+)
+
+# Fetch stb (stb_image for image loading)
+if(NOT TARGET stb)
+    include(FetchContent)
+
+    FetchContent_Declare(
+        stb
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG master
+        GIT_SHALLOW TRUE
+    )
+
+    FetchContent_MakeAvailable(stb)
+
+    FetchContent_GetProperties(stb)
+    message(STATUS "STB source: ${stb_SOURCE_DIR}")
+endif()
+
+add_library(stb INTERFACE)
+
+target_include_directories(stb INTERFACE
+    ${stb_SOURCE_DIR}
 )

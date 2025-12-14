@@ -13,6 +13,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     vma
     glfw
     glm
+    stb
 )
 
 target_include_directories(${PROJECT_NAME}
