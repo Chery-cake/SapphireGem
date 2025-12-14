@@ -247,18 +247,16 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
                                   uint32_t &semaphoreIndex) {
   vk::Result acquireResult;
   try {
-    // Cycle through semaphores to avoid reusing one that's still in use
-    // uint32_t imageCount = device->get_swap_chain().get_images().size();
-    // currentSemaphoreIndex = (currentSemaphoreIndex + 1) % imageCount;
-    semaphoreIndex = currentFrame;
-
-    // Acquire next swapchain image
-    // The semaphore at semaphoreIndex will be signaled when the image is
-    // ready
+    // Use per-frame semaphore for image acquisition
+    // This semaphore will be signaled when the image is available
     auto result = device->get_swap_chain().acquire_next_image(
-        device->get_image_available_semaphore(semaphoreIndex));
+        device->get_image_available_semaphore(currentFrame));
     acquireResult = result.result;
     imageIndex = result.value;
+    
+    // The semaphoreIndex will be used to select the render finished semaphore
+    // For proper synchronization, we use the acquired image index for present semaphores
+    semaphoreIndex = imageIndex;
   } catch (const vk::OutOfDateKHRError &) {
     deviceManager->recreate_swap_chain();
     return false;
