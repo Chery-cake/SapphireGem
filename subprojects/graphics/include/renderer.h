@@ -5,6 +5,7 @@
 #include "logical_device.h"
 #include "material_manager.h"
 #include "object_manager.h"
+#include "texture_manager.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
 #include <memory>
@@ -28,6 +29,7 @@ private:
 
   std::unique_ptr<DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
+  std::unique_ptr<TextureManager> textureManager;
 
   std::unique_ptr<BufferManager> bufferManager;
   std::unique_ptr<ObjectManager> objectManager;
@@ -71,6 +73,7 @@ public:
 
   DeviceManager &get_device_manager();
   MaterialManager &get_material_manager();
+  TextureManager &get_texture_manager();
   BufferManager &get_buffer_manager();
   ObjectManager *get_object_manager();
 

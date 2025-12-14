@@ -22,9 +22,9 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
-      objectManager(nullptr), currentFrame(0), frameCount(0),
-      currentSemaphoreIndex(0) {
+      debugMessanger(nullptr), deviceManager(nullptr), textureManager(nullptr),
+      bufferManager(nullptr), objectManager(nullptr), currentFrame(0),
+      frameCount(0), currentSemaphoreIndex(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -54,6 +54,7 @@ Renderer::~Renderer() {
 
   objectManager.reset();
   bufferManager.reset();
+  textureManager.reset();
   materialManager.reset();
   deviceManager.reset();
 
@@ -132,6 +133,7 @@ void Renderer::init_swap_chain() {
 
 void Renderer::init_materials() {
   materialManager = std::make_unique<MaterialManager>(deviceManager.get());
+  textureManager = std::make_unique<TextureManager>(deviceManager.get());
 
   vk::DescriptorSetLayoutBinding bidingInfo = {
       .binding = 0,
@@ -529,6 +531,8 @@ void Renderer::set_gpu_config(const ObjectManager::MultiGPUConfig &config) {
 DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
 
 MaterialManager &Renderer::get_material_manager() { return *materialManager; }
+
+TextureManager &Renderer::get_texture_manager() { return *textureManager; }
 
 BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
 
