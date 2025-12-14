@@ -193,9 +193,10 @@ void LogicalDevice::create_swapchain_semaphores() {
     throw std::runtime_error("Swapchain must be created before semaphores");
   }
 
-  // Semaphores are already created in create_sync_objects() based on maxFrames
-  // We don't need to recreate them here - they are per-frame, not per-image
-  // This function is kept for API compatibility but doesn't recreate semaphores
+  // Semaphores are already created in create_sync_objects() based on maxFrames.
+  // The synchronization model uses per-frame semaphores (not per-image) to
+  // properly handle frames in flight. This function maintains API compatibility
+  // for existing callers but no longer performs actual semaphore creation.
 
   std::print("Swapchain created for device: {} ({} images, using {} frame "
              "semaphores)\n",
