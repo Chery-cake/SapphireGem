@@ -336,6 +336,8 @@ std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
 const vk::raii::Semaphore &
 LogicalDevice::get_image_available_semaphore(uint32_t imageIndex) const {
   if (imageIndex >= imageAvailableSemaphores.size()) {
+    std::print(stderr, "ERROR: Frame index {} out of range for image available semaphore (size: {})\n",
+               imageIndex, imageAvailableSemaphores.size());
     throw std::out_of_range(
         "Frame index out of range for image available semaphore");
   }
@@ -345,6 +347,8 @@ LogicalDevice::get_image_available_semaphore(uint32_t imageIndex) const {
 const vk::raii::Semaphore &
 LogicalDevice::get_render_finished_semaphore(uint32_t imageIndex) const {
   if (imageIndex >= renderFinishedSemaphores.size()) {
+    std::print(stderr, "ERROR: Image index {} out of range for render finished semaphore (size: {})\n",
+               imageIndex, renderFinishedSemaphores.size());
     throw std::out_of_range(
         "Image index out of range for render finished semaphore");
   }

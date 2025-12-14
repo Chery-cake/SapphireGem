@@ -257,6 +257,9 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
     // The semaphoreIndex will be used to select the render finished semaphore
     // For proper synchronization, we use the acquired image index for present semaphores
     semaphoreIndex = imageIndex;
+    
+    std::print("Frame {}: Acquired swapchain image index {} (renderFinished semaphore count: {})\n",
+               currentFrame, imageIndex, device->get_swap_chain().get_images().size());
   } catch (const vk::OutOfDateKHRError &) {
     deviceManager->recreate_swap_chain();
     return false;
