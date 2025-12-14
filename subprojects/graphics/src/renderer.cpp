@@ -248,7 +248,7 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
   vk::Result acquireResult;
   try {
     // Use the current frame index for semaphore selection to ensure proper
-    // synchronization Each frame in flight gets its own set of semaphores
+    // synchronization. Each frame in flight gets its own set of semaphores.
     semaphoreIndex = currentFrame;
 
     // Acquire next swapchain image
