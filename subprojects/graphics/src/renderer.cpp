@@ -537,14 +537,14 @@ void Renderer::reload() {
 void Renderer::draw_frame() {
   // Dispatch to strategy-specific implementation
   switch (gpuConfig.strategy) {
-  case ObjectManager::RenderStrategy::SINGLE_GPU:
+  case SapphireGem::Graphics::ObjectManager::RenderStrategy::SINGLE_GPU:
     draw_frame_single_gpu(
         const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
     break;
-  case ObjectManager::RenderStrategy::AFR:
+  case SapphireGem::Graphics::ObjectManager::RenderStrategy::AFR:
     draw_frame_afr();
     break;
-  case ObjectManager::RenderStrategy::SFR:
+  case SapphireGem::Graphics::ObjectManager::RenderStrategy::SFR:
     // SFR needs image index
     {
       auto allDevices = deviceManager->get_all_logical_devices();
@@ -561,10 +561,10 @@ void Renderer::draw_frame() {
       }
     }
     break;
-  case ObjectManager::RenderStrategy::HYBRID:
+  case SapphireGem::Graphics::ObjectManager::RenderStrategy::HYBRID:
     draw_frame_hybrid();
     break;
-  case ObjectManager::RenderStrategy::MULTI_QUEUE_STREAMING:
+  case SapphireGem::Graphics::ObjectManager::RenderStrategy::MULTI_QUEUE_STREAMING:
     draw_frame_multi_queue_streaming();
     break;
   default:
