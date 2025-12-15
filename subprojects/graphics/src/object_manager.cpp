@@ -11,6 +11,8 @@
 #include <string>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace SapphireGem::Graphics {
+
 ObjectManager::ObjectManager(DeviceManager *deviceManager,
                              MaterialManager *materialManager,
                              BufferManager *bufferManager,
@@ -39,7 +41,7 @@ void ObjectManager::rebuild_render_queue() {
 
 void ObjectManager::sort_render_queue_by_material() {
   std::sort(renderQueue.begin(), renderQueue.end(),
-            [](const RenderObject *a, const RenderObject *b) {
+            [](const Object *a, const Object *b) {
               // Sort by material pointer (groups objects with same
               // material)
               return a->get_material() < b->get_material();
@@ -61,23 +63,23 @@ const ObjectManager::MultiGPUConfig &ObjectManager::get_gpu_config() const {
   return gpuConfig;
 }
 
-RenderObject *
-ObjectManager::create_object(const RenderObject::ObjectCreateInfo &createInfo) {
+Object *
+ObjectManager::create_object(const Object::ObjectCreateInfo &createInfo) {
   // Check if object already exists
   if (objects.find(createInfo.identifier) != objects.end()) {
     std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
     return objects[createInfo.identifier].get();
   }
 
-  auto object = std::make_unique<RenderObject>(createInfo, bufferManager,
-                                               materialManager);
+  auto object = std::make_unique<Object>(createInfo, bufferManager,
+                                         materialManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;
 
   std::print("Created {} object '{}' using material '{}' (usage count: {})\n",
-             createInfo.type == RenderObject::ObjectType::OBJECT_2D ? "2D"
-                                                                    : "3D",
+             createInfo.type == Object::ObjectType::OBJECT_2D ? "2D"
+                                                              : "3D",
              createInfo.identifier, createInfo.materialIdentifier,
              materialUsageCount[createInfo.materialIdentifier]);
 
@@ -90,24 +92,24 @@ ObjectManager::create_object(const RenderObject::ObjectCreateInfo &createInfo) {
   return objPtr;
 }
 
-RenderObject *ObjectManager::create_textured_object(
-    const RenderObject::ObjectCreateInfoTextured &createInfo) {
+Object *ObjectManager::create_textured_object(
+    const Object::ObjectCreateInfoTextured &createInfo) {
   // Check if object already exists
   if (objects.find(createInfo.identifier) != objects.end()) {
     std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
     return objects[createInfo.identifier].get();
   }
 
-  auto object = std::make_unique<RenderObject>(createInfo, bufferManager,
-                                               materialManager, textureManager);
+  auto object = std::make_unique<Object>(createInfo, bufferManager,
+                                         materialManager, textureManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;
 
   std::print("Created textured {} object '{}' using material '{}' (usage "
              "count: {})\n",
-             createInfo.type == RenderObject::ObjectType::OBJECT_2D ? "2D"
-                                                                    : "3D",
+             createInfo.type == Object::ObjectType::OBJECT_2D ? "2D"
+                                                              : "3D",
              createInfo.identifier, createInfo.materialIdentifier,
              materialUsageCount[createInfo.materialIdentifier]);
 
@@ -143,7 +145,7 @@ void ObjectManager::remove_object(const std::string &identifier) {
   rebuild_render_queue();
 }
 
-RenderObject *ObjectManager::get_object(const std::string &identifier) {
+Object *ObjectManager::get_object(const std::string &identifier) {
   auto it = objects.find(identifier);
   if (it == objects.end()) {
     return nullptr;
@@ -176,3 +178,5 @@ size_t ObjectManager::get_object_count() const { return objects.size(); }
 size_t ObjectManager::get_material_count() const {
   return materialUsageCount.size();
 }
+
+} // namespace SapphireGem::Graphics

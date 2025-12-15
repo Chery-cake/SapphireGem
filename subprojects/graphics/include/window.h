@@ -15,13 +15,11 @@ private:
 
   std::unique_ptr<Renderer> renderer;
 
-  RenderObject::TransformMode currentTransformMode;
-
   // Objects for animation
-  RenderObject *triangle;
-  RenderObject *cube;
-  RenderObject *texturedSquare;
-  RenderObject *imageQuad;
+  SapphireGem::Graphics::Object *triangle;
+  SapphireGem::Graphics::Object *cube;
+  SapphireGem::Graphics::Object *texturedSquare;
+  SapphireGem::Graphics::Object *imageQuad;
 
   static void frame_buffer_resize_callback(GLFWwindow *window, int width,
                                            int height);
@@ -30,7 +28,6 @@ private:
 
   void create_scene_objects();
   void update_scene_objects();
-  void toggle_transform_mode();
 
 public:
   Window(int width, int height, std::string title);

@@ -45,7 +45,7 @@ Renderer::Renderer(GLFWwindow *window)
 
   create_buffers();
 
-  objectManager = std::make_unique<ObjectManager>(
+  objectManager = std::make_unique<SapphireGem::Graphics::ObjectManager>(
       deviceManager.get(), materialManager.get(), bufferManager.get(),
       textureManager.get());
   objectManager->set_gpu_config(gpuConfig);
@@ -579,13 +579,13 @@ void Renderer::draw_frame() {
   frameCount++;
 }
 
-void Renderer::set_render_strategy(ObjectManager::RenderStrategy strategy) {
+void Renderer::set_render_strategy(SapphireGem::Graphics::ObjectManager::RenderStrategy strategy) {
   gpuConfig.strategy = strategy;
   objectManager->set_render_strategy(strategy);
   std::print("Render strategy changed to: {}\n", static_cast<int>(strategy));
 }
 
-void Renderer::set_gpu_config(const ObjectManager::MultiGPUConfig &config) {
+void Renderer::set_gpu_config(const SapphireGem::Graphics::ObjectManager::MultiGPUConfig &config) {
   gpuConfig = config;
   objectManager->set_gpu_config(config);
 }
@@ -598,9 +598,9 @@ TextureManager &Renderer::get_texture_manager() { return *textureManager; }
 
 BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
 
-ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
+SapphireGem::Graphics::ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
 
-RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
+SapphireGem::Graphics::Object *Renderer::create_triangle_2d(const std::string &identifier,
                                            const glm::vec3 &position,
                                            const glm::vec3 &rotation,
                                            const glm::vec3 &scale) {
@@ -618,9 +618,9 @@ RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
 
   const std::vector<uint16_t> indices = {0, 1, 2};
 
-  RenderObject::ObjectCreateInfo createInfo{
+  SapphireGem::Graphics::Object::ObjectCreateInfo createInfo{
       .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_2D,
+      .type = SapphireGem::Graphics::Object::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
       .materialIdentifier = "Test",
@@ -632,7 +632,7 @@ RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
   return objectManager->create_object(createInfo);
 }
 
-RenderObject *Renderer::create_cube_3d(const std::string &identifier,
+SapphireGem::Graphics::Object *Renderer::create_cube_3d(const std::string &identifier,
                                        const glm::vec3 &position,
                                        const glm::vec3 &rotation,
                                        const glm::vec3 &scale) {
@@ -680,9 +680,9 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
       // Bottom face
       4, 5, 1, 1, 0, 4};
 
-  RenderObject::ObjectCreateInfo createInfo{
+  SapphireGem::Graphics::Object::ObjectCreateInfo createInfo{
       .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_3D,
+      .type = SapphireGem::Graphics::Object::ObjectType::OBJECT_3D,
       .vertices = vertices,
       .indices = indices,
       .materialIdentifier = "Test",
@@ -694,7 +694,7 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
   return objectManager->create_object(createInfo);
 }
 
-RenderObject *Renderer::create_textured_square_2d(
+SapphireGem::Graphics::Object *Renderer::create_textured_square_2d(
     const std::string &identifier, const std::string &textureIdentifier,
     const glm::vec3 &position, const glm::vec3 &rotation,
     const glm::vec3 &scale) {
@@ -714,12 +714,12 @@ RenderObject *Renderer::create_textured_square_2d(
   // Two triangles to form a square with counter-clockwise winding
   const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-  RenderObject::ObjectCreateInfoTextured createInfo{
+  SapphireGem::Graphics::Object::ObjectCreateInfoTextured createInfo{
       .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_2D,
+      .type = SapphireGem::Graphics::Object::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
-      .materialIdentifier = "Textured",
+      .materialIdentifier = "Textured_" + textureIdentifier,
       .textureIdentifier = textureIdentifier,
       .position = position,
       .rotation = rotation,

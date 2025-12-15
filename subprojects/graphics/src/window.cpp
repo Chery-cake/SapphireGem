@@ -10,7 +10,6 @@
 
 Window::Window(int width, int height, std::string title)
     : frameBufferRezized(false),
-      currentTransformMode(RenderObject::TransformMode::CPU_VERTICES),
       triangle(nullptr), cube(nullptr), texturedSquare(nullptr),
       imageQuad(nullptr) {
   glfwInit();
@@ -30,8 +29,6 @@ Window::Window(int width, int height, std::string title)
   renderer = std::make_unique<Renderer>(window);
 
   create_scene_objects();
-  std::print("Press 'T' to toggle between CPU (vertex) and GPU (matrix) "
-             "transformation modes\n");
 }
 
 Window::~Window() {
@@ -52,13 +49,7 @@ void Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
 
 void Window::key_callback(GLFWwindow *window, int key, int scancode, int action,
                           int mods) {
-  auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
-
-  if (action == GLFW_PRESS) {
-    if (key == GLFW_KEY_T) {
-      win->toggle_transform_mode();
-    }
-  }
+  // Reserved for future keyboard input handling
 }
 
 void Window::run() {
@@ -112,7 +103,10 @@ void Window::create_scene_objects() {
     std::print("Rotated gradient texture 90 degrees clockwise\n");
   }
 
-  // Create and bind uniform buffer for Textured material
+  // Create separate materials for each textured object
+  auto &materialMgr = renderer->get_material_manager();
+  auto &bufferMgr = renderer->get_buffer_manager();
+
   struct TransformUBO {
     glm::mat4 model;
     glm::mat4 view;
@@ -125,50 +119,128 @@ void Window::create_scene_objects() {
       .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
   };
 
-  Buffer::BufferCreateInfo uboInfo = {.identifier = "textured_ubo",
-                                      .type = Buffer::BufferType::UNIFORM,
-                                      .usage = Buffer::BufferUsage::DYNAMIC,
-                                      .size = sizeof(TransformUBO),
-                                      .elementSize = sizeof(TransformUBO),
-                                      .initialData = &uboData};
+  // Create material bindings for textured objects
+  vk::DescriptorSetLayoutBinding uboBinding = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex};
 
-  auto &bufferMgr = renderer->get_buffer_manager();
-  bufferMgr.create_buffer(uboInfo);
-  auto *uboBuffer = bufferMgr.get_buffer("textured_ubo");
+  vk::DescriptorSetLayoutBinding samplerBinding = {
+      .binding = 1,
+      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
-  // Bind textures and UBO to the Textured material
-  auto &materialMgr = renderer->get_material_manager();
-  auto *texturedMaterial = materialMgr.get_material("Textured");
+  auto texturedBindingDescription =
+      Material::Vertex2DTextured::getBindingDescription();
+  auto texturedAttributeDescriptions =
+      Material::Vertex2DTextured::getAttributeDescriptions();
 
-  if (texturedMaterial && uboBuffer) {
-    texturedMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
-    std::print("Bound uniform buffer to Textured material\n");
+  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+      .blendEnable = vk::False,
+      .colorWriteMask =
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+  // Create material for checkerboard texture
+  {
+    Material::MaterialCreateInfo checkerboardMaterialInfo{
+        .identifier = "Textured_checkerboard",
+        .vertexShaders = "../assets/shaders/textured.spv",
+        .fragmentShaders = "../assets/shaders/textured.spv",
+        .descriptorBindings = {uboBinding, samplerBinding},
+        .rasterizationState = {.depthClampEnable = vk::False,
+                               .rasterizerDiscardEnable = vk::False,
+                               .polygonMode = vk::PolygonMode::eFill,
+                               .cullMode = vk::CullModeFlagBits::eBack,
+                               .frontFace = vk::FrontFace::eCounterClockwise,
+                               .depthBiasEnable = vk::False,
+                               .depthBiasSlopeFactor = 1.0f,
+                               .lineWidth = 1.0f},
+        .depthStencilState = {},
+        .blendState = {.logicOpEnable = vk::False,
+                       .logicOp = vk::LogicOp::eCopy,
+                       .attachmentCount = 1,
+                       .pAttachments = &colorBlendAttachment},
+        .vertexInputState{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &texturedBindingDescription,
+            .vertexAttributeDescriptionCount =
+                static_cast<uint32_t>(texturedAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions = texturedAttributeDescriptions.data()},
+        .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+        .viewportState{.viewportCount = 1, .scissorCount = 1},
+        .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                          .sampleShadingEnable = vk::False},
+        .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+    materialMgr.add_material(checkerboardMaterialInfo);
+
+    Buffer::BufferCreateInfo uboInfo = {
+        .identifier = "Textured_checkerboard_ubo",
+        .type = Buffer::BufferType::UNIFORM,
+        .usage = Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &uboData};
+
+    bufferMgr.create_buffer(uboInfo);
   }
 
-  if (texturedMaterial && checkerboardTex) {
-    texturedMaterial->bind_texture(checkerboardTex->get_image().get(), 1, 0);
-    std::print("Bound checkerboard texture to Textured material\n");
+  // Create material for gradient texture
+  {
+    Material::MaterialCreateInfo gradientMaterialInfo{
+        .identifier = "Textured_gradient",
+        .vertexShaders = "../assets/shaders/textured.spv",
+        .fragmentShaders = "../assets/shaders/textured.spv",
+        .descriptorBindings = {uboBinding, samplerBinding},
+        .rasterizationState = {.depthClampEnable = vk::False,
+                               .rasterizerDiscardEnable = vk::False,
+                               .polygonMode = vk::PolygonMode::eFill,
+                               .cullMode = vk::CullModeFlagBits::eBack,
+                               .frontFace = vk::FrontFace::eCounterClockwise,
+                               .depthBiasEnable = vk::False,
+                               .depthBiasSlopeFactor = 1.0f,
+                               .lineWidth = 1.0f},
+        .depthStencilState = {},
+        .blendState = {.logicOpEnable = vk::False,
+                       .logicOp = vk::LogicOp::eCopy,
+                       .attachmentCount = 1,
+                       .pAttachments = &colorBlendAttachment},
+        .vertexInputState{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &texturedBindingDescription,
+            .vertexAttributeDescriptionCount =
+                static_cast<uint32_t>(texturedAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions = texturedAttributeDescriptions.data()},
+        .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+        .viewportState{.viewportCount = 1, .scissorCount = 1},
+        .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                          .sampleShadingEnable = vk::False},
+        .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+    materialMgr.add_material(gradientMaterialInfo);
+
+    Buffer::BufferCreateInfo uboInfo = {
+        .identifier = "Textured_gradient_ubo",
+        .type = Buffer::BufferType::UNIFORM,
+        .usage = Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &uboData};
+
+    bufferMgr.create_buffer(uboInfo);
   }
 
-  // Create a textured square object with checkerboard texture
+  // Create the objects first (they will look for their specific materials)
   std::print("Creating textured square object...\n");
-
   texturedSquare = renderer->create_textured_square_2d(
       "textured_square", "checkerboard",
       glm::vec3(-0.5f, 0.5f, 0.0f), // Position (top-left)
       glm::vec3(0.0f, 0.0f, 0.0f),  // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
 
-  if (texturedSquare) {
-    std::print("✓ Textured square created successfully\n");
-  } else {
-    std::print("✗ Failed to create textured square\n");
-  }
-
-  // For the second quad, we'll need a different approach since we can only
-  // bind one texture to the material at a time. For now, let's create it but
-  // it will show the checkerboard too. In a production system, you'd want
-  // per-object texture binding.
   std::print("Creating image quad object...\n");
   imageQuad = renderer->create_textured_square_2d(
       "image_quad", "gradient",
@@ -176,23 +248,25 @@ void Window::create_scene_objects() {
       glm::vec3(0.0f, 0.0f, 0.0f),  // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
 
-  if (imageQuad) {
-    std::print("✓ Image quad created successfully\n");
-    // Note: Both quads will show the checkerboard texture since we're using
-    // a shared material
-    std::print("Note: Both textured quads share the same material and will "
-               "show the same texture\n");
-  } else {
-    std::print("✗ Failed to create image quad\n");
+  // Bind textures to their respective materials
+  auto *checkerboardMaterial = materialMgr.get_material("Textured_checkerboard");
+  if (checkerboardMaterial && checkerboardTex) {
+    auto *uboBuffer = bufferMgr.get_buffer("Textured_checkerboard_ubo");
+    if (uboBuffer) {
+      checkerboardMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+    }
+    checkerboardMaterial->bind_texture(checkerboardTex->get_image().get(), 1, 0);
+    std::print("✓ Bound checkerboard texture to Textured_checkerboard material\n");
   }
 
-  // Bind gradient texture - this will be shown on both quads since they share
-  // the material This is a limitation of having a single shared material for
-  // multiple textured objects
-  if (texturedMaterial && gradientTex) {
-    texturedMaterial->bind_texture(gradientTex->get_image().get(), 1, 0);
-    std::print("Bound gradient texture to Textured material - both quads will "
-               "show this texture\n");
+  auto *gradientMaterial = materialMgr.get_material("Textured_gradient");
+  if (gradientMaterial && gradientTex) {
+    auto *uboBuffer = bufferMgr.get_buffer("Textured_gradient_ubo");
+    if (uboBuffer) {
+      gradientMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+    }
+    gradientMaterial->bind_texture(gradientTex->get_image().get(), 1, 0);
+    std::print("✓ Bound gradient texture to Textured_gradient material\n");
   }
 
   // Create a 2D triangle on the left side
@@ -220,50 +294,22 @@ void Window::update_scene_objects() {
   time += deltaTime;
 
   if (triangle) {
-    // Rotate triangle around Z axis
-    triangle->set_rotation(glm::vec3(0.0f, 0.0f, time));
+    // Rotate triangle in X and Y axes simultaneously (2D rotation mode)
+    triangle->rotate(glm::vec3(time * 0.5f, time * 0.7f, 0.0f));
   }
 
   if (cube) {
-    // Rotate cube around Z axis (faster than triangle)
-    cube->set_rotation(glm::vec3(0.0f, 0.0f, time * 1.5f));
+    // Rotate cube in X, Y, and Z axes simultaneously (3D rotation mode)
+    cube->rotate(glm::vec3(time * 0.3f, time * 0.5f, time * 0.7f));
   }
 
   if (texturedSquare) {
-    // Gentle rotation for textured square
-    texturedSquare->set_rotation(glm::vec3(0.0f, 0.0f, time * 0.5f));
+    // Gentle rotation for textured square (shader-based 2D rotation)
+    texturedSquare->rotate_2d(time * 0.5f);
   }
 
   if (imageQuad) {
-    // Slightly faster rotation for image quad
-    imageQuad->set_rotation(glm::vec3(0.0f, 0.0f, time * 0.8f));
+    // Slightly faster rotation for image quad (shader-based 2D rotation)
+    imageQuad->rotate_2d(time * 0.8f);
   }
-}
-
-void Window::toggle_transform_mode() {
-  // Toggle between CPU and GPU modes
-  if (currentTransformMode == RenderObject::TransformMode::CPU_VERTICES) {
-    currentTransformMode = RenderObject::TransformMode::GPU_MATRIX;
-  } else {
-    currentTransformMode = RenderObject::TransformMode::CPU_VERTICES;
-  }
-
-  // Apply to all objects
-  if (triangle) {
-    triangle->set_transform_mode(currentTransformMode);
-  }
-  if (cube) {
-    cube->set_transform_mode(currentTransformMode);
-  }
-  if (texturedSquare) {
-    texturedSquare->set_transform_mode(currentTransformMode);
-  }
-  if (imageQuad) {
-    imageQuad->set_transform_mode(currentTransformMode);
-  }
-
-  std::print("Transform mode switched to: {}\n",
-             currentTransformMode == RenderObject::TransformMode::CPU_VERTICES
-                 ? "CPU (vertex transformation)"
-                 : "GPU (matrix transformation)");
 }

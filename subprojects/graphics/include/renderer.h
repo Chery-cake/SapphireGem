@@ -25,14 +25,14 @@ private:
 
   vk::raii::DebugUtilsMessengerEXT debugMessanger;
 
-  ObjectManager::MultiGPUConfig gpuConfig;
+  SapphireGem::Graphics::ObjectManager::MultiGPUConfig gpuConfig;
 
   std::unique_ptr<DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
   std::unique_ptr<TextureManager> textureManager;
 
   std::unique_ptr<BufferManager> bufferManager;
-  std::unique_ptr<ObjectManager> objectManager;
+  std::unique_ptr<SapphireGem::Graphics::ObjectManager> objectManager;
 
   uint32_t currentFrame;
   uint32_t frameCount; // total frames rendered
@@ -68,25 +68,25 @@ public:
   void reload();
   void draw_frame();
 
-  void set_render_strategy(ObjectManager::RenderStrategy strategy);
-  void set_gpu_config(const ObjectManager::MultiGPUConfig &config);
+  void set_render_strategy(SapphireGem::Graphics::ObjectManager::RenderStrategy strategy);
+  void set_gpu_config(const SapphireGem::Graphics::ObjectManager::MultiGPUConfig &config);
 
   DeviceManager &get_device_manager();
   MaterialManager &get_material_manager();
   TextureManager &get_texture_manager();
   BufferManager &get_buffer_manager();
-  ObjectManager *get_object_manager();
+  SapphireGem::Graphics::ObjectManager *get_object_manager();
 
   // Helper functions to create objects
-  RenderObject *create_triangle_2d(const std::string &identifier,
+  SapphireGem::Graphics::Object *create_triangle_2d(const std::string &identifier,
                                    const glm::vec3 &position = glm::vec3(0.0f),
                                    const glm::vec3 &rotation = glm::vec3(0.0f),
                                    const glm::vec3 &scale = glm::vec3(1.0f));
-  RenderObject *create_cube_3d(const std::string &identifier,
+  SapphireGem::Graphics::Object *create_cube_3d(const std::string &identifier,
                                const glm::vec3 &position = glm::vec3(0.0f),
                                const glm::vec3 &rotation = glm::vec3(0.0f),
                                const glm::vec3 &scale = glm::vec3(1.0f));
-  RenderObject *
+  SapphireGem::Graphics::Object *
   create_textured_square_2d(const std::string &identifier,
                             const std::string &textureIdentifier,
                             const glm::vec3 &position = glm::vec3(0.0f),
