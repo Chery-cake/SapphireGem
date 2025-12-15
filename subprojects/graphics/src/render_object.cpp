@@ -2,6 +2,7 @@
 #include "buffer_manager.h"
 #include "material.h"
 #include "material_manager.h"
+#include "texture_manager.h"
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
 #include <print>
@@ -9,14 +10,16 @@
 
 RenderObject::RenderObject(const ObjectCreateInfo createInfo,
                            BufferManager *bufferManager,
-                           MaterialManager *materialManager)
+                           MaterialManager *materialManager,
+                           TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager), originalVertices(createInfo.vertices),
+      materialManager(materialManager), textureManager(textureManager),
+      originalVertices(createInfo.vertices),
       transformedVertices(createInfo.vertices), verticesDirty(true),
       transformMode(TransformMode::CPU_VERTICES) {
   // Create unique buffer names for this object
@@ -65,15 +68,17 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
 
 RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
                            BufferManager *bufferManager,
-                           MaterialManager *materialManager)
+                           MaterialManager *materialManager,
+                           TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
+      textureIdentifier(createInfo.textureIdentifier),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager), originalVertices(),
-      transformedVertices(), verticesDirty(false),
+      materialManager(materialManager), textureManager(textureManager),
+      originalVertices(), transformedVertices(), verticesDirty(false),
       transformMode(TransformMode::GPU_MATRIX) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
@@ -295,6 +300,14 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
 
   // Bind material
   material->bind(commandBuffer, deviceIndex, frameIndex);
+  
+  // Bind texture if this is a textured object
+  if (!textureIdentifier.empty() && textureManager) {
+    auto *texture = textureManager->get_texture(textureIdentifier);
+    if (texture) {
+      material->bind_texture(texture->get_image().get(), 1, deviceIndex);
+    }
+  }
 
   // Bind vertex buffer
   Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);

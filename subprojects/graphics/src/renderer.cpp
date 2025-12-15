@@ -46,7 +46,7 @@ Renderer::Renderer(GLFWwindow *window)
   create_buffers();
 
   objectManager = std::make_unique<ObjectManager>(
-      deviceManager.get(), materialManager.get(), bufferManager.get());
+      deviceManager.get(), materialManager.get(), bufferManager.get(), textureManager.get());
   objectManager->set_gpu_config(gpuConfig);
 }
 
@@ -750,6 +750,7 @@ RenderObject *Renderer::create_textured_square_2d(const std::string &identifier,
       .vertices = vertices,
       .indices = indices,
       .materialIdentifier = "Textured",
+      .textureIdentifier = textureIdentifier,
       .position = position,
       .rotation = rotation,
       .scale = scale,

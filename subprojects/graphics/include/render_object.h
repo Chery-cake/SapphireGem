@@ -45,6 +45,9 @@ public:
 
     // Material (shared across instances)
     std::string materialIdentifier;
+    
+    // Texture identifier for textured objects
+    std::string textureIdentifier;
 
     // Transform
     glm::vec3 position = glm::vec3(0.0f);
@@ -67,6 +70,9 @@ private:
   // Material reference (shared, not owned)
   Material *material;
   std::string materialIdentifier;
+  
+  // Texture identifier for textured objects
+  std::string textureIdentifier;
 
   // Transform
   glm::vec3 position;
@@ -81,6 +87,7 @@ private:
   // Managers (not owned)
   BufferManager *bufferManager;
   MaterialManager *materialManager;
+  class TextureManager *textureManager;
 
   // Original vertices
   std::vector<Material::Vertex2D> originalVertices;
@@ -95,9 +102,9 @@ private:
 
 public:
   RenderObject(const ObjectCreateInfo createInfo, BufferManager *bufferManager,
-               MaterialManager *materialManager);
+               MaterialManager *materialManager, class TextureManager *textureManager = nullptr);
   RenderObject(const ObjectCreateInfoTextured createInfo, BufferManager *bufferManager,
-               MaterialManager *materialManager);
+               MaterialManager *materialManager, class TextureManager *textureManager);
   ~RenderObject();
 
   // Render this object

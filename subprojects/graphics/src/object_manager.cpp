@@ -11,9 +11,10 @@
 
 ObjectManager::ObjectManager(DeviceManager *deviceManager,
                              MaterialManager *materialManager,
-                             BufferManager *bufferManager)
+                             BufferManager *bufferManager,
+                             TextureManager *textureManager)
     : deviceManager(deviceManager), materialManager(materialManager),
-      bufferManager(bufferManager) {}
+      bufferManager(bufferManager), textureManager(textureManager) {}
 
 ObjectManager::~ObjectManager() {
   objects.clear();
@@ -96,7 +97,7 @@ RenderObject *ObjectManager::create_textured_object(
   }
 
   auto object = std::make_unique<RenderObject>(createInfo, bufferManager,
-                                               materialManager);
+                                               materialManager, textureManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;

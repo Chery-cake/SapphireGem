@@ -60,6 +60,7 @@ private:
   DeviceManager *deviceManager;
   MaterialManager *materialManager;
   BufferManager *bufferManager;
+  class TextureManager *textureManager;
 
   MultiGPUConfig gpuConfig;
 
@@ -75,7 +76,7 @@ private:
 
 public:
   ObjectManager(DeviceManager *deviceManager, MaterialManager *materialManager,
-                BufferManager *bufferManager);
+                BufferManager *bufferManager, class TextureManager *textureManager = nullptr);
   ~ObjectManager();
 
   // Configuration
