@@ -298,16 +298,21 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     }
   }
 
-  // Bind material
-  material->bind(commandBuffer, deviceIndex, frameIndex);
-  
-  // Bind texture if this is a textured object
+  // Bind texture if this is a textured object (before binding material)
+  // This needs to happen before material bind so the descriptor set is updated
   if (!textureIdentifier.empty() && textureManager) {
     auto *texture = textureManager->get_texture(textureIdentifier);
     if (texture) {
-      material->bind_texture(texture->get_image().get(), 1, deviceIndex);
+      // Bind texture for the current frame only
+      material->bind_texture_for_frame(texture->get_image().get(), 1, deviceIndex, frameIndex);
+    } else {
+      std::print("Warning: Texture '{}' not found for object '{}'\n",
+                 textureIdentifier, identifier);
     }
   }
+  
+  // Bind material
+  material->bind(commandBuffer, deviceIndex, frameIndex);
 
   // Bind vertex buffer
   Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
@@ -354,13 +359,17 @@ void RenderObject::set_transform_mode(RenderObject::TransformMode mode) {
   transformMode = mode;
 
   if (mode == TransformMode::CPU_VERTICES) {
-    // Switching to CPU mode: mark vertices as dirty to apply
-    // transformations
-    verticesDirty = true;
+    // Switching to CPU mode: mark vertices as dirty to apply transformations
+    // Only apply if we have vertex data (non-textured objects)
+    if (!originalVertices.empty()) {
+      verticesDirty = true;
+    }
   } else {
-    // Switching to GPU mode: restore original vertices and mark matrix as
-    // dirty
-    restore_original_vertices();
+    // Switching to GPU mode: restore original vertices and mark matrix as dirty
+    // Only restore if we have vertex data (non-textured objects)
+    if (!originalVertices.empty()) {
+      restore_original_vertices();
+    }
     transformDirty = true;
   }
 

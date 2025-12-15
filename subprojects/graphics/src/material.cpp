@@ -395,3 +395,36 @@ void Material::bind_uniform_buffer(Buffer *buffer, uint32_t binding, uint32_t de
     logicalDevices[deviceIndex]->get_device().updateDescriptorSets(descriptorWrite, nullptr);
   }
 }
+
+void Material::bind_texture_for_frame(Image *image, uint32_t binding, 
+                                     uint32_t deviceIndex, uint32_t frameIndex) {
+  if (!initialized || !image) {
+    return;
+  }
+
+  if (deviceIndex >= deviceResources.size()) {
+    std::print("Warning: Invalid device index {} for material '{}'\n",
+               deviceIndex, identifier);
+    return;
+  }
+
+  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
+  
+  // Only update the descriptor set for the current frame
+  if (frameIndex < resources.descriptorSets.size()) {
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = *image->get_sampler(deviceIndex),
+        .imageView = *image->get_image_view(deviceIndex),
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = *resources.descriptorSets[frameIndex],
+        .dstBinding = binding,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo = &imageInfo};
+
+    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(descriptorWrite, nullptr);
+  }
+}
