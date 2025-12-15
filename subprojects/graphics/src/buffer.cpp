@@ -327,6 +327,11 @@ bool Buffer::update_data(const void *data, vk::DeviceSize dataSize,
     return false;
   }
 
+  // Check for null data pointer
+  if (data == nullptr || dataSize == 0) {
+    return true; // Nothing to update, but not an error
+  }
+
   std::lock_guard lock(bufferMutex);
 
   for (size_t i = 0; i < deviceResources.size(); ++i) {

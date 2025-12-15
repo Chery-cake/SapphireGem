@@ -252,7 +252,8 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
   // Update transformations based on mode
   if (transformMode == TransformMode::CPU_VERTICES) {
     // CPU-side: Update vertices if needed
-    if (verticesDirty) {
+    // Only update if we have vertex data (non-textured objects)
+    if (verticesDirty && !originalVertices.empty()) {
       update_vertices();
     }
   } else {
