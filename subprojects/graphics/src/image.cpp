@@ -1,5 +1,8 @@
 #include "image.h"
+#include "tasks.h"
+#include <future>
 #include <print>
+#include <thread>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -236,18 +239,53 @@ void Image::apply_color_tint(const glm::vec4 &tint) {
     return;
   }
 
-  for (size_t i = 0; i < pixelData.size(); i += channels) {
-    if (channels >= 3) {
-      pixelData[i + 0] =
-          static_cast<unsigned char>(pixelData[i + 0] * tint.r); // R
-      pixelData[i + 1] =
-          static_cast<unsigned char>(pixelData[i + 1] * tint.g); // G
-      pixelData[i + 2] =
-          static_cast<unsigned char>(pixelData[i + 2] * tint.b); // B
+  // CPU auxiliary work: Apply color tint to image data
+  // This can be parallelized for large images
+  const size_t totalPixels = pixelData.size() / channels;
+  const size_t minPixelsPerTask = 10000; // Process at least 10k pixels per task
+  
+  // Only parallelize if the image is large enough
+  if (totalPixels > minPixelsPerTask * 2) {
+    const size_t numTasks = std::min(
+        static_cast<size_t>(std::thread::hardware_concurrency()),
+        (totalPixels + minPixelsPerTask - 1) / minPixelsPerTask);
+    const size_t pixelsPerTask = totalPixels / numTasks;
+    
+    std::vector<std::future<void>> futures;
+    for (size_t taskId = 0; taskId < numTasks; ++taskId) {
+      size_t startPixel = taskId * pixelsPerTask;
+      size_t endPixel = (taskId == numTasks - 1) ? totalPixels : (taskId + 1) * pixelsPerTask;
+      
+      futures.push_back(Tasks::get_instance().add_task([this, tint, startPixel, endPixel]() {
+        for (size_t pixel = startPixel; pixel < endPixel; ++pixel) {
+          size_t i = pixel * channels;
+          if (channels >= 3) {
+            pixelData[i + 0] = static_cast<unsigned char>(pixelData[i + 0] * tint.r); // R
+            pixelData[i + 1] = static_cast<unsigned char>(pixelData[i + 1] * tint.g); // G
+            pixelData[i + 2] = static_cast<unsigned char>(pixelData[i + 2] * tint.b); // B
+          }
+          if (channels == 4) {
+            pixelData[i + 3] = static_cast<unsigned char>(pixelData[i + 3] * tint.a); // A
+          }
+        }
+      }));
     }
-    if (channels == 4) {
-      pixelData[i + 3] =
-          static_cast<unsigned char>(pixelData[i + 3] * tint.a); // A
+    
+    // Wait for all tasks to complete
+    for (auto &future : futures) {
+      future.get();
+    }
+  } else {
+    // For small images, just process sequentially
+    for (size_t i = 0; i < pixelData.size(); i += channels) {
+      if (channels >= 3) {
+        pixelData[i + 0] = static_cast<unsigned char>(pixelData[i + 0] * tint.r); // R
+        pixelData[i + 1] = static_cast<unsigned char>(pixelData[i + 1] * tint.g); // G
+        pixelData[i + 2] = static_cast<unsigned char>(pixelData[i + 2] * tint.b); // B
+      }
+      if (channels == 4) {
+        pixelData[i + 3] = static_cast<unsigned char>(pixelData[i + 3] * tint.a); // A
+      }
     }
   }
 }

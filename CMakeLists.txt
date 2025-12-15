@@ -25,7 +25,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 set(CMAKE_COLOR_MAKEFILE ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
+# Disabled module scanning for broader compiler compatibility
+# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Set common output directory for all targets
 set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin)
