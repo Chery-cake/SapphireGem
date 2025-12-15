@@ -80,10 +80,12 @@ RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
   indexBufferName = identifier + "_indices";
 
   // Create vertex buffer for textured vertices
+  // Use DYNAMIC for textured objects since they don't use vertex transformation
+  // but the buffer might need updates in the future
   Buffer::BufferCreateInfo vertInfo = {
       .identifier = vertexBufferName,
       .type = Buffer::BufferType::VERTEX,
-      .usage = Buffer::BufferUsage::STATIC,
+      .usage = Buffer::BufferUsage::DYNAMIC,
       .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
       .elementSize = sizeof(Material::Vertex2DTextured),
       .initialData = createInfo.vertices.data()};

@@ -199,10 +199,14 @@ void Renderer::init_materials() {
   auto texturedBindingDescription = Material::Vertex2DTextured::getBindingDescription();
   auto texturedAttributeDescriptions = Material::Vertex2DTextured::getAttributeDescriptions();
 
+  // Textured material uses textured.spv compiled from textured.slang
+  // Compile command: slangc textured.slang -target spirv -profile spirv_1_4 
+  //                  -emit-spirv-directly -fvk-use-entrypoint-name 
+  //                  -entry vertMain -entry fragMain -o textured.spv
   Material::MaterialCreateInfo texturedCreateInfo{
       .identifier = "Textured",
-      .vertexShaders = "../assets/shaders/textured_vert.spv",
-      .fragmentShaders = "../assets/shaders/textured_frag.spv",
+      .vertexShaders = "../assets/shaders/textured.spv",
+      .fragmentShaders = "../assets/shaders/textured.spv",
       .descriptorBindings = {uboBinding, samplerBinding},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
