@@ -86,6 +86,7 @@ void Window::create_scene_objects() {
   auto &textureMgr = renderer->get_texture_manager();
   std::print("Loading textures...\n");
 
+  // Load first texture (checkerboard) for the square
   auto *checkerboardTex = textureMgr.create_texture(
       "checkerboard", "../assets/textures/checkerboard.png");
   if (checkerboardTex) {
@@ -112,24 +113,30 @@ void Window::create_scene_objects() {
   }
 
   // Create a square object (will represent "textured square" visually)
+  std::print("Creating textured square object...\n");
   texturedSquare = renderer->create_square_2d(
       "textured_square", glm::vec3(-0.5f, 0.5f, 0.0f), // Position (top-left)
       glm::vec3(0.0f, 0.0f, 0.0f),                     // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f));                    // Scale
 
+  if (texturedSquare) {
+    std::print("✓ Textured square created successfully\n");
+  } else {
+    std::print("✗ Failed to create textured square\n");
+  }
+
   // Create another square for the "plain image"
+  std::print("Creating image quad object...\n");
   imageQuad = renderer->create_square_2d(
       "image_quad", glm::vec3(0.5f, 0.5f, 0.0f), // Position (top-right)
       glm::vec3(0.0f, 0.0f, 0.0f),               // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f));              // Scale
 
-  std::print("Scene objects created: textured square and image quad\n");
-  std::print(
-      "Note: Textures are loaded and manipulated, but shader support for \n");
-  std::print(
-      "texture sampling would be needed to display them on these objects.\n");
-  std::print("The squares are shown with vertex colors representing where \n");
-  std::print("textures would be applied in a full implementation.\n");
+  if (imageQuad) {
+    std::print("✓ Image quad created successfully\n");
+  } else {
+    std::print("✗ Failed to create image quad\n");
+  }
 
   // Create a 2D triangle on the left side
   triangle = renderer->create_triangle_2d(

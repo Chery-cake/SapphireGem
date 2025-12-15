@@ -275,15 +275,22 @@ bool Material::reinitialize() {
 
 void Material::bind(vk::raii::CommandBuffer &commandBuffer,
                     uint32_t deviceIndex, uint32_t frameIndex) {
-  if (!initialized || deviceIndex >= deviceResources.size()) {
+  if (!initialized) {
+    std::print("Warning: Cannot bind uninitialized material '{}'\n",
+               identifier);
     return;
+  }
+
+  if (deviceIndex >= deviceResources.size()) {
+    std::print("Warning: Invalid device index {} for material '{}'\n",
+               deviceIndex, identifier);
   }
 
   DeviceMaterialResources &resources = *deviceResources[deviceIndex];
   commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                              *resources.pipeline);
 
-  if (resources.descriptorSets.empty() &&
+  if (!resources.descriptorSets.empty() &&
       frameIndex < resources.descriptorSets.size()) {
     commandBuffer.bindDescriptorSets(
         vk::PipelineBindPoint::eGraphics, *resources.pipelineLayout, 0,
