@@ -174,7 +174,20 @@ void RenderObject::restore_original_vertices() {
 
 void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
                         uint32_t deviceIndex, uint32_t frameIndex) {
-  if (!visible || !material) {
+  if (!visible) {
+    return;
+  }
+
+  if (!material) {
+    std::print("Warning: Cannot draw object '{}' - no material assigned\n",
+               identifier);
+    return;
+  }
+
+  if (!material->is_initialized()) {
+    std::print("Warning: Cannot draw object '{}' - material '{}' not "
+               "initialized\n",
+               identifier, materialIdentifier);
     return;
   }
 
