@@ -650,8 +650,8 @@ RenderObject *Renderer::create_square_2d(const std::string &identifier,
       {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
   };
 
-  // Two triangles to form a square
-  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+  // Two triangles to form a square with counter-clockwise winding
+  const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
   RenderObject::ObjectCreateInfo createInfo{
       .identifier = identifier,
