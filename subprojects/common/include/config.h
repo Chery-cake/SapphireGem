@@ -2,11 +2,11 @@
 
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
-#include <string>
 #include <vector>
 #include <vk_mem_alloc.h>
-#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+
+namespace general {
 
 class Config {
 
@@ -96,3 +96,5 @@ public:
   bool needs_reload() const;
   void mark_reload_complete();
 };
+
+} // namespace general

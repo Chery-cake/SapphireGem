@@ -6,6 +6,8 @@
 #include <type_traits>
 #include <utility>
 
+namespace device {
+
 class Tasks {
 private:
 #define ThreadPool BS::thread_pool<BS::tp::pause>
@@ -38,3 +40,5 @@ std::future<std::invoke_result_t<std::decay_t<F>>>
 Tasks::add_task(F &&func, const BS::priority_t priority) {
   return pool.submit_task(std::forward<F>(func), priority);
 }
+
+} // namespace device

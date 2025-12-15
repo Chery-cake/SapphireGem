@@ -1,4 +1,4 @@
-#include "render_object.h"
+#include "object.h"
 #include "buffer_manager.h"
 #include "material.h"
 #include "material_manager.h"
@@ -8,10 +8,10 @@
 #include <print>
 #include <vulkan/vulkan_raii.hpp>
 
-RenderObject::RenderObject(const ObjectCreateInfo createInfo,
-                           BufferManager *bufferManager,
-                           MaterialManager *materialManager,
-                           TextureManager *textureManager)
+render::Object::Object(const ObjectCreateInfo createInfo,
+                       device::BufferManager *bufferManager,
+                       MaterialManager *materialManager,
+                       TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
@@ -27,10 +27,10 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   indexBufferName = identifier + "_indices";
 
   // Create vertex buffer
-  Buffer::BufferCreateInfo vertInfo = {
+  device::Buffer::BufferCreateInfo vertInfo = {
       .identifier = vertexBufferName,
-      .type = Buffer::BufferType::VERTEX,
-      .usage = Buffer::BufferUsage::DYNAMIC,
+      .type = device::Buffer::BufferType::VERTEX,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
       .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
       .elementSize = sizeof(Material::Vertex2D),
       .initialData = createInfo.vertices.data()};
@@ -38,12 +38,12 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   bufferManager->create_buffer(vertInfo);
 
   // Create index buffer
-  Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
-                                      .type = Buffer::BufferType::INDEX,
-                                      .usage = Buffer::BufferUsage::STATIC,
-                                      .size = createInfo.indices.size() *
-                                              sizeof(uint16_t),
-                                      .initialData = createInfo.indices.data()};
+  device::Buffer::BufferCreateInfo indInfo = {
+      .identifier = indexBufferName,
+      .type = device::Buffer::BufferType::INDEX,
+      .usage = device::Buffer::BufferUsage::STATIC,
+      .size = createInfo.indices.size() * sizeof(uint16_t),
+      .initialData = createInfo.indices.data()};
 
   bufferManager->create_buffer(indInfo);
 
@@ -66,10 +66,10 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   update_vertices();
 }
 
-RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
-                           BufferManager *bufferManager,
-                           MaterialManager *materialManager,
-                           TextureManager *textureManager)
+render::Object::Object(const ObjectCreateInfoTextured createInfo,
+                       device::BufferManager *bufferManager,
+                       MaterialManager *materialManager,
+                       TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
@@ -87,10 +87,10 @@ RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
   // Create vertex buffer for textured vertices
   // Use DYNAMIC for textured objects since they don't use vertex
   // transformation but the buffer might need updates in the future
-  Buffer::BufferCreateInfo vertInfo = {
+  device::Buffer::BufferCreateInfo vertInfo = {
       .identifier = vertexBufferName,
-      .type = Buffer::BufferType::VERTEX,
-      .usage = Buffer::BufferUsage::DYNAMIC,
+      .type = device::Buffer::BufferType::VERTEX,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
       .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
       .elementSize = sizeof(Material::Vertex2DTextured),
       .initialData = createInfo.vertices.data()};
@@ -98,12 +98,12 @@ RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
   bufferManager->create_buffer(vertInfo);
 
   // Create index buffer
-  Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
-                                      .type = Buffer::BufferType::INDEX,
-                                      .usage = Buffer::BufferUsage::STATIC,
-                                      .size = createInfo.indices.size() *
-                                              sizeof(uint16_t),
-                                      .initialData = createInfo.indices.data()};
+  device::Buffer::BufferCreateInfo indInfo = {
+      .identifier = indexBufferName,
+      .type = device::Buffer::BufferType::INDEX,
+      .usage = device::Buffer::BufferUsage::STATIC,
+      .size = createInfo.indices.size() * sizeof(uint16_t),
+      .initialData = createInfo.indices.data()};
 
   bufferManager->create_buffer(indInfo);
 
@@ -126,7 +126,7 @@ RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
   // Note: Textured objects don't use vertex transformation
 }
 
-RenderObject::~RenderObject() {
+render::Object::~Object() {
   if (bufferManager) {
     bufferManager->remove_buffer(vertexBufferName);
     bufferManager->remove_buffer(indexBufferName);
@@ -135,7 +135,7 @@ RenderObject::~RenderObject() {
   std::print("Object - {} - destructor executed\n", identifier);
 }
 
-void RenderObject::update_model_matrix() {
+void render::Object::update_model_matrix() {
   modelMatrix = glm::mat4(1.0f);
   modelMatrix = glm::translate(modelMatrix, position);
   modelMatrix =
@@ -148,7 +148,7 @@ void RenderObject::update_model_matrix() {
   transformDirty = false;
 }
 
-void RenderObject::update_vertices() {
+void render::Object::update_vertices() {
   if (!verticesDirty) {
     return;
   }
@@ -211,7 +211,7 @@ void RenderObject::update_vertices() {
   }
 
   // Update the vertex buffer with transformed vertices
-  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
   if (vertexBuffer) {
     vertexBuffer->update_data(
         transformedVertices.data(),
@@ -221,9 +221,9 @@ void RenderObject::update_vertices() {
   verticesDirty = false;
 }
 
-void RenderObject::restore_original_vertices() {
+void render::Object::restore_original_vertices() {
   // Restore original vertex positions to the buffer
-  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
   if (vertexBuffer) {
     vertexBuffer->update_data(
         originalVertices.data(),
@@ -235,8 +235,8 @@ void RenderObject::restore_original_vertices() {
   verticesDirty = false;
 }
 
-void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
-                        uint32_t deviceIndex, uint32_t frameIndex) {
+void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
+                          uint32_t deviceIndex, uint32_t frameIndex) {
   if (!visible) {
     return;
   }
@@ -277,7 +277,7 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     }
 
     if (!uboBufferName.empty()) {
-      Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+      device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
       if (uboBuffer) {
         // Prepare transformation data
         struct TransformUBO {
@@ -304,13 +304,13 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
   material->bind(commandBuffer, deviceIndex, frameIndex);
 
   // Bind vertex buffer
-  Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
+  device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
   if (vertexBuffer) {
     vertexBuffer->bind_vertex(commandBuffer, 0, 0, deviceIndex);
   }
 
   // Bind index buffer
-  Buffer *indexBuffer = bufferManager->get_buffer(indexBufferName);
+  device::Buffer *indexBuffer = bufferManager->get_buffer(indexBufferName);
   if (indexBuffer) {
     indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0,
                             deviceIndex);
@@ -320,27 +320,27 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
 }
 
-void RenderObject::set_position(const glm::vec3 &pos) {
+void render::Object::set_position(const glm::vec3 &pos) {
   position = pos;
   transformDirty = true;
   verticesDirty = true;
 }
 
-void RenderObject::set_rotation(const glm::vec3 &rot) {
+void render::Object::set_rotation(const glm::vec3 &rot) {
   rotation = rot;
   transformDirty = true;
   verticesDirty = true;
 }
 
-void RenderObject::set_scale(const glm::vec3 &scl) {
+void render::Object::set_scale(const glm::vec3 &scl) {
   scale = scl;
   transformDirty = true;
   verticesDirty = true;
 }
 
-void RenderObject::set_visible(bool vis) { visible = vis; }
+void render::Object::set_visible(bool vis) { visible = vis; }
 
-void RenderObject::set_transform_mode(RenderObject::TransformMode mode) {
+void render::Object::set_transform_mode(Object::TransformMode mode) {
   if (transformMode == mode) {
     return;
   }
@@ -368,21 +368,21 @@ void RenderObject::set_transform_mode(RenderObject::TransformMode mode) {
                                                  : "GPU_MATRIX");
 }
 
-const std::string &RenderObject::get_identifier() const { return identifier; }
+const std::string &render::Object::get_identifier() const { return identifier; }
 
-RenderObject::ObjectType RenderObject::get_type() const { return type; }
+render::Object::ObjectType render::Object::get_type() const { return type; }
 
-bool RenderObject::is_visible() const { return visible; }
+bool render::Object::is_visible() const { return visible; }
 
-const glm::mat4 &RenderObject::get_model_matrix() {
+const glm::mat4 &render::Object::get_model_matrix() {
   if (transformDirty) {
     update_model_matrix();
   }
   return modelMatrix;
 }
 
-Material *RenderObject::get_material() const { return material; }
+render::Material *render::Object::get_material() const { return material; }
 
-RenderObject::TransformMode RenderObject::get_transform_mode() const {
+render::Object::TransformMode render::Object::get_transform_mode() const {
   return transformMode;
 }

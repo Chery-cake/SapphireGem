@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 
-bool Common::readFile(const std::string fileName, std::vector<char> &buffer) {
+bool general::Common::readFile(const std::string fileName,
+                               std::vector<char> &buffer) {
   std::ifstream file(fileName, std::ios::ate | std::ios::binary);
 
   if (!file.is_open()) {

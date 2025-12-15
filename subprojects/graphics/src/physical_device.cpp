@@ -6,17 +6,18 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-PhysicalDevice::PhysicalDevice(vk::raii::PhysicalDevice device)
+device::PhysicalDevice::PhysicalDevice(vk::raii::PhysicalDevice device)
     : device(device), properties(device.getProperties()),
       features(device.getFeatures()),
       queueFamilies(device.getQueueFamilyProperties()) {}
 
-PhysicalDevice::~PhysicalDevice() {
+device::PhysicalDevice::~PhysicalDevice() {
   std::print("Physical device for - {} - destructor executed\n",
              properties.deviceName.data());
 }
 
-int PhysicalDevice::calculate_score(vk::raii::SurfaceKHR &surface) const {
+int device::PhysicalDevice::calculate_score(
+    vk::raii::SurfaceKHR &surface) const {
   int score = 0;
 
   // Discrete GPUs get highest priority
@@ -45,8 +46,8 @@ int PhysicalDevice::calculate_score(vk::raii::SurfaceKHR &surface) const {
   return score;
 }
 
-bool PhysicalDevice::supports_required_features() {
-  auto features2 = Config::get_features(device);
+bool device::PhysicalDevice::supports_required_features() {
+  auto features2 = general::Config::get_features(device);
 
   bool hasDynamicRendering =
       features2.get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering;
@@ -62,8 +63,8 @@ bool PhysicalDevice::supports_required_features() {
   return hasDynamicRendering && hasExtendedDynamicState;
 }
 
-bool PhysicalDevice::has_graphic_queue(vk::raii::SurfaceKHR &surface,
-                                       uint32_t *queueIndex) const {
+bool device::PhysicalDevice::has_graphic_queue(vk::raii::SurfaceKHR &surface,
+                                               uint32_t *queueIndex) const {
   for (uint32_t i = 0; i < queueFamilies.size(); i++) {
     if ((queueFamilies[i].queueFlags & vk::QueueFlagBits::eGraphics) &&
         device.getSurfaceSupportKHR(i, *surface)) {
@@ -75,17 +76,20 @@ bool PhysicalDevice::has_graphic_queue(vk::raii::SurfaceKHR &surface,
   return false;
 }
 
-vk::raii::PhysicalDevice &PhysicalDevice::get_device() { return device; }
+vk::raii::PhysicalDevice &device::PhysicalDevice::get_device() {
+  return device;
+}
 
-const vk::PhysicalDeviceProperties &PhysicalDevice::get_properties() const {
+const vk::PhysicalDeviceProperties &
+device::PhysicalDevice::get_properties() const {
   return properties;
 }
 
-const vk::PhysicalDeviceFeatures &PhysicalDevice::get_features() const {
+const vk::PhysicalDeviceFeatures &device::PhysicalDevice::get_features() const {
   return features;
 }
 
 const std::vector<vk::QueueFamilyProperties> &
-PhysicalDevice::get_queue_families() const {
+device::PhysicalDevice::get_queue_families() const {
   return queueFamilies;
 }

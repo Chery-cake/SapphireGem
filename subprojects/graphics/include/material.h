@@ -1,5 +1,7 @@
 #pragma once
 
+#include "buffer.h"
+#include "image.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <atomic>
@@ -12,6 +14,8 @@
 #include <string>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
+
+namespace render {
 
 class Material {
 public:
@@ -77,17 +81,17 @@ private:
   float rougthness;
   float metalic;
 
-  std::vector<LogicalDevice *> logicalDevices;
+  std::vector<device::LogicalDevice *> logicalDevices;
 
-  bool create_shader_module(LogicalDevice *device,
+  bool create_shader_module(device::LogicalDevice *device,
                             const std::vector<char> &code,
                             vk::raii::ShaderModule &shaderModule);
-  bool create_pipeline(LogicalDevice *device,
+  bool create_pipeline(device::LogicalDevice *device,
                        DeviceMaterialResources &resources,
                        const MaterialCreateInfo &createInfo);
 
 public:
-  Material(const std::vector<LogicalDevice *> &devices,
+  Material(const std::vector<device::LogicalDevice *> &devices,
            const MaterialCreateInfo &createInfo);
   ~Material();
 
@@ -100,15 +104,15 @@ public:
             uint32_t frameIndex = 0);
 
   // Texture binding for textured materials
-  void bind_texture(class Image *image, uint32_t binding = 1,
+  void bind_texture(Image *image, uint32_t binding = 1,
                     uint32_t deviceIndex = 0);
 
   // Texture binding for a specific frame (per-object texture support)
-  void bind_texture_for_frame(class Image *image, uint32_t binding,
+  void bind_texture_for_frame(Image *image, uint32_t binding,
                               uint32_t deviceIndex, uint32_t frameIndex);
 
   // Uniform buffer binding for materials
-  void bind_uniform_buffer(class Buffer *buffer, uint32_t binding = 0,
+  void bind_uniform_buffer(device::Buffer *buffer, uint32_t binding = 0,
                            uint32_t deviceIndex = 0);
 
   void set_color(const glm::vec4 &newColor);
@@ -124,3 +128,5 @@ public:
 
   const std::string &get_identifier() const;
 };
+
+} // namespace render

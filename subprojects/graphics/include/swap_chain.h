@@ -5,6 +5,8 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+
 class LogicalDevice;
 
 class SwapChain {
@@ -60,3 +62,5 @@ public:
   const std::vector<vk::Image> &get_images() const;
   const std::vector<vk::raii::ImageView> &get_image_views() const;
 };
+
+} // namespace device

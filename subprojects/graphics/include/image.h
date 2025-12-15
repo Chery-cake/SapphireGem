@@ -6,6 +6,8 @@
 #include <glm/ext/vector_float4.hpp>
 #include <string>
 
+namespace render {
+
 class Image {
 public:
   struct ImageCreateInfo {
@@ -42,24 +44,25 @@ private:
 
   std::vector<unsigned char> pixelData;
 
-  std::vector<LogicalDevice *> logicalDevices;
+  std::vector<device::LogicalDevice *> logicalDevices;
   std::vector<std::unique_ptr<ImageResources>> deviceResources;
 
-  bool create_image(LogicalDevice *device, ImageResources &resources,
+  bool create_image(device::LogicalDevice *device, ImageResources &resources,
                     const ImageCreateInfo &createInfo);
-  bool create_image_view(LogicalDevice *device, ImageResources &resources,
+  bool create_image_view(device::LogicalDevice *device,
+                         ImageResources &resources,
                          const ImageCreateInfo &createInfo);
-  bool create_sampler(LogicalDevice *device, ImageResources &resources,
+  bool create_sampler(device::LogicalDevice *device, ImageResources &resources,
                       const ImageCreateInfo &createInfo);
-  bool upload_data(LogicalDevice *device, ImageResources &resources,
+  bool upload_data(device::LogicalDevice *device, ImageResources &resources,
                    const void *data, uint32_t dataSize);
-  void destroy_image(LogicalDevice *device, ImageResources &resources);
+  void destroy_image(device::LogicalDevice *device, ImageResources &resources);
 
   void apply_color_tint(const glm::vec4 &tint);
   void rotate_image_90(bool clockwise);
 
 public:
-  Image(const std::vector<LogicalDevice *> &devices,
+  Image(const std::vector<device::LogicalDevice *> &devices,
         const ImageCreateInfo &createInfo);
   ~Image();
 
@@ -91,3 +94,5 @@ public:
   vk::raii::ImageView &get_image_view(uint32_t deviceIndex = 0);
   vk::raii::Sampler &get_sampler(uint32_t deviceIndex = 0);
 };
+
+} // namespace render

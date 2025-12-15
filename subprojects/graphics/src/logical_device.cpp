@@ -25,15 +25,15 @@
 
 #pragma clang diagnostic pop
 
-LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
-                             PhysicalDevice *physicalDevice,
-                             uint32_t graphicsQueueIndex)
+device::LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
+                                     PhysicalDevice *physicalDevice,
+                                     uint32_t graphicsQueueIndex)
     : stopThread(false), physicalDevice(physicalDevice), device(nullptr),
       graphicsQueue(nullptr), graphicsQueueIndex(graphicsQueueIndex),
       commandPool(nullptr), descriptorPool(nullptr) {
 
   // Query for required features
-  auto featureChain = Config::get_features();
+  auto featureChain = general::Config::get_features();
 
   float queuePriority = 0.0f;
   vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
@@ -46,9 +46,9 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
       .queueCreateInfoCount = 1,
       .pQueueCreateInfos = &deviceQueueCreateInfo,
       .enabledExtensionCount = static_cast<uint32_t>(
-          Config::get_instance().get_device_extension().size()),
+          general::Config::get_instance().get_device_extension().size()),
       .ppEnabledExtensionNames =
-          Config::get_instance().get_device_extension().data()};
+          general::Config::get_instance().get_device_extension().data()};
 
   device = vk::raii::Device(physicalDevice->get_device(), deviceCreateInfo);
   graphicsQueue = vk::raii::Queue(device, graphicsQueueIndex, 0);
@@ -63,7 +63,7 @@ LogicalDevice::LogicalDevice(vk::raii::Instance &instance,
   thread = std::jthread(&LogicalDevice::thread_loop, this);
 }
 
-LogicalDevice::~LogicalDevice() {
+device::LogicalDevice::~LogicalDevice() {
 
   {
     std::lock_guard lock(mutex);
@@ -92,7 +92,7 @@ LogicalDevice::~LogicalDevice() {
              physicalDevice->get_properties().deviceName.data());
 }
 
-void LogicalDevice::thread_loop() {
+void device::LogicalDevice::thread_loop() {
   std::unique_lock lock(mutex);
 
   while (!stopThread) {
@@ -119,18 +119,20 @@ void LogicalDevice::thread_loop() {
   }
 }
 
-void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
+void device::LogicalDevice::initialize_vma_allocator(
+    vk::raii::Instance &instance) {
 
   VmaAllocatorCreateInfo allocatorInfo = {
       .flags = 0,
       .physicalDevice = *physicalDevice->get_device(),
       .device = *device,
-      .pVulkanFunctions = Config::get_instance().get_vma_vulkan_functions(),
+      .pVulkanFunctions =
+          general::Config::get_instance().get_vma_vulkan_functions(),
       .instance = *instance,
-      .vulkanApiVersion = Config::get_instance().get_api_version()};
+      .vulkanApiVersion = general::Config::get_instance().get_api_version()};
 
   // Enable specific features if available
-  auto features = Config::get_features(physicalDevice->get_device());
+  auto features = general::Config::get_features(physicalDevice->get_device());
 
   if (features.get<vk::PhysicalDeviceVulkan12Features>().bufferDeviceAddress) {
     allocatorInfo.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
@@ -145,8 +147,8 @@ void LogicalDevice::initialize_vma_allocator(vk::raii::Instance &instance) {
              physicalDevice->get_properties().deviceName.data());
 }
 
-void LogicalDevice::create_descriptor_pool() {
-  uint32_t maxFrames = Config::get_instance().get_max_frames();
+void device::LogicalDevice::create_descriptor_pool() {
+  uint32_t maxFrames = general::Config::get_instance().get_max_frames();
 
   // Define pool sizes for different descriptor types
   std::vector<vk::DescriptorPoolSize> poolSizes = {
@@ -168,8 +170,8 @@ void LogicalDevice::create_descriptor_pool() {
              physicalDevice->get_properties().deviceName.data());
 }
 
-void LogicalDevice::create_sync_objects() {
-  uint32_t maxFrames = Config::get_instance().get_max_frames();
+void device::LogicalDevice::create_sync_objects() {
+  uint32_t maxFrames = general::Config::get_instance().get_max_frames();
 
   inFlightFences.reserve(maxFrames);
 
@@ -185,7 +187,7 @@ void LogicalDevice::create_sync_objects() {
              physicalDevice->get_properties().deviceName.data(), maxFrames);
 }
 
-void LogicalDevice::create_swapchain_semaphores() {
+void device::LogicalDevice::create_swapchain_semaphores() {
   if (!swapChain) {
     throw std::runtime_error("Swapchain must be created before semaphores");
   }
@@ -195,7 +197,7 @@ void LogicalDevice::create_swapchain_semaphores() {
   renderFinishedSemaphores.clear();
 
   uint32_t imageCount = static_cast<uint32_t>(swapChain->get_images().size());
-  uint32_t maxFrames = Config::get_instance().get_max_frames();
+  uint32_t maxFrames = general::Config::get_instance().get_max_frames();
 
   // Create per-frame imageAvailable semaphores (for acquire operations)
   imageAvailableSemaphores.reserve(maxFrames);
@@ -218,36 +220,36 @@ void LogicalDevice::create_swapchain_semaphores() {
              imageCount);
 }
 
-void LogicalDevice::initialize_swap_chain(GLFWwindow *window,
-                                          vk::raii::SurfaceKHR &surface) {
+void device::LogicalDevice::initialize_swap_chain(
+    GLFWwindow *window, vk::raii::SurfaceKHR &surface) {
   swapChain = std::make_unique<SwapChain>(this, window, surface);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
   create_swapchain_semaphores();
 }
-void LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
-                                          vk::Extent2D extent) {
+void device::LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
+                                                  vk::Extent2D extent) {
   swapChain = std::make_unique<SwapChain>(this, format, extent);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
   create_swapchain_semaphores();
 }
 
-void LogicalDevice::initialize_command_pool(
+void device::LogicalDevice::initialize_command_pool(
     vk::CommandPoolCreateInfo &createInfo) {
   createInfo.queueFamilyIndex = graphicsQueueIndex;
   commandPool = vk::raii::CommandPool(device, createInfo);
 }
 
-void LogicalDevice::create_command_buffer() {
+void device::LogicalDevice::create_command_buffer() {
   vk::CommandBufferAllocateInfo allocInfo{
       .commandPool = *commandPool,
       .level = vk::CommandBufferLevel::ePrimary,
-      .commandBufferCount = Config::get_instance().get_max_frames()};
+      .commandBufferCount = general::Config::get_instance().get_max_frames()};
   commandBuffers = vk::raii::CommandBuffers(device, allocInfo);
 }
 
-void LogicalDevice::wait_idle() {
+void device::LogicalDevice::wait_idle() {
   device.waitIdle();
 
   // Wait for all queued tasks to complete
@@ -260,7 +262,7 @@ void LogicalDevice::wait_idle() {
   device.waitIdle();
 }
 
-bool LogicalDevice::wait_for_fence(uint32_t frameIndex) {
+bool device::LogicalDevice::wait_for_fence(uint32_t frameIndex) {
   auto result =
       device.waitForFences(*inFlightFences[frameIndex], VK_TRUE, UINT64_MAX);
   if (result != vk::Result::eSuccess) {
@@ -271,23 +273,23 @@ bool LogicalDevice::wait_for_fence(uint32_t frameIndex) {
   return true;
 }
 
-void LogicalDevice::reset_fence(uint32_t frameIndex) {
+void device::LogicalDevice::reset_fence(uint32_t frameIndex) {
   device.resetFences(*inFlightFences[frameIndex]);
 }
 
-void LogicalDevice::begin_command_buffer(uint32_t frameIndex) {
+void device::LogicalDevice::begin_command_buffer(uint32_t frameIndex) {
   commandBuffers[frameIndex].reset();
   vk::CommandBufferBeginInfo beginInfo{};
   commandBuffers[frameIndex].begin(beginInfo);
 }
 
-void LogicalDevice::end_command_buffer(uint32_t frameIndex) {
+void device::LogicalDevice::end_command_buffer(uint32_t frameIndex) {
   commandBuffers[frameIndex].end();
 }
 
-void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
-                                          uint32_t imageIndex,
-                                          bool withSemaphores) {
+void device::LogicalDevice::submit_command_buffer(uint32_t frameIndex,
+                                                  uint32_t imageIndex,
+                                                  bool withSemaphores) {
   if (withSemaphores) {
     vk::PipelineStageFlags waitStages[] = {
         vk::PipelineStageFlagBits::eColorAttachmentOutput};
@@ -309,36 +311,44 @@ void LogicalDevice::submit_command_buffer(uint32_t frameIndex,
   }
 }
 
-PhysicalDevice *LogicalDevice::get_physical_device() const {
+device::PhysicalDevice *device::LogicalDevice::get_physical_device() const {
   return physicalDevice;
 }
 
-const vk::raii::Device &LogicalDevice::get_device() const { return device; }
+const vk::raii::Device &device::LogicalDevice::get_device() const {
+  return device;
+}
 
-vk::raii::Queue &LogicalDevice::get_graphics_queue() { return graphicsQueue; }
+vk::raii::Queue &device::LogicalDevice::get_graphics_queue() {
+  return graphicsQueue;
+}
 
-uint32_t LogicalDevice::get_graphics_queue_index() const {
+uint32_t device::LogicalDevice::get_graphics_queue_index() const {
   return graphicsQueueIndex;
 }
 
-SwapChain &LogicalDevice::get_swap_chain() { return *swapChain; }
+device::SwapChain &device::LogicalDevice::get_swap_chain() {
+  return *swapChain;
+}
 
-VmaAllocator LogicalDevice::get_allocator() const { return allocator; }
+VmaAllocator device::LogicalDevice::get_allocator() const { return allocator; }
 
-const vk::raii::CommandPool &LogicalDevice::get_command_pool() const {
+const vk::raii::CommandPool &device::LogicalDevice::get_command_pool() const {
   return commandPool;
 }
 
-const vk::raii::DescriptorPool &LogicalDevice::get_descriptor_pool() const {
+const vk::raii::DescriptorPool &
+device::LogicalDevice::get_descriptor_pool() const {
   return descriptorPool;
 }
 
-std::vector<vk::raii::CommandBuffer> &LogicalDevice::get_command_buffers() {
+std::vector<vk::raii::CommandBuffer> &
+device::LogicalDevice::get_command_buffers() {
   return commandBuffers;
 }
 
-const vk::raii::Semaphore &
-LogicalDevice::get_image_available_semaphore(uint32_t frameIndex) const {
+const vk::raii::Semaphore &device::LogicalDevice::get_image_available_semaphore(
+    uint32_t frameIndex) const {
   if (frameIndex >= imageAvailableSemaphores.size()) {
     std::print(stderr,
                "ERROR: Frame index {} out of range for image available "
@@ -350,8 +360,8 @@ LogicalDevice::get_image_available_semaphore(uint32_t frameIndex) const {
   return imageAvailableSemaphores[frameIndex];
 }
 
-const vk::raii::Semaphore &
-LogicalDevice::get_render_finished_semaphore(uint32_t imageIndex) const {
+const vk::raii::Semaphore &device::LogicalDevice::get_render_finished_semaphore(
+    uint32_t imageIndex) const {
   if (imageIndex >= renderFinishedSemaphores.size()) {
     std::print(stderr,
                "ERROR: Image index {} out of range for render finished "
@@ -364,7 +374,7 @@ LogicalDevice::get_render_finished_semaphore(uint32_t imageIndex) const {
 }
 
 const vk::raii::Fence &
-LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
+device::LogicalDevice::get_in_flight_fence(uint32_t frameIndex) const {
   if (frameIndex >= inFlightFences.size()) {
     throw std::out_of_range("Frame index out of range for in-flight fence");
   }

@@ -2,7 +2,7 @@
 
 int main() {
 
-  Window win = Window(800, 600, "test");
+  render::Window win = render::Window(800, 600, "test");
 
   win.run();
 

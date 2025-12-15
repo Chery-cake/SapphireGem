@@ -1,8 +1,8 @@
 #include "texture.h"
 #include <print>
 
-Texture::Texture(const std::vector<LogicalDevice *> &devices,
-                 const TextureCreateInfo &createInfo)
+render::Texture::Texture(const std::vector<device::LogicalDevice *> &devices,
+                         const TextureCreateInfo &createInfo)
     : identifier(createInfo.identifier), type(createInfo.type),
       imagePath(createInfo.imagePath), atlasRegions(createInfo.atlasRegions),
       logicalDevices(devices) {
@@ -17,11 +17,12 @@ Texture::Texture(const std::vector<LogicalDevice *> &devices,
   image = std::make_shared<Image>(devices, imageInfo);
 }
 
-Texture::~Texture() {
+render::Texture::~Texture() {
   std::print("Texture - {} - destructor executed\n", identifier);
 }
 
-void Texture::generate_atlas_regions_grid(uint32_t rows, uint32_t cols) {
+void render::Texture::generate_atlas_regions_grid(uint32_t rows,
+                                                  uint32_t cols) {
   if (!image || image->get_width() == 0 || image->get_height() == 0) {
     std::print(stderr, "Cannot generate atlas regions: image not loaded\n");
     return;
@@ -58,7 +59,7 @@ void Texture::generate_atlas_regions_grid(uint32_t rows, uint32_t cols) {
              identifier, rows, cols, atlasRegions.size());
 }
 
-bool Texture::load() {
+bool render::Texture::load() {
   if (imagePath.empty()) {
     std::print(stderr, "Texture - {} - no image path specified\n", identifier);
     return false;
@@ -82,9 +83,10 @@ bool Texture::load() {
   return true;
 }
 
-void Texture::add_atlas_region(const std::string &name, const glm::vec2 &uvMin,
-                               const glm::vec2 &uvMax, uint32_t width,
-                               uint32_t height) {
+void render::Texture::add_atlas_region(const std::string &name,
+                                       const glm::vec2 &uvMin,
+                                       const glm::vec2 &uvMax, uint32_t width,
+                                       uint32_t height) {
   AtlasRegion region = {.name = name,
                         .uvMin = uvMin,
                         .uvMax = uvMax,
@@ -95,12 +97,12 @@ void Texture::add_atlas_region(const std::string &name, const glm::vec2 &uvMin,
   std::print("Texture - {} - added atlas region: {}\n", identifier, name);
 }
 
-void Texture::generate_grid_atlas(uint32_t rows, uint32_t cols) {
+void render::Texture::generate_grid_atlas(uint32_t rows, uint32_t cols) {
   generate_atlas_regions_grid(rows, cols);
 }
 
-const Texture::AtlasRegion *
-Texture::get_atlas_region(const std::string &name) const {
+const render::Texture::AtlasRegion *
+render::Texture::get_atlas_region(const std::string &name) const {
   for (const auto &region : atlasRegions) {
     if (region.name == name) {
       return &region;
@@ -109,25 +111,26 @@ Texture::get_atlas_region(const std::string &name) const {
   return nullptr;
 }
 
-const std::vector<Texture::AtlasRegion> &Texture::get_atlas_regions() const {
+const std::vector<render::Texture::AtlasRegion> &
+render::Texture::get_atlas_regions() const {
   return atlasRegions;
 }
 
-void Texture::set_color_tint(const glm::vec4 &tint) {
+void render::Texture::set_color_tint(const glm::vec4 &tint) {
   if (image) {
     image->set_color_tint(tint);
     std::print("Texture - {} - applied color tint\n", identifier);
   }
 }
 
-void Texture::rotate_90_clockwise() {
+void render::Texture::rotate_90_clockwise() {
   if (image) {
     image->rotate_90_clockwise();
     std::print("Texture - {} - rotated 90 degrees clockwise\n", identifier);
   }
 }
 
-void Texture::rotate_90_counter_clockwise() {
+void render::Texture::rotate_90_counter_clockwise() {
   if (image) {
     image->rotate_90_counter_clockwise();
     std::print("Texture - {} - rotated 90 degrees counter-clockwise\n",
@@ -135,14 +138,14 @@ void Texture::rotate_90_counter_clockwise() {
   }
 }
 
-void Texture::rotate_180() {
+void render::Texture::rotate_180() {
   if (image) {
     image->rotate_180();
     std::print("Texture - {} - rotated 180 degrees\n", identifier);
   }
 }
 
-bool Texture::update_gpu() {
+bool render::Texture::update_gpu() {
   if (image) {
     bool success = image->update_gpu_data();
     if (success) {
@@ -153,12 +156,20 @@ bool Texture::update_gpu() {
   return false;
 }
 
-const std::string &Texture::get_identifier() const { return identifier; }
+const std::string &render::Texture::get_identifier() const {
+  return identifier;
+}
 
-Texture::TextureType Texture::get_type() const { return type; }
+render::Texture::TextureType render::Texture::get_type() const { return type; }
 
-std::shared_ptr<Image> Texture::get_image() const { return image; }
+std::shared_ptr<render::Image> render::Texture::get_image() const {
+  return image;
+}
 
-uint32_t Texture::get_width() const { return image ? image->get_width() : 0; }
+uint32_t render::Texture::get_width() const {
+  return image ? image->get_width() : 0;
+}
 
-uint32_t Texture::get_height() const { return image ? image->get_height() : 0; }
+uint32_t render::Texture::get_height() const {
+  return image ? image->get_height() : 0;
+}

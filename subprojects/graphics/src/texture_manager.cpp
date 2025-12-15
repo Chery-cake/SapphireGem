@@ -2,19 +2,21 @@
 #include <cstdio>
 #include <print>
 
-TextureManager::TextureManager(const DeviceManager *deviceManager)
+render::TextureManager::TextureManager(
+    const device::DeviceManager *deviceManager)
     : deviceManager(deviceManager) {
   std::print("TextureManager - initialized\n");
 }
 
-TextureManager::~TextureManager() {
+render::TextureManager::~TextureManager() {
   std::lock_guard lock(managerMutex);
   textures.clear();
   std::print("TextureManager - destroyed\n");
 }
 
-Texture *TextureManager::create_texture(const std::string &identifier,
-                                        const std::string &filepath) {
+render::Texture *
+render::TextureManager::create_texture(const std::string &identifier,
+                                       const std::string &filepath) {
   std::lock_guard lock(managerMutex);
 
   if (textures.find(identifier) != textures.end()) {
@@ -48,9 +50,10 @@ Texture *TextureManager::create_texture(const std::string &identifier,
   return ptr;
 }
 
-Texture *TextureManager::create_texture_atlas(const std::string &identifier,
-                                              const std::string &filepath,
-                                              uint32_t rows, uint32_t cols) {
+render::Texture *
+render::TextureManager::create_texture_atlas(const std::string &identifier,
+                                             const std::string &filepath,
+                                             uint32_t rows, uint32_t cols) {
   std::lock_guard lock(managerMutex);
 
   if (textures.find(identifier) != textures.end()) {
@@ -89,8 +92,8 @@ Texture *TextureManager::create_texture_atlas(const std::string &identifier,
   return ptr;
 }
 
-Texture *
-TextureManager::create_texture(const Texture::TextureCreateInfo &createInfo) {
+render::Texture *render::TextureManager::create_texture(
+    const Texture::TextureCreateInfo &createInfo) {
   std::lock_guard lock(managerMutex);
 
   if (textures.find(createInfo.identifier) != textures.end()) {
@@ -117,7 +120,7 @@ TextureManager::create_texture(const Texture::TextureCreateInfo &createInfo) {
   return ptr;
 }
 
-void TextureManager::remove_texture(const std::string &identifier) {
+void render::TextureManager::remove_texture(const std::string &identifier) {
   std::lock_guard lock(managerMutex);
 
   auto it = textures.find(identifier);
@@ -127,7 +130,8 @@ void TextureManager::remove_texture(const std::string &identifier) {
   }
 }
 
-Texture *TextureManager::get_texture(const std::string &identifier) const {
+render::Texture *
+render::TextureManager::get_texture(const std::string &identifier) const {
   std::lock_guard lock(managerMutex);
 
   auto it = textures.find(identifier);
@@ -137,12 +141,13 @@ Texture *TextureManager::get_texture(const std::string &identifier) const {
   return nullptr;
 }
 
-bool TextureManager::has_texture(const std::string &identifier) const {
+bool render::TextureManager::has_texture(const std::string &identifier) const {
   std::lock_guard lock(managerMutex);
   return textures.find(identifier) != textures.end();
 }
 
-std::vector<Texture *> TextureManager::get_all_textures() const {
+std::vector<render::Texture *>
+render::TextureManager::get_all_textures() const {
   std::lock_guard lock(managerMutex);
 
   std::vector<Texture *> result;

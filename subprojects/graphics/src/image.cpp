@@ -4,8 +4,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-Image::Image(const std::vector<LogicalDevice *> &devices,
-             const ImageCreateInfo &createInfo)
+render::Image::Image(const std::vector<device::LogicalDevice *> &devices,
+                     const ImageCreateInfo &createInfo)
     : identifier(createInfo.identifier), width(createInfo.width),
       height(createInfo.height), channels(createInfo.channels), mipLevels(1),
       format(createInfo.format), logicalDevices(devices) {
@@ -23,7 +23,7 @@ Image::Image(const std::vector<LogicalDevice *> &devices,
   }
 }
 
-Image::~Image() {
+render::Image::~Image() {
   std::lock_guard lock(imageMutex);
 
   for (size_t i = 0; i < logicalDevices.size(); ++i) {
@@ -36,8 +36,9 @@ Image::~Image() {
   std::print("Image - {} - destructor executed\n", identifier);
 }
 
-bool Image::create_image(LogicalDevice *device, ImageResources &resources,
-                         const ImageCreateInfo &createInfo) {
+bool render::Image::create_image(device::LogicalDevice *device,
+                                 ImageResources &resources,
+                                 const ImageCreateInfo &createInfo) {
   try {
     VkImageCreateInfo imageInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -71,8 +72,9 @@ bool Image::create_image(LogicalDevice *device, ImageResources &resources,
   }
 }
 
-bool Image::create_image_view(LogicalDevice *device, ImageResources &resources,
-                              const ImageCreateInfo &createInfo) {
+bool render::Image::create_image_view(device::LogicalDevice *device,
+                                      ImageResources &resources,
+                                      const ImageCreateInfo &createInfo) {
   try {
     vk::ImageViewCreateInfo viewInfo{
         .image = resources.image,
@@ -89,8 +91,9 @@ bool Image::create_image_view(LogicalDevice *device, ImageResources &resources,
   }
 }
 
-bool Image::create_sampler(LogicalDevice *device, ImageResources &resources,
-                           const ImageCreateInfo &createInfo) {
+bool render::Image::create_sampler(device::LogicalDevice *device,
+                                   ImageResources &resources,
+                                   const ImageCreateInfo &createInfo) {
   try {
     vk::SamplerCreateInfo samplerInfo{
         .magFilter = createInfo.filter,
@@ -102,12 +105,13 @@ bool Image::create_sampler(LogicalDevice *device, ImageResources &resources,
         .mipLodBias = 0.0f,
         .anisotropyEnable = VK_TRUE,
         .maxAnisotropy = 16.0f,
-        .borderColor = vk::BorderColor::eIntOpaqueBlack,
-        .unnormalizedCoordinates = VK_FALSE,
         .compareEnable = VK_FALSE,
         .compareOp = vk::CompareOp::eAlways,
         .minLod = 0.0f,
-        .maxLod = static_cast<float>(mipLevels)};
+        .maxLod = static_cast<float>(mipLevels),
+        .borderColor = vk::BorderColor::eIntOpaqueBlack,
+        .unnormalizedCoordinates = VK_FALSE,
+    };
 
     resources.sampler = device->get_device().createSampler(samplerInfo);
 
@@ -118,8 +122,9 @@ bool Image::create_sampler(LogicalDevice *device, ImageResources &resources,
   }
 }
 
-bool Image::upload_data(LogicalDevice *device, ImageResources &resources,
-                        const void *data, uint32_t dataSize) {
+bool render::Image::upload_data(device::LogicalDevice *device,
+                                ImageResources &resources, const void *data,
+                                uint32_t dataSize) {
   try {
     // Create staging buffer
     VkBufferCreateInfo bufferInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -217,7 +222,8 @@ bool Image::upload_data(LogicalDevice *device, ImageResources &resources,
   }
 }
 
-void Image::destroy_image(LogicalDevice *device, ImageResources &resources) {
+void render::Image::destroy_image(device::LogicalDevice *device,
+                                  ImageResources &resources) {
   resources.sampler.clear();
   resources.imageView.clear();
 
@@ -231,7 +237,7 @@ void Image::destroy_image(LogicalDevice *device, ImageResources &resources) {
   resources.descriptorSets.clear();
 }
 
-void Image::apply_color_tint(const glm::vec4 &tint) {
+void render::Image::apply_color_tint(const glm::vec4 &tint) {
   if (pixelData.empty()) {
     return;
   }
@@ -252,7 +258,7 @@ void Image::apply_color_tint(const glm::vec4 &tint) {
   }
 }
 
-void Image::rotate_image_90(bool clockwise) {
+void render::Image::rotate_image_90(bool clockwise) {
   if (pixelData.empty() || width == 0 || height == 0) {
     return;
   }
@@ -284,7 +290,7 @@ void Image::rotate_image_90(bool clockwise) {
   std::swap(width, height);
 }
 
-bool Image::load_from_file(const std::string &filepath) {
+bool render::Image::load_from_file(const std::string &filepath) {
   std::lock_guard lock(imageMutex);
 
   int w, h, c;
@@ -312,8 +318,8 @@ bool Image::load_from_file(const std::string &filepath) {
   return true;
 }
 
-bool Image::load_from_memory(const unsigned char *data, uint32_t w, uint32_t h,
-                             uint32_t c) {
+bool render::Image::load_from_memory(const unsigned char *data, uint32_t w,
+                                     uint32_t h, uint32_t c) {
   std::lock_guard lock(imageMutex);
 
   if (!data || w == 0 || h == 0 || c == 0) {
@@ -335,26 +341,26 @@ bool Image::load_from_memory(const unsigned char *data, uint32_t w, uint32_t h,
   return true;
 }
 
-void Image::set_color_tint(const glm::vec4 &tint) {
+void render::Image::set_color_tint(const glm::vec4 &tint) {
   std::lock_guard lock(imageMutex);
   apply_color_tint(tint);
   std::print("Image - {} - applied color tint ({}, {}, {}, {})\n", identifier,
              tint.r, tint.g, tint.b, tint.a);
 }
 
-void Image::rotate_90_clockwise() {
+void render::Image::rotate_90_clockwise() {
   std::lock_guard lock(imageMutex);
   rotate_image_90(true);
   std::print("Image - {} - rotated 90 degrees clockwise\n", identifier);
 }
 
-void Image::rotate_90_counter_clockwise() {
+void render::Image::rotate_90_counter_clockwise() {
   std::lock_guard lock(imageMutex);
   rotate_image_90(false);
   std::print("Image - {} - rotated 90 degrees counter-clockwise\n", identifier);
 }
 
-void Image::rotate_180() {
+void render::Image::rotate_180() {
   std::lock_guard lock(imageMutex);
   if (pixelData.empty()) {
     return;
@@ -370,7 +376,7 @@ void Image::rotate_180() {
   std::print("Image - {} - rotated 180 degrees\n", identifier);
 }
 
-bool Image::update_gpu_data() {
+bool render::Image::update_gpu_data() {
   std::lock_guard lock(imageMutex);
 
   if (pixelData.empty()) {
@@ -424,35 +430,35 @@ bool Image::update_gpu_data() {
   return success;
 }
 
-const std::string &Image::get_identifier() const { return identifier; }
+const std::string &render::Image::get_identifier() const { return identifier; }
 
-uint32_t Image::get_width() const { return width; }
+uint32_t render::Image::get_width() const { return width; }
 
-uint32_t Image::get_height() const { return height; }
+uint32_t render::Image::get_height() const { return height; }
 
-uint32_t Image::get_channels() const { return channels; }
+uint32_t render::Image::get_channels() const { return channels; }
 
-vk::Format Image::get_format() const { return format; }
+vk::Format render::Image::get_format() const { return format; }
 
-const std::vector<unsigned char> &Image::get_pixel_data() const {
+const std::vector<unsigned char> &render::Image::get_pixel_data() const {
   return pixelData;
 }
 
-VkImage Image::get_image(uint32_t deviceIndex) const {
+VkImage render::Image::get_image(uint32_t deviceIndex) const {
   if (deviceIndex >= deviceResources.size()) {
     throw std::out_of_range("Device index out of range");
   }
   return deviceResources[deviceIndex]->image;
 }
 
-vk::raii::ImageView &Image::get_image_view(uint32_t deviceIndex) {
+vk::raii::ImageView &render::Image::get_image_view(uint32_t deviceIndex) {
   if (deviceIndex >= deviceResources.size()) {
     throw std::out_of_range("Device index out of range");
   }
   return deviceResources[deviceIndex]->imageView;
 }
 
-vk::raii::Sampler &Image::get_sampler(uint32_t deviceIndex) {
+vk::raii::Sampler &render::Image::get_sampler(uint32_t deviceIndex) {
   if (deviceIndex >= deviceResources.size()) {
     throw std::out_of_range("Device index out of range");
   }

@@ -23,15 +23,15 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
                  static_cast<uint32_t>(type), pCallbackData->pMessage);
   }
 
-  return VK_FALSE;
+  return vk::False;
 }
 
-Config &Config::get_instance() {
+general::Config &general::Config::get_instance() {
   static Config instance;
   return instance;
 }
 
-Config::Config()
+general::Config::Config()
     : instanceLayers({}), instanceExtensions([] {
         uint32_t glfwExtensionCount = 0;
         const char **glfwExtensions =
@@ -49,10 +49,10 @@ Config::Config()
   }
 }
 
-Config::~Config() { std::print("Config destructor executed\n"); };
+general::Config::~Config() { std::print("Config destructor executed\n"); };
 
 vk::raii::DebugUtilsMessengerEXT
-Config::set_up_debug_messanger(vk::raii::Instance &instance) {
+general::Config::set_up_debug_messanger(vk::raii::Instance &instance) {
   if (!enableValidationLayers)
     return nullptr;
 
@@ -72,7 +72,7 @@ Config::set_up_debug_messanger(vk::raii::Instance &instance) {
       debugUtilsMessengerCreateInfoEXT);
 }
 
-void Config::initialize_vma_functions() {
+void general::Config::initialize_vma_functions() {
   vmaVulkanFunctions.vkGetInstanceProcAddr =
       VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
   vmaVulkanFunctions.vkGetDeviceProcAddr =
@@ -84,7 +84,7 @@ void Config::initialize_vma_functions() {
 }
 
 vk::StructureChain<PhysicalDeviceFeaturesList>
-Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
+general::Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
   if (*physicalDevice == VK_NULL_HANDLE) {
     vk::PhysicalDeviceFeatures deviceFeatures = {
         .samplerAnisotropy = VK_TRUE}; // Enable anisotropic filtering
@@ -103,7 +103,8 @@ Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
   return physicalDevice.getFeatures2<PhysicalDeviceFeaturesList>();
 }
 
-bool Config::validate_instance_requirements(const vk::raii::Context &context) {
+bool general::Config::validate_instance_requirements(
+    const vk::raii::Context &context) {
   auto layersPresent = context.enumerateInstanceLayerProperties();
 
   std::print("Validating instance requirements...\n");
@@ -145,7 +146,7 @@ bool Config::validate_instance_requirements(const vk::raii::Context &context) {
   return true;
 }
 
-bool Config::validate_device_requirements(
+bool general::Config::validate_device_requirements(
     const vk::raii::PhysicalDevice &device) {
 
   auto layersPresent = device.enumerateDeviceLayerProperties();
@@ -189,7 +190,7 @@ bool Config::validate_device_requirements(
   return true;
 }
 
-void Config::check_and_enable_optional_instance_extensions(
+void general::Config::check_and_enable_optional_instance_extensions(
     const vk::raii::Context &context) {
   auto extensionsPresent = context.enumerateInstanceExtensionProperties();
 
@@ -210,7 +211,7 @@ void Config::check_and_enable_optional_instance_extensions(
   optionalInstanceExtensions.clear();
 }
 
-void Config::check_and_enable_optional_device_extensions(
+void general::Config::check_and_enable_optional_device_extensions(
     const vk::raii::PhysicalDevice &device) {
   auto extensionsPresent = device.enumerateDeviceExtensionProperties();
 
@@ -231,26 +232,26 @@ void Config::check_and_enable_optional_device_extensions(
   optionalDeviceExtensions.clear();
 }
 
-void Config::add_instance_layer(const char *layer) {
+void general::Config::add_instance_layer(const char *layer) {
   instanceLayers.push_back(layer);
   reload = true;
 }
-void Config::remove_instance_layer(const char *layer) {
+void general::Config::remove_instance_layer(const char *layer) {
   auto it = std::find(instanceLayers.begin(), instanceLayers.end(), layer);
   if (it != instanceLayers.end()) {
     instanceLayers.erase(it);
     reload = true;
   }
 }
-const std::vector<const char *> &Config::get_instance_layer() const {
+const std::vector<const char *> &general::Config::get_instance_layer() const {
   return instanceLayers;
 }
 
-void Config::add_instance_extension(const char *extension) {
+void general::Config::add_instance_extension(const char *extension) {
   instanceExtensions.push_back(extension);
   reload = true;
 }
-void Config::remove_instance_extension(const char *extension) {
+void general::Config::remove_instance_extension(const char *extension) {
   auto it = std::find(instanceExtensions.begin(), instanceExtensions.end(),
                       extension);
   if (it != instanceExtensions.end()) {
@@ -258,30 +259,31 @@ void Config::remove_instance_extension(const char *extension) {
     reload = true;
   }
 }
-const std::vector<const char *> &Config::get_instance_extension() const {
+const std::vector<const char *> &
+general::Config::get_instance_extension() const {
   return instanceExtensions;
 }
 
-void Config::add_device_layer(const char *layer) {
+void general::Config::add_device_layer(const char *layer) {
   deviceLayers.push_back(layer);
   reload = true;
 }
-void Config::remove_device_layer(const char *layer) {
+void general::Config::remove_device_layer(const char *layer) {
   auto it = std::find(deviceLayers.begin(), deviceLayers.end(), layer);
   if (it != deviceLayers.end()) {
     deviceLayers.erase(it);
     reload = true;
   }
 }
-const std::vector<const char *> &Config::get_device_layer() const {
+const std::vector<const char *> &general::Config::get_device_layer() const {
   return deviceLayers;
 }
 
-void Config::add_device_extension(const char *extension) {
+void general::Config::add_device_extension(const char *extension) {
   deviceExtensions.push_back(extension);
   reload = true;
 }
-void Config::remove_device_extension(const char *extension) {
+void general::Config::remove_device_extension(const char *extension) {
   auto it =
       std::find(deviceExtensions.begin(), deviceExtensions.end(), extension);
   if (it != deviceExtensions.end()) {
@@ -289,25 +291,29 @@ void Config::remove_device_extension(const char *extension) {
     reload = true;
   }
 }
-const std::vector<const char *> &Config::get_device_extension() const {
+const std::vector<const char *> &general::Config::get_device_extension() const {
   return deviceExtensions;
 }
 
-void Config::add_optional_instance_extension(const char *extension) {
+void general::Config::add_optional_instance_extension(const char *extension) {
   optionalInstanceExtensions.push_back(extension);
 }
 
-void Config::add_optional_device_extension(const char *extension) {
+void general::Config::add_optional_device_extension(const char *extension) {
   optionalDeviceExtensions.push_back(extension);
 }
 
-void Config::set_api_version(uint32_t &version) { apiVersion = version; }
-const uint32_t Config::get_api_version() const { return apiVersion; }
+void general::Config::set_api_version(uint32_t &version) {
+  apiVersion = version;
+}
+const uint32_t general::Config::get_api_version() const { return apiVersion; }
 
-void Config::set_max_frames(uint8_t &max) { maxFramesInFligth = max; }
-const uint8_t &Config::get_max_frames() const { return maxFramesInFligth; }
+void general::Config::set_max_frames(uint8_t &max) { maxFramesInFligth = max; }
+const uint8_t &general::Config::get_max_frames() const {
+  return maxFramesInFligth;
+}
 
-const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
+const VmaVulkanFunctions *general::Config::get_vma_vulkan_functions() {
   if (vmaVulkanFunctionsInitialized) {
     return &vmaVulkanFunctions;
   }
@@ -316,9 +322,9 @@ const VmaVulkanFunctions *Config::get_vma_vulkan_functions() {
   return &vmaVulkanFunctions;
 }
 
-bool Config::needs_reload() const { return reload; }
+bool general::Config::needs_reload() const { return reload; }
 
-void Config::mark_reload_complete() {
+void general::Config::mark_reload_complete() {
   reload = false;
   initialize_vma_functions();
 }

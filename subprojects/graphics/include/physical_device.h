@@ -4,6 +4,8 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+
 class PhysicalDevice {
 
 private:
@@ -28,3 +30,5 @@ public:
   const vk::PhysicalDeviceFeatures &get_features() const;
   const std::vector<vk::QueueFamilyProperties> &get_queue_families() const;
 };
+
+} // namespace device

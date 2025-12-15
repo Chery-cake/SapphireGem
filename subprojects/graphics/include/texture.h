@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+namespace render {
+
 class Texture {
 public:
   enum class TextureType { SINGLE, ATLAS };
@@ -32,12 +34,12 @@ private:
   std::shared_ptr<Image> image;
   std::vector<AtlasRegion> atlasRegions;
 
-  std::vector<LogicalDevice *> logicalDevices;
+  std::vector<device::LogicalDevice *> logicalDevices;
 
   void generate_atlas_regions_grid(uint32_t rows, uint32_t cols);
 
 public:
-  Texture(const std::vector<LogicalDevice *> &devices,
+  Texture(const std::vector<device::LogicalDevice *> &devices,
           const TextureCreateInfo &createInfo);
   ~Texture();
 
@@ -69,3 +71,5 @@ public:
   uint32_t get_width() const;
   uint32_t get_height() const;
 };
+
+} // namespace render

@@ -3,12 +3,14 @@
 #include "buffer_manager.h"
 #include "device_manager.h"
 #include "material_manager.h"
-#include "render_object.h"
+#include "object.h"
 #include "texture_manager.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace render {
 
 class ObjectManager {
 public:
@@ -58,15 +60,15 @@ public:
   };
 
 private:
-  DeviceManager *deviceManager;
+  device::DeviceManager *deviceManager;
   MaterialManager *materialManager;
-  BufferManager *bufferManager;
+  device::BufferManager *bufferManager;
   class TextureManager *textureManager;
 
   MultiGPUConfig gpuConfig;
 
-  std::unordered_map<std::string, std::unique_ptr<RenderObject>> objects;
-  std::vector<RenderObject *> renderQueue;
+  std::unordered_map<std::string, std::unique_ptr<Object>> objects;
+  std::vector<Object *> renderQueue;
 
   // Material instance tracking (for shared materials)
   std::unordered_map<std::string, uint32_t>
@@ -76,8 +78,10 @@ private:
   void sort_render_queue_by_material();
 
 public:
-  ObjectManager(DeviceManager *deviceManager, MaterialManager *materialManager,
-                BufferManager *bufferManager, TextureManager *textureManager);
+  ObjectManager(device::DeviceManager *deviceManager,
+                MaterialManager *materialManager,
+                device::BufferManager *bufferManager,
+                TextureManager *textureManager);
   ~ObjectManager();
 
   // Configuration
@@ -86,11 +90,11 @@ public:
   const MultiGPUConfig &get_gpu_config() const;
 
   // Object management
-  RenderObject *create_object(const RenderObject::ObjectCreateInfo &createInfo);
-  RenderObject *create_textured_object(
-      const RenderObject::ObjectCreateInfoTextured &createInfo);
+  Object *create_object(const Object::ObjectCreateInfo &createInfo);
+  Object *
+  create_textured_object(const Object::ObjectCreateInfoTextured &createInfo);
   void remove_object(const std::string &identifier);
-  RenderObject *get_object(const std::string &identifier);
+  Object *get_object(const std::string &identifier);
 
   // Rendering
   void render_all_objects(vk::raii::CommandBuffer &commandBuffer,
@@ -100,3 +104,5 @@ public:
   size_t get_object_count() const;
   size_t get_material_count() const;
 };
+
+} // namespace render

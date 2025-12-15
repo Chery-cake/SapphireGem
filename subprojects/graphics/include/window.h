@@ -1,10 +1,12 @@
 #pragma once
 
-#include "render_object.h"
+#include "object.h"
 #include "renderer.h"
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <string>
+
+namespace render {
 
 class Window {
 
@@ -15,13 +17,13 @@ private:
 
   std::unique_ptr<Renderer> renderer;
 
-  RenderObject::TransformMode currentTransformMode;
+  Object::TransformMode currentTransformMode;
 
   // Objects for animation
-  RenderObject *triangle;
-  RenderObject *cube;
-  RenderObject *texturedSquare;
-  RenderObject *imageQuad;
+  Object *triangle;
+  Object *cube;
+  Object *texturedSquare;
+  Object *imageQuad;
 
   static void frame_buffer_resize_callback(GLFWwindow *window, int width,
                                            int height);
@@ -38,3 +40,5 @@ public:
 
   void run();
 };
+
+} // namespace render

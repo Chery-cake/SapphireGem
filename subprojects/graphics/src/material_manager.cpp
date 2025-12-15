@@ -8,23 +8,24 @@
 #include <string>
 #include <vector>
 
-MaterialManager::MaterialManager(DeviceManager *deviceManager)
+render::MaterialManager::MaterialManager(device::DeviceManager *deviceManager)
     : deviceManager(deviceManager) {}
 
-MaterialManager::~MaterialManager() {
+render::MaterialManager::~MaterialManager() {
 
   materials.clear();
 
   std::print("Material Manager destructor executed\n");
 }
 
-void MaterialManager::add_material(Material::MaterialCreateInfo createInfo) {
+void render::MaterialManager::add_material(
+    Material::MaterialCreateInfo createInfo) {
   materials.insert(materials.end(),
                    std::make_unique<Material>(
                        deviceManager->get_all_logical_devices(), createInfo));
 }
 
-void MaterialManager::remove_material(std::string identifier) {
+void render::MaterialManager::remove_material(std::string identifier) {
   assert(!materials.empty());
   const auto iterator =
       std::ranges::find_if(materials, [identifier](const auto &material) {
@@ -33,7 +34,7 @@ void MaterialManager::remove_material(std::string identifier) {
   materials.erase(iterator);
 }
 
-void MaterialManager::reload_materials() {
+void render::MaterialManager::reload_materials() {
   for (const auto &material : materials) {
     material->reinitialize(); // TODO decide to use single or multi-thread here
     //    Tasks::get_instance().add_task([&material]() {
@@ -42,7 +43,8 @@ void MaterialManager::reload_materials() {
   }
 }
 
-Material *MaterialManager::get_material(const std::string &identifier) const {
+render::Material *
+render::MaterialManager::get_material(const std::string &identifier) const {
   for (const auto &material : materials) {
     if (material->get_identifier() == identifier) {
       return material.get();
@@ -51,7 +53,8 @@ Material *MaterialManager::get_material(const std::string &identifier) const {
   return nullptr;
 }
 
-const std::vector<Material *> &MaterialManager::get_materials() const {
+const std::vector<render::Material *> &
+render::MaterialManager::get_materials() const {
   static std::vector<Material *> ptrs;
   ptrs.clear();
   for (const auto &material : materials) {

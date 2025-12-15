@@ -4,16 +4,18 @@
 #include "texture.h"
 #include <mutex>
 
+namespace render {
+
 class TextureManager {
 private:
   mutable std::mutex managerMutex;
 
-  const DeviceManager *deviceManager;
+  const device::DeviceManager *deviceManager;
 
   std::unordered_map<std::string, std::unique_ptr<Texture>> textures;
 
 public:
-  TextureManager(const DeviceManager *deviceManager);
+  TextureManager(const device::DeviceManager *deviceManager);
   ~TextureManager();
 
   // Create a texture from file
@@ -38,3 +40,5 @@ public:
   // Get all textures
   std::vector<Texture *> get_all_textures() const;
 };
+
+} // namespace render

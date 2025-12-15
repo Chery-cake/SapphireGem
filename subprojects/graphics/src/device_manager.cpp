@@ -14,12 +14,13 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-DeviceManager::DeviceManager(GLFWwindow *window, vk::raii::Instance &instance,
-                             vk::raii::SurfaceKHR &surface)
+device::DeviceManager::DeviceManager(GLFWwindow *window,
+                                     vk::raii::Instance &instance,
+                                     vk::raii::SurfaceKHR &surface)
     : window(window), instance(instance), surface(surface),
       primaryDevice(nullptr), multiGPUEnabled(false) {}
 
-DeviceManager::~DeviceManager() {
+device::DeviceManager::~DeviceManager() {
   wait_idle();
 
   logicalDevices.clear();
@@ -28,7 +29,7 @@ DeviceManager::~DeviceManager() {
   std::print("Devices manager destructor executed\n");
 }
 
-PhysicalDevice *DeviceManager::select_primary_device() const {
+device::PhysicalDevice *device::DeviceManager::select_primary_device() const {
   PhysicalDevice *bestDevice = nullptr;
   int bestScore = -1;
 
@@ -41,7 +42,7 @@ PhysicalDevice *DeviceManager::select_primary_device() const {
 
     // Validate device requirements
     try {
-      if (!Config::get_instance().validate_device_requirements(
+      if (!general::Config::get_instance().validate_device_requirements(
               device->get_device())) {
         std::print("Device failed validation requirements\n");
         continue;
@@ -52,7 +53,7 @@ PhysicalDevice *DeviceManager::select_primary_device() const {
     }
 
     // Check optional extensions
-    Config::get_instance().check_and_enable_optional_device_extensions(
+    general::Config::get_instance().check_and_enable_optional_device_extensions(
         device->get_device());
 
     // Check required features
@@ -80,7 +81,7 @@ PhysicalDevice *DeviceManager::select_primary_device() const {
 }
 
 uint32_t
-DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
+device::DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
   uint32_t queueIndex;
 
   std::print("Finding graphics queue for device: {}\n",
@@ -105,7 +106,7 @@ DeviceManager::find_graphics_queue_index(PhysicalDevice *device) const {
   return queueIndex;
 }
 
-void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
+void device::DeviceManager::add_device(PhysicalDevice *physicalDevice) {
   std::lock_guard<std::mutex> lock(deviceMutex);
 
   if (primaryDevice->get_physical_device() == physicalDevice) {
@@ -150,7 +151,7 @@ void DeviceManager::add_device(PhysicalDevice *physicalDevice) {
   }
 }
 
-void DeviceManager::enumerate_physical_devices() {
+void device::DeviceManager::enumerate_physical_devices() {
   physicalDevices.clear();
 
   auto devices = instance.enumeratePhysicalDevices();
@@ -173,7 +174,7 @@ void DeviceManager::enumerate_physical_devices() {
   }
 }
 
-void DeviceManager::initialize_devices() {
+void device::DeviceManager::initialize_devices() {
   logicalDevices.clear();
   secondaryDevices.clear();
 
@@ -208,19 +209,19 @@ void DeviceManager::initialize_devices() {
   }
 }
 
-void DeviceManager::switch_multi_GPU(bool enable) {
+void device::DeviceManager::switch_multi_GPU(bool enable) {
   std::lock_guard<std::mutex> lock(deviceMutex);
   multiGPUEnabled = enable;
 }
 
-void DeviceManager::wait_idle() {
+void device::DeviceManager::wait_idle() {
   std::lock_guard<std::mutex> lock(deviceMutex);
   for (auto &device : logicalDevices) {
     device->get_device().waitIdle();
   }
 }
 
-void DeviceManager::create_swap_chains() {
+void device::DeviceManager::create_swap_chains() {
   std::print("Creating swap chains...\n");
 
   primaryDevice->initialize_swap_chain(window, surface);
@@ -247,7 +248,7 @@ void DeviceManager::create_swap_chains() {
   }
 }
 
-void DeviceManager::recreate_swap_chain() {
+void device::DeviceManager::recreate_swap_chain() {
 
   std::print("Recreating swap chains...\n");
   wait_idle();
@@ -277,7 +278,7 @@ void DeviceManager::recreate_swap_chain() {
   }
 }
 
-void DeviceManager::create_command_pool() {
+void device::DeviceManager::create_command_pool() {
 
   vk::CommandPoolCreateInfo createInfo{
       .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer};
@@ -306,12 +307,12 @@ void DeviceManager::create_command_pool() {
   }
 }
 
-const LogicalDevice *DeviceManager::get_primary_device() const {
+const device::LogicalDevice *device::DeviceManager::get_primary_device() const {
   return primaryDevice;
 }
 
-const std::vector<LogicalDevice *> &
-DeviceManager::get_all_secondary_devices() const {
+const std::vector<device::LogicalDevice *> &
+device::DeviceManager::get_all_secondary_devices() const {
   static std::vector<LogicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : secondaryDevices) {
@@ -320,8 +321,8 @@ DeviceManager::get_all_secondary_devices() const {
   return ptrs;
 }
 
-const std::vector<PhysicalDevice *> &
-DeviceManager::get_all_physical_devices() const {
+const std::vector<device::PhysicalDevice *> &
+device::DeviceManager::get_all_physical_devices() const {
   static std::vector<PhysicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : physicalDevices) {
@@ -330,8 +331,8 @@ DeviceManager::get_all_physical_devices() const {
   return ptrs;
 }
 
-const std::vector<LogicalDevice *> &
-DeviceManager::get_all_logical_devices() const {
+const std::vector<device::LogicalDevice *> &
+device::DeviceManager::get_all_logical_devices() const {
   static std::vector<LogicalDevice *> ptrs;
   ptrs.clear();
   for (const auto &device : logicalDevices) {
@@ -340,4 +341,6 @@ DeviceManager::get_all_logical_devices() const {
   return ptrs;
 }
 
-bool DeviceManager::is_multi_GPU_enabled() const { return multiGPUEnabled; }
+bool device::DeviceManager::is_multi_GPU_enabled() const {
+  return multiGPUEnabled;
+}

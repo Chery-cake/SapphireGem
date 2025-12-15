@@ -5,21 +5,21 @@
 #include <stdexcept>
 #include <thread>
 
-Tasks &Tasks::get_instance() {
+device::Tasks &device::Tasks::get_instance() {
   static Tasks instance;
   return instance;
 }
 
-Tasks::Tasks()
+device::Tasks::Tasks()
     : num_threads(std::thread::hardware_concurrency() * 0.75), num_gpus(0),
       pool(num_threads) {}
 
-Tasks::~Tasks() {
+device::Tasks::~Tasks() {
   pool.wait();
   std::print("Tasks destructor executed\n");
 };
 
-void Tasks::set_threads(uint16_t amount) {
+void device::Tasks::set_threads(uint16_t amount) {
   num_threads = amount;
   if (num_threads == 0 || num_threads > std::thread::hardware_concurrency()) {
     throw std::runtime_error(
@@ -29,7 +29,7 @@ void Tasks::set_threads(uint16_t amount) {
   pool.reset(num_threads - num_gpus);
 }
 
-void Tasks::add_gpu() {
+void device::Tasks::add_gpu() {
   if (num_gpus >= num_threads - 1) {
     throw std::runtime_error("Theres too many threads allocatated to gpus");
   }
@@ -37,7 +37,7 @@ void Tasks::add_gpu() {
   set_threads(num_threads);
 }
 
-void Tasks::remove_gpu() {
+void device::Tasks::remove_gpu() {
   if (num_gpus == 0 || num_threads > std::thread::hardware_concurrency()) {
     throw std::runtime_error("Theres no thread dedicated to a gpu to remove");
   }

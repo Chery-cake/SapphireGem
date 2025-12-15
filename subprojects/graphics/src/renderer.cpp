@@ -21,7 +21,7 @@
 
 VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
-Renderer::Renderer(GLFWwindow *window)
+render::Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
       debugMessanger(nullptr), deviceManager(nullptr), textureManager(nullptr),
       bufferManager(nullptr), objectManager(nullptr), currentFrame(0),
@@ -51,7 +51,7 @@ Renderer::Renderer(GLFWwindow *window)
   objectManager->set_gpu_config(gpuConfig);
 }
 
-Renderer::~Renderer() {
+render::Renderer::~Renderer() {
   deviceManager->wait_idle();
 
   objectManager.reset();
@@ -63,7 +63,7 @@ Renderer::~Renderer() {
   std::print("Renderer destructor executed\n");
 }
 
-void Renderer::init_instance() {
+void render::Renderer::init_instance() {
   vk::ApplicationInfo appInfo = {.pApplicationName = "Vulkan Engine",
                                  .applicationVersion = VK_MAKE_VERSION(0, 0, 0),
                                  .pEngineName = "No Engine",
@@ -81,27 +81,28 @@ void Renderer::init_instance() {
                            ? VK_API_VERSION_1_3
                            : instanceVersion;
 
-  Config::get_instance().set_api_version(appInfo.apiVersion);
+  general::Config::get_instance().set_api_version(appInfo.apiVersion);
   std::print("Requesting Vulkan API version: {}.{}.{}\n",
              VK_API_VERSION_MAJOR(appInfo.apiVersion),
              VK_API_VERSION_MINOR(appInfo.apiVersion),
              VK_API_VERSION_PATCH(appInfo.apiVersion));
 
   // Validate required extensions and layers
-  Config::get_instance().validate_instance_requirements(context);
+  general::Config::get_instance().validate_instance_requirements(context);
   // Check and enable optional extensions
-  Config::get_instance().check_and_enable_optional_instance_extensions(context);
+  general::Config::get_instance().check_and_enable_optional_instance_extensions(
+      context);
 
   vk::InstanceCreateInfo createInfo;
   createInfo.pApplicationInfo = &appInfo;
-  createInfo.enabledLayerCount =
-      static_cast<uint32_t>(Config::get_instance().get_instance_layer().size());
+  createInfo.enabledLayerCount = static_cast<uint32_t>(
+      general::Config::get_instance().get_instance_layer().size());
   createInfo.ppEnabledLayerNames =
-      Config::get_instance().get_instance_layer().data();
+      general::Config::get_instance().get_instance_layer().data();
   createInfo.enabledExtensionCount = static_cast<uint32_t>(
-      Config::get_instance().get_instance_extension().size());
+      general::Config::get_instance().get_instance_extension().size());
   createInfo.ppEnabledExtensionNames =
-      Config::get_instance().get_instance_extension().data();
+      general::Config::get_instance().get_instance_extension().data();
 
   std::print("Creating Vulkan instance with {} layers and {} extensions\n",
              createInfo.enabledLayerCount, createInfo.enabledExtensionCount);
@@ -111,7 +112,7 @@ void Renderer::init_instance() {
   std::print("Vulkan instance created successfully\n");
 }
 
-void Renderer::init_surface() {
+void render::Renderer::init_surface() {
   VkSurfaceKHR rawSurface = nullptr;
 
   if (glfwCreateWindowSurface(*instance, window, nullptr, &rawSurface) !=
@@ -122,18 +123,19 @@ void Renderer::init_surface() {
   surface = vk::raii::SurfaceKHR(instance, rawSurface);
 }
 
-void Renderer::init_device() {
-  deviceManager = std::make_unique<DeviceManager>(window, instance, surface);
+void render::Renderer::init_device() {
+  deviceManager =
+      std::make_unique<device::DeviceManager>(window, instance, surface);
   deviceManager->enumerate_physical_devices();
   deviceManager->initialize_devices();
 }
 
-void Renderer::init_swap_chain() {
+void render::Renderer::init_swap_chain() {
   deviceManager->create_swap_chains();
   deviceManager->create_command_pool();
 }
 
-void Renderer::init_materials() {
+void render::Renderer::init_materials() {
   materialManager = std::make_unique<MaterialManager>(deviceManager.get());
   textureManager = std::make_unique<TextureManager>(deviceManager.get());
 
@@ -239,12 +241,13 @@ void Renderer::init_materials() {
   materialManager->add_material(texturedCreateInfo);
 }
 
-void Renderer::init_debug() {
-  debugMessanger = Config::get_instance().set_up_debug_messanger(instance);
+void render::Renderer::init_debug() {
+  debugMessanger =
+      general::Config::get_instance().set_up_debug_messanger(instance);
 }
 
-void Renderer::create_buffers() {
-  bufferManager = std::make_unique<BufferManager>(deviceManager.get());
+void render::Renderer::create_buffers() {
+  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 
   const std::vector<Material::Vertex2D> vertices = {
       {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -252,23 +255,23 @@ void Renderer::create_buffers() {
       {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
       {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
 
-  Buffer::BufferCreateInfo vertInfo = {.identifier = "vertices",
-                                       .type = Buffer::BufferType::VERTEX,
-                                       .usage = Buffer::BufferUsage::STATIC,
-                                       .size = std::size(vertices) *
-                                               sizeof(Material::Vertex2D),
-                                       .initialData = vertices.data()};
+  device::Buffer::BufferCreateInfo vertInfo = {
+      .identifier = "vertices",
+      .type = device::Buffer::BufferType::VERTEX,
+      .usage = device::Buffer::BufferUsage::STATIC,
+      .size = std::size(vertices) * sizeof(Material::Vertex2D),
+      .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
 
   const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-  Buffer::BufferCreateInfo indInfo = {.identifier = "indices",
-                                      .type = Buffer::BufferType::INDEX,
-                                      .usage = Buffer::BufferUsage::STATIC,
-                                      .size =
-                                          std::size(indices) * sizeof(uint16_t),
-                                      .initialData = indices.data()};
+  device::Buffer::BufferCreateInfo indInfo = {
+      .identifier = "indices",
+      .type = device::Buffer::BufferType::INDEX,
+      .usage = device::Buffer::BufferUsage::STATIC,
+      .size = std::size(indices) * sizeof(uint16_t),
+      .initialData = indices.data()};
 
   bufferManager->create_buffer(indInfo);
 
@@ -289,26 +292,28 @@ void Renderer::create_buffers() {
         .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
     };
 
-    Buffer::BufferCreateInfo matInfo = {.identifier = "material-test",
-                                        .type = Buffer::BufferType::UNIFORM,
-                                        .usage = Buffer::BufferUsage::DYNAMIC,
-                                        .size = sizeof(TransformUBO),
-                                        .elementSize = sizeof(TransformUBO),
-                                        .initialData = &testUboData};
+    device::Buffer::BufferCreateInfo matInfo = {
+        .identifier = "material-test",
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &testUboData};
 
     bufferManager->create_buffer(matInfo);
 
     // Bind the UBO to the Test material
     Material *testMaterial = materialManager->get_materials()[0];
-    Buffer *testUboBuffer = bufferManager->get_buffer("material-test");
+    device::Buffer *testUboBuffer = bufferManager->get_buffer("material-test");
     if (testMaterial && testUboBuffer) {
       testMaterial->bind_uniform_buffer(testUboBuffer, 0, 0);
     }
   }
 }
 
-bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
-                                  uint32_t &semaphoreIndex) {
+bool render::Renderer::acquire_next_image(device::LogicalDevice *device,
+                                          uint32_t &imageIndex,
+                                          uint32_t &semaphoreIndex) {
   vk::Result acquireResult;
   try {
 
@@ -338,8 +343,9 @@ bool Renderer::acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
   return true;
 }
 
-void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex,
-                             uint32_t semaphoreIndex) {
+void render::Renderer::present_frame(device::LogicalDevice *device,
+                                     uint32_t imageIndex,
+                                     uint32_t semaphoreIndex) {
   vk::PresentInfoKHR presentInfo{
       .waitSemaphoreCount = 1,
       .pWaitSemaphores =
@@ -361,7 +367,7 @@ void Renderer::present_frame(LogicalDevice *device, uint32_t imageIndex,
   }
 }
 
-void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
+void render::Renderer::draw_frame_single_gpu(device::LogicalDevice *device) {
   if (!device) {
     return;
   }
@@ -402,7 +408,7 @@ void Renderer::draw_frame_single_gpu(LogicalDevice *device) {
   present_frame(device, imageIndex, semaphoreIndex);
 }
 
-void Renderer::draw_frame_afr() {
+void render::Renderer::draw_frame_afr() {
   // AFR: Each GPU renders different frames
   auto allDevices = deviceManager->get_all_logical_devices();
   if (allDevices.empty()) {
@@ -411,27 +417,29 @@ void Renderer::draw_frame_afr() {
 
   const size_t renderingDeviceIndex = frameCount % allDevices.size();
   draw_frame_single_gpu(
-      const_cast<LogicalDevice *>(allDevices[renderingDeviceIndex]));
+      const_cast<device::LogicalDevice *>(allDevices[renderingDeviceIndex]));
 }
 
-void Renderer::draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex) {
+void render::Renderer::draw_frame_sfr(uint32_t imageIndex,
+                                      uint32_t semaphoreIndex) {
   // SFR: Split frame across multiple GPUs
   auto allDevices = deviceManager->get_all_logical_devices();
   if (allDevices.size() < 2) {
     // Fall back to single GPU if not enough devices
-    draw_frame_single_gpu(
-        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    draw_frame_single_gpu(const_cast<device::LogicalDevice *>(
+        deviceManager->get_primary_device()));
     return;
   }
 
   // For now, implement horizontal split (top/bottom)
-  LogicalDevice *primaryDevice =
-      const_cast<LogicalDevice *>(deviceManager->get_primary_device());
+  device::LogicalDevice *primaryDevice =
+      const_cast<device::LogicalDevice *>(deviceManager->get_primary_device());
   vk::Extent2D extent = primaryDevice->get_swap_chain().get_extent2D();
 
   // Each device renders a portion of the screen
   for (size_t i = 0; i < allDevices.size(); ++i) {
-    LogicalDevice *device = const_cast<LogicalDevice *>(allDevices[i]);
+    device::LogicalDevice *device =
+        const_cast<device::LogicalDevice *>(allDevices[i]);
 
     device->begin_command_buffer(currentFrame);
     vk::raii::CommandBuffer &commandBuffer =
@@ -470,24 +478,24 @@ void Renderer::draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex) {
   }
 
   present_frame(
-      const_cast<LogicalDevice *>(deviceManager->get_primary_device()),
+      const_cast<device::LogicalDevice *>(deviceManager->get_primary_device()),
       imageIndex, semaphoreIndex);
 }
 
-void Renderer::draw_frame_hybrid() {
+void render::Renderer::draw_frame_hybrid() {
   // Hybrid: Choose strategy based on workload
   // For now, use AFR as default
   draw_frame_afr();
 }
 
-void Renderer::draw_frame_multi_queue_streaming() {
+void render::Renderer::draw_frame_multi_queue_streaming() {
   // Multi-queue with resource streaming
   // This is an advanced feature that would use async compute/transfer queues
   // For now, fall back to AFR
   draw_frame_afr();
 }
 
-void Renderer::reload() {
+void render::Renderer::reload() {
   std::print("Reloading rendering system...\n");
 
   // Wait for all devices to be idle
@@ -501,7 +509,7 @@ void Renderer::reload() {
   deviceManager.reset();
 
   // Check if we need to reload instance (layers/extensions changed)
-  if (Config::get_instance().needs_reload()) {
+  if (general::Config::get_instance().needs_reload()) {
     std::print("Full reload required - recreating instance...\n");
 
     // Clean up everything
@@ -516,7 +524,7 @@ void Renderer::reload() {
     init_debug();
     init_surface();
 
-    Config::get_instance().mark_reload_complete();
+    general::Config::get_instance().mark_reload_complete();
   } else {
     std::print("Partial reload - keeping instance...\n");
     // Just reload devices if instance doesn't need recreation
@@ -534,12 +542,12 @@ void Renderer::reload() {
   std::print("Reload complete!\n");
 }
 
-void Renderer::draw_frame() {
+void render::Renderer::draw_frame() {
   // Dispatch to strategy-specific implementation
   switch (gpuConfig.strategy) {
   case ObjectManager::RenderStrategy::SINGLE_GPU:
-    draw_frame_single_gpu(
-        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    draw_frame_single_gpu(const_cast<device::LogicalDevice *>(
+        deviceManager->get_primary_device()));
     break;
   case ObjectManager::RenderStrategy::AFR:
     draw_frame_afr();
@@ -549,8 +557,9 @@ void Renderer::draw_frame() {
     {
       auto allDevices = deviceManager->get_all_logical_devices();
       if (!allDevices.empty()) {
-        LogicalDevice *primaryDevice =
-            const_cast<LogicalDevice *>(deviceManager->get_primary_device());
+        device::LogicalDevice *primaryDevice =
+            const_cast<device::LogicalDevice *>(
+                deviceManager->get_primary_device());
         if (primaryDevice->wait_for_fence(currentFrame)) {
           primaryDevice->reset_fence(currentFrame);
           uint32_t imageIndex, semaphoreIndex;
@@ -568,42 +577,53 @@ void Renderer::draw_frame() {
     draw_frame_multi_queue_streaming();
     break;
   default:
-    draw_frame_single_gpu(
-        const_cast<LogicalDevice *>(deviceManager->get_primary_device()));
+    draw_frame_single_gpu(const_cast<device::LogicalDevice *>(
+        deviceManager->get_primary_device()));
     break;
   }
 
   // Advance frame counters
-  const uint32_t maxFrames = Config::get_instance().get_max_frames();
+  const uint32_t maxFrames = general::Config::get_instance().get_max_frames();
   currentFrame = (currentFrame + 1) % maxFrames;
   frameCount++;
 }
 
-void Renderer::set_render_strategy(ObjectManager::RenderStrategy strategy) {
+void render::Renderer::set_render_strategy(
+    ObjectManager::RenderStrategy strategy) {
   gpuConfig.strategy = strategy;
   objectManager->set_render_strategy(strategy);
   std::print("Render strategy changed to: {}\n", static_cast<int>(strategy));
 }
 
-void Renderer::set_gpu_config(const ObjectManager::MultiGPUConfig &config) {
+void render::Renderer::set_gpu_config(
+    const ObjectManager::MultiGPUConfig &config) {
   gpuConfig = config;
   objectManager->set_gpu_config(config);
 }
 
-DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
+device::DeviceManager &render::Renderer::get_device_manager() {
+  return *deviceManager;
+}
 
-MaterialManager &Renderer::get_material_manager() { return *materialManager; }
+render::MaterialManager &render::Renderer::get_material_manager() {
+  return *materialManager;
+}
 
-TextureManager &Renderer::get_texture_manager() { return *textureManager; }
+render::TextureManager &render::Renderer::get_texture_manager() {
+  return *textureManager;
+}
 
-BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
+device::BufferManager &render::Renderer::get_buffer_manager() {
+  return *bufferManager;
+}
 
-ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
+render::ObjectManager *render::Renderer::get_object_manager() {
+  return objectManager.get();
+}
 
-RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
-                                           const glm::vec3 &position,
-                                           const glm::vec3 &rotation,
-                                           const glm::vec3 &scale) {
+render::Object *render::Renderer::create_triangle_2d(
+    const std::string &identifier, const glm::vec3 &position,
+    const glm::vec3 &rotation, const glm::vec3 &scale) {
   if (!objectManager) {
     std::print("Error: ObjectManager not initialized\n");
     return nullptr;
@@ -618,24 +638,23 @@ RenderObject *Renderer::create_triangle_2d(const std::string &identifier,
 
   const std::vector<uint16_t> indices = {0, 1, 2};
 
-  RenderObject::ObjectCreateInfo createInfo{
-      .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_2D,
-      .vertices = vertices,
-      .indices = indices,
-      .materialIdentifier = "Test",
-      .position = position,
-      .rotation = rotation,
-      .scale = scale,
-      .visible = true};
+  Object::ObjectCreateInfo createInfo{.identifier = identifier,
+                                      .type = Object::ObjectType::OBJECT_2D,
+                                      .vertices = vertices,
+                                      .indices = indices,
+                                      .materialIdentifier = "Test",
+                                      .position = position,
+                                      .rotation = rotation,
+                                      .scale = scale,
+                                      .visible = true};
 
   return objectManager->create_object(createInfo);
 }
 
-RenderObject *Renderer::create_cube_3d(const std::string &identifier,
-                                       const glm::vec3 &position,
-                                       const glm::vec3 &rotation,
-                                       const glm::vec3 &scale) {
+render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
+                                                 const glm::vec3 &position,
+                                                 const glm::vec3 &rotation,
+                                                 const glm::vec3 &scale) {
   if (!objectManager) {
     std::print("Error: ObjectManager not initialized\n");
     return nullptr;
@@ -680,21 +699,20 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
       // Bottom face
       4, 5, 1, 1, 0, 4};
 
-  RenderObject::ObjectCreateInfo createInfo{
-      .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_3D,
-      .vertices = vertices,
-      .indices = indices,
-      .materialIdentifier = "Test",
-      .position = position,
-      .rotation = rotation,
-      .scale = scale,
-      .visible = true};
+  Object::ObjectCreateInfo createInfo{.identifier = identifier,
+                                      .type = Object::ObjectType::OBJECT_3D,
+                                      .vertices = vertices,
+                                      .indices = indices,
+                                      .materialIdentifier = "Test",
+                                      .position = position,
+                                      .rotation = rotation,
+                                      .scale = scale,
+                                      .visible = true};
 
   return objectManager->create_object(createInfo);
 }
 
-RenderObject *Renderer::create_textured_square_2d(
+render::Object *render::Renderer::create_textured_square_2d(
     const std::string &identifier, const std::string &textureIdentifier,
     const glm::vec3 &position, const glm::vec3 &rotation,
     const glm::vec3 &scale) {
@@ -714,9 +732,9 @@ RenderObject *Renderer::create_textured_square_2d(
   // Two triangles to form a square with counter-clockwise winding
   const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-  RenderObject::ObjectCreateInfoTextured createInfo{
+  Object::ObjectCreateInfoTextured createInfo{
       .identifier = identifier,
-      .type = RenderObject::ObjectType::OBJECT_2D,
+      .type = Object::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
       .materialIdentifier = "Textured",

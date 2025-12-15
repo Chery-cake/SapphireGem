@@ -6,17 +6,19 @@
 #include <string>
 #include <vector>
 
+namespace render {
+
 class MaterialManager {
 
 private:
-  const DeviceManager *deviceManager;
+  const device::DeviceManager *deviceManager;
 
   std::vector<std::unique_ptr<Material>> materials;
 
   void initialize_material();
 
 public:
-  MaterialManager(DeviceManager *deviceManager);
+  MaterialManager(device::DeviceManager *deviceManager);
   ~MaterialManager();
 
   void add_material(Material::MaterialCreateInfo createInfo);
@@ -26,3 +28,5 @@ public:
   Material *get_material(const std::string &identifier) const;
   const std::vector<Material *> &get_materials() const;
 };
+
+} // namespace render

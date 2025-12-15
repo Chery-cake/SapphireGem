@@ -7,6 +7,8 @@
 #include <string>
 #include <unordered_map>
 
+namespace device {
+
 class BufferManager {
 private:
   const DeviceManager *deviceManager;
@@ -48,3 +50,5 @@ public:
   std::vector<Buffer *> get_all_buffers() const;
   std::vector<Buffer *> get_buffers_by_type(Buffer::BufferType type) const;
 };
+
+} // namespace device

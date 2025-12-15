@@ -15,6 +15,8 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+
 class LogicalDevice {
 private:
   // Thread management
@@ -97,3 +99,5 @@ template <typename F> void LogicalDevice::submit_task(F &&task) {
   }
   conditionVariable.notify_one();
 };
+
+} // namespace device

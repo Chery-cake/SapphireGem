@@ -13,6 +13,8 @@
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace render {
+
 class Renderer {
 
 private:
@@ -27,11 +29,11 @@ private:
 
   ObjectManager::MultiGPUConfig gpuConfig;
 
-  std::unique_ptr<DeviceManager> deviceManager;
+  std::unique_ptr<device::DeviceManager> deviceManager;
   std::unique_ptr<MaterialManager> materialManager;
   std::unique_ptr<TextureManager> textureManager;
 
-  std::unique_ptr<BufferManager> bufferManager;
+  std::unique_ptr<device::BufferManager> bufferManager;
   std::unique_ptr<ObjectManager> objectManager;
 
   uint32_t currentFrame;
@@ -49,13 +51,13 @@ private:
   void create_buffers();
 
   // Helper methods for drawFrame
-  bool acquire_next_image(LogicalDevice *device, uint32_t &imageIndex,
+  bool acquire_next_image(device::LogicalDevice *device, uint32_t &imageIndex,
                           uint32_t &semaphoreIndex);
-  void present_frame(LogicalDevice *device, uint32_t imageIndex,
+  void present_frame(device::LogicalDevice *device, uint32_t imageIndex,
                      uint32_t semaphoreIndex);
 
   // Strategy-specific rendering
-  void draw_frame_single_gpu(LogicalDevice *device);
+  void draw_frame_single_gpu(device::LogicalDevice *device);
   void draw_frame_afr();
   void draw_frame_sfr(uint32_t imageIndex, uint32_t semaphoreIndex);
   void draw_frame_hybrid();
@@ -71,25 +73,26 @@ public:
   void set_render_strategy(ObjectManager::RenderStrategy strategy);
   void set_gpu_config(const ObjectManager::MultiGPUConfig &config);
 
-  DeviceManager &get_device_manager();
+  device::DeviceManager &get_device_manager();
   MaterialManager &get_material_manager();
   TextureManager &get_texture_manager();
-  BufferManager &get_buffer_manager();
+  device::BufferManager &get_buffer_manager();
   ObjectManager *get_object_manager();
 
   // Helper functions to create objects
-  RenderObject *create_triangle_2d(const std::string &identifier,
-                                   const glm::vec3 &position = glm::vec3(0.0f),
-                                   const glm::vec3 &rotation = glm::vec3(0.0f),
-                                   const glm::vec3 &scale = glm::vec3(1.0f));
-  RenderObject *create_cube_3d(const std::string &identifier,
-                               const glm::vec3 &position = glm::vec3(0.0f),
-                               const glm::vec3 &rotation = glm::vec3(0.0f),
-                               const glm::vec3 &scale = glm::vec3(1.0f));
-  RenderObject *
-  create_textured_square_2d(const std::string &identifier,
-                            const std::string &textureIdentifier,
-                            const glm::vec3 &position = glm::vec3(0.0f),
-                            const glm::vec3 &rotation = glm::vec3(0.0f),
-                            const glm::vec3 &scale = glm::vec3(1.0f));
+  Object *create_triangle_2d(const std::string &identifier,
+                             const glm::vec3 &position = glm::vec3(0.0f),
+                             const glm::vec3 &rotation = glm::vec3(0.0f),
+                             const glm::vec3 &scale = glm::vec3(1.0f));
+  Object *create_cube_3d(const std::string &identifier,
+                         const glm::vec3 &position = glm::vec3(0.0f),
+                         const glm::vec3 &rotation = glm::vec3(0.0f),
+                         const glm::vec3 &scale = glm::vec3(1.0f));
+  Object *create_textured_square_2d(const std::string &identifier,
+                                    const std::string &textureIdentifier,
+                                    const glm::vec3 &position = glm::vec3(0.0f),
+                                    const glm::vec3 &rotation = glm::vec3(0.0f),
+                                    const glm::vec3 &scale = glm::vec3(1.0f));
 };
+
+} // namespace render

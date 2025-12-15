@@ -6,19 +6,19 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
-SwapChain::SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
-                     vk::raii::SurfaceKHR &surface)
+device::SwapChain::SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
+                             vk::raii::SurfaceKHR &surface)
     : logicalDevice(logicalDevice), window(window), surface(&surface),
       swapChain(nullptr), image(nullptr), imageView(nullptr),
       imageMemory(nullptr) {}
 
-SwapChain::SwapChain(LogicalDevice *logicalDevice, vk::SurfaceFormatKHR format,
-                     vk::Extent2D extent2D)
+device::SwapChain::SwapChain(LogicalDevice *logicalDevice,
+                             vk::SurfaceFormatKHR format, vk::Extent2D extent2D)
     : logicalDevice(logicalDevice), window(nullptr), surface(nullptr),
       swapChain(nullptr), image(nullptr), imageView(nullptr),
       imageMemory(nullptr), surfaceFormat(format), extent2D(extent2D) {}
 
-SwapChain::~SwapChain() {
+device::SwapChain::~SwapChain() {
 
   clear_swap_chain();
 
@@ -27,7 +27,7 @@ SwapChain::~SwapChain() {
       logicalDevice->get_physical_device()->get_properties().deviceName.data());
 }
 
-void SwapChain::set_surface_format(
+void device::SwapChain::set_surface_format(
     std::vector<vk::SurfaceFormatKHR> availableFormats) {
   assert(!availableFormats.empty());
   const auto iterator =
@@ -39,7 +39,7 @@ void SwapChain::set_surface_format(
       iterator != availableFormats.end() ? *iterator : availableFormats[0];
 }
 
-void SwapChain::create_swap_chain() {
+void device::SwapChain::create_swap_chain() {
 
   if (surface != nullptr) {
     auto surfaceCapabilities = logicalDevice->get_physical_device()
@@ -175,7 +175,7 @@ void SwapChain::create_swap_chain() {
       logicalDevice->get_physical_device()->get_properties().deviceName.data());
 }
 
-void SwapChain::clear_swap_chain() {
+void device::SwapChain::clear_swap_chain() {
   if (surface != nullptr) {
     swapChainImageViews.clear();
     swapChainImages.clear();
@@ -188,7 +188,7 @@ void SwapChain::clear_swap_chain() {
   imageMemory.clear();
 }
 
-void SwapChain::create_swap_image_views() {
+void device::SwapChain::create_swap_image_views() {
   swapChainImageViews.clear();
 
   vk::ImageViewCreateInfo imageViewCreateInfo{
@@ -202,7 +202,7 @@ void SwapChain::create_swap_image_views() {
   }
 }
 
-void SwapChain::recreate_swap_chain() {
+void device::SwapChain::recreate_swap_chain() {
   int width = 0, height = 0;
   glfwGetFramebufferSize(window, &width, &height);
   while (width == 0 || height == 0) {
@@ -217,8 +217,8 @@ void SwapChain::recreate_swap_chain() {
   create_swap_image_views();
 }
 
-void SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
-                                    vk::Extent2D extent) {
+void device::SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
+                                            vk::Extent2D extent) {
   surfaceFormat = format;
   extent2D = extent;
 
@@ -227,11 +227,11 @@ void SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
 }
 
 vk::ResultValue<uint32_t>
-SwapChain::acquire_next_image(const vk::raii::Semaphore &semaphore) {
+device::SwapChain::acquire_next_image(const vk::raii::Semaphore &semaphore) {
   return swapChain.acquireNextImage(UINT64_MAX, *semaphore, nullptr);
 }
 
-void SwapChain::transition_image_for_rendering(
+void device::SwapChain::transition_image_for_rendering(
     vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
   if (imageIndex >= swapChainImages.size()) {
     std::print(stderr,
@@ -259,7 +259,7 @@ void SwapChain::transition_image_for_rendering(
       barrier);
 }
 
-void SwapChain::transition_image_for_present(
+void device::SwapChain::transition_image_for_present(
     vk::raii::CommandBuffer &commandBuffer, uint32_t imageIndex) {
   if (imageIndex >= swapChainImages.size()) {
     std::print(stderr,
@@ -287,8 +287,8 @@ void SwapChain::transition_image_for_present(
       presentBarrier);
 }
 
-void SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
-                                uint32_t imageIndex) {
+void device::SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
+                                        uint32_t imageIndex) {
   if (imageIndex >= swapChainImageViews.size()) {
     std::print(stderr,
                "ERROR: Image index {} out of range for swapchain image views "
@@ -326,20 +326,25 @@ void SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.setScissor(0, scissor);
 }
 
-void SwapChain::end_rendering(vk::raii::CommandBuffer &commandBuffer) {
+void device::SwapChain::end_rendering(vk::raii::CommandBuffer &commandBuffer) {
   commandBuffer.endRendering();
 }
 
-vk::SurfaceFormatKHR SwapChain::get_surface_format() { return surfaceFormat; }
+vk::SurfaceFormatKHR device::SwapChain::get_surface_format() {
+  return surfaceFormat;
+}
 
-vk::Extent2D SwapChain::get_extent2D() { return extent2D; }
+vk::Extent2D device::SwapChain::get_extent2D() { return extent2D; }
 
-vk::raii::SwapchainKHR &SwapChain::get_swap_chain() { return swapChain; }
+vk::raii::SwapchainKHR &device::SwapChain::get_swap_chain() {
+  return swapChain;
+}
 
-const std::vector<vk::Image> &SwapChain::get_images() const {
+const std::vector<vk::Image> &device::SwapChain::get_images() const {
   return swapChainImages;
 }
 
-const std::vector<vk::raii::ImageView> &SwapChain::get_image_views() const {
+const std::vector<vk::raii::ImageView> &
+device::SwapChain::get_image_views() const {
   return swapChainImageViews;
 }

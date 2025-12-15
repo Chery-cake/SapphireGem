@@ -8,6 +8,8 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+
 class DeviceManager {
 
 private:
@@ -53,3 +55,5 @@ public:
 
   bool is_multi_GPU_enabled() const;
 };
+
+} // namespace device

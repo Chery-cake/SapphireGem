@@ -10,8 +10,8 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-Buffer::Buffer(std::vector<LogicalDevice *> logicalDevices,
-               const BufferCreateInfo &createInfo)
+device::Buffer::Buffer(std::vector<LogicalDevice *> logicalDevices,
+                       const BufferCreateInfo &createInfo)
     : identifier(createInfo.identifier), type(createInfo.type),
       usage(createInfo.usage), logicalDevices(logicalDevices),
       size(createInfo.size), elementSize(createInfo.elementSize) {
@@ -67,7 +67,7 @@ Buffer::Buffer(std::vector<LogicalDevice *> logicalDevices,
   }
 }
 
-Buffer::~Buffer() {
+device::Buffer::~Buffer() {
 
   std::lock_guard lock(bufferMutex);
 
@@ -95,8 +95,9 @@ Buffer::~Buffer() {
   std::print("Buffer - {} - destructor executed\n", identifier);
 }
 
-bool Buffer::create_buffer(LogicalDevice *device, BufferResources &resources,
-                           const void *initialData) {
+bool device::Buffer::create_buffer(LogicalDevice *device,
+                                   BufferResources &resources,
+                                   const void *initialData) {
   VmaAllocator allocator = device->get_allocator();
 
   VkBufferCreateInfo bufferInfo = {
@@ -194,7 +195,8 @@ bool Buffer::create_buffer(LogicalDevice *device, BufferResources &resources,
   return true;
 }
 
-void Buffer::destroy_buffer(LogicalDevice *device, BufferResources &resources) {
+void device::Buffer::destroy_buffer(LogicalDevice *device,
+                                    BufferResources &resources) {
   if (resources.buffer != VK_NULL_HANDLE) {
     VmaAllocator allocator = device->get_allocator();
     vmaDestroyBuffer(allocator, resources.buffer, resources.allocation);
@@ -204,15 +206,15 @@ void Buffer::destroy_buffer(LogicalDevice *device, BufferResources &resources) {
   }
 }
 
-bool Buffer::create_descriptor_sets_for_buffer(LogicalDevice *device,
-                                               BufferResources &resources) {
+bool device::Buffer::create_descriptor_sets_for_buffer(
+    LogicalDevice *device, BufferResources &resources) {
   try {
     // Only create descriptor sets for uniform and storage buffers
     if (type != BufferType::UNIFORM && type != BufferType::STORAGE) {
       return true; // Not an error, just not needed
     }
 
-    uint32_t maxFrames = Config::get_instance().get_max_frames();
+    uint32_t maxFrames = general::Config::get_instance().get_max_frames();
 
     // Create a simple descriptor set layout for this buffer
     vk::DescriptorType descriptorType =
@@ -268,7 +270,7 @@ bool Buffer::create_descriptor_sets_for_buffer(LogicalDevice *device,
   }
 }
 
-vk::BufferUsageFlags Buffer::get_buffer_usage_flags(BufferType type) {
+vk::BufferUsageFlags device::Buffer::get_buffer_usage_flags(BufferType type) {
   switch (type) {
   case BufferType::VERTEX:
     return vk::BufferUsageFlagBits::eVertexBuffer |
@@ -292,7 +294,7 @@ vk::BufferUsageFlags Buffer::get_buffer_usage_flags(BufferType type) {
   }
 }
 
-VmaMemoryUsage Buffer::get_memory_usage(BufferUsage usage) {
+VmaMemoryUsage device::Buffer::get_memory_usage(BufferUsage usage) {
   switch (usage) {
   case BufferUsage::STATIC:
     return VMA_MEMORY_USAGE_GPU_ONLY;
@@ -303,7 +305,8 @@ VmaMemoryUsage Buffer::get_memory_usage(BufferUsage usage) {
   }
 }
 
-VmaAllocationCreateFlags Buffer::get_allocation_flags(BufferUsage usage) {
+VmaAllocationCreateFlags
+device::Buffer::get_allocation_flags(BufferUsage usage) {
   switch (usage) {
   case BufferUsage::STREAMING:
   case BufferUsage::DYNAMIC:
@@ -315,8 +318,8 @@ VmaAllocationCreateFlags Buffer::get_allocation_flags(BufferUsage usage) {
   }
 }
 
-bool Buffer::update_data(const void *data, vk::DeviceSize dataSize,
-                         vk::DeviceSize offset) {
+bool device::Buffer::update_data(const void *data, vk::DeviceSize dataSize,
+                                 vk::DeviceSize offset) {
   if (usage != BufferUsage::DYNAMIC) {
     std::print("Cannot update static buffer {}\n", identifier);
     return false;
@@ -345,8 +348,8 @@ bool Buffer::update_data(const void *data, vk::DeviceSize dataSize,
   return true;
 }
 
-void Buffer::bind(vk::raii::CommandBuffer &commandBuffer,
-                  uint32_t deviceIndex) {
+void device::Buffer::bind(vk::raii::CommandBuffer &commandBuffer,
+                          uint32_t deviceIndex) {
   switch (type) {
   case BufferType::INDEX:
     bind_index(commandBuffer, vk::IndexType::eUint32, 0, deviceIndex);
@@ -359,9 +362,9 @@ void Buffer::bind(vk::raii::CommandBuffer &commandBuffer,
   }
 }
 
-void Buffer::bind_vertex(vk::raii::CommandBuffer &commandBuffer,
-                         uint32_t binding, vk::DeviceSize offset,
-                         uint32_t deviceIndex) {
+void device::Buffer::bind_vertex(vk::raii::CommandBuffer &commandBuffer,
+                                 uint32_t binding, vk::DeviceSize offset,
+                                 uint32_t deviceIndex) {
   if (deviceIndex >= deviceResources.size()) {
     return;
   }
@@ -370,9 +373,9 @@ void Buffer::bind_vertex(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.bindVertexBuffers(binding, {buffer}, {offset});
 }
 
-void Buffer::bind_index(vk::raii::CommandBuffer &commandBuffer,
-                        vk::IndexType indexType, vk::DeviceSize offset,
-                        uint32_t deviceIndex) {
+void device::Buffer::bind_index(vk::raii::CommandBuffer &commandBuffer,
+                                vk::IndexType indexType, vk::DeviceSize offset,
+                                uint32_t deviceIndex) {
   if (deviceIndex >= deviceResources.size()) {
     return;
   }
@@ -381,29 +384,29 @@ void Buffer::bind_index(vk::raii::CommandBuffer &commandBuffer,
   commandBuffer.bindIndexBuffer(buffer, offset, indexType);
 }
 
-VkBuffer Buffer::get_buffer(uint32_t deviceIndex) const {
+VkBuffer device::Buffer::get_buffer(uint32_t deviceIndex) const {
   if (deviceIndex >= deviceResources.size()) {
     return VK_NULL_HANDLE;
   }
   return deviceResources[deviceIndex]->buffer;
 }
 
-vk::DeviceSize Buffer::get_size() const { return size; }
+vk::DeviceSize device::Buffer::get_size() const { return size; }
 
-Buffer::BufferType Buffer::get_type() const { return type; }
+device::Buffer::BufferType device::Buffer::get_type() const { return type; }
 
-Buffer::BufferUsage Buffer::get_usage() const { return usage; }
+device::Buffer::BufferUsage device::Buffer::get_usage() const { return usage; }
 
-const std::string &Buffer::get_identifier() const { return identifier; }
+const std::string &device::Buffer::get_identifier() const { return identifier; }
 
-bool Buffer::is_mapped(uint32_t deviceIndex) const {
+bool device::Buffer::is_mapped(uint32_t deviceIndex) const {
   if (deviceIndex >= deviceResources.size()) {
     return false;
   }
   return deviceResources[deviceIndex]->mappedData != nullptr;
 }
 
-void *Buffer::get_mapped_data(uint32_t deviceIndex) const {
+void *device::Buffer::get_mapped_data(uint32_t deviceIndex) const {
   if (deviceIndex >= deviceResources.size()) {
     return nullptr;
   }

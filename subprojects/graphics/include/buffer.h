@@ -11,6 +11,8 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+
 class Buffer {
 public:
   enum class BufferType { VERTEX, INDEX, UNIFORM, STORAGE, STAGING };
@@ -101,3 +103,5 @@ public:
   bool is_mapped(uint32_t deviceIndex = 0) const;
   void *get_mapped_data(uint32_t deviceIndex = 0) const;
 };
+
+} // namespace device

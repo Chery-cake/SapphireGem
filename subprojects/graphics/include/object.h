@@ -10,7 +10,9 @@
 #include <string>
 #include <vector>
 
-class RenderObject {
+namespace render {
+
+class Object {
 public:
   enum class ObjectType { OBJECT_2D, OBJECT_3D };
 
@@ -86,7 +88,7 @@ private:
   bool visible;
 
   // Managers (not owned)
-  BufferManager *bufferManager;
+  device::BufferManager *bufferManager;
   MaterialManager *materialManager;
   class TextureManager *textureManager;
 
@@ -102,13 +104,13 @@ private:
   void restore_original_vertices();
 
 public:
-  RenderObject(const ObjectCreateInfo createInfo, BufferManager *bufferManager,
-               MaterialManager *materialManager,
-               TextureManager *textureManager = nullptr);
-  RenderObject(const ObjectCreateInfoTextured createInfo,
-               BufferManager *bufferManager, MaterialManager *materialManager,
-               TextureManager *textureManager);
-  ~RenderObject();
+  Object(const ObjectCreateInfo createInfo,
+         device::BufferManager *bufferManager, MaterialManager *materialManager,
+         TextureManager *textureManager = nullptr);
+  Object(const ObjectCreateInfoTextured createInfo,
+         device::BufferManager *bufferManager, MaterialManager *materialManager,
+         TextureManager *textureManager);
+  ~Object();
 
   // Render this object
   void draw(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex,
@@ -129,3 +131,5 @@ public:
   Material *get_material() const;
   TransformMode get_transform_mode() const;
 };
+
+} // namespace render

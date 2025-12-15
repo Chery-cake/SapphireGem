@@ -1,5 +1,5 @@
 #include "window.h"
-#include "render_object.h"
+#include "object.h"
 #include "renderer.h"
 #include "texture.h"
 #include "texture_manager.h"
@@ -8,9 +8,9 @@
 #include <print>
 #include <stdexcept>
 
-Window::Window(int width, int height, std::string title)
+render::Window::Window(int width, int height, std::string title)
     : frameBufferRezized(false),
-      currentTransformMode(RenderObject::TransformMode::CPU_VERTICES),
+      currentTransformMode(Object::TransformMode::CPU_VERTICES),
       triangle(nullptr), cube(nullptr), texturedSquare(nullptr),
       imageQuad(nullptr) {
   glfwInit();
@@ -34,7 +34,7 @@ Window::Window(int width, int height, std::string title)
              "transformation modes\n");
 }
 
-Window::~Window() {
+render::Window::~Window() {
   renderer.reset();
 
   glfwDestroyWindow(window);
@@ -44,14 +44,14 @@ Window::~Window() {
   std::print("Window destructor executed\n");
 }
 
-void Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
-                                          int height) {
+void render::Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
+                                                  int height) {
   auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
   win->frameBufferRezized = true;
 }
 
-void Window::key_callback(GLFWwindow *window, int key, int scancode, int action,
-                          int mods) {
+void render::Window::key_callback(GLFWwindow *window, int key, int scancode,
+                                  int action, int mods) {
   auto *win = reinterpret_cast<Window *>(glfwGetWindowUserPointer(window));
 
   if (action == GLFW_PRESS) {
@@ -61,7 +61,7 @@ void Window::key_callback(GLFWwindow *window, int key, int scancode, int action,
   }
 }
 
-void Window::run() {
+void render::Window::run() {
   while (!glfwWindowShouldClose(window)) {
     glfwPollEvents();
 
@@ -76,7 +76,7 @@ void Window::run() {
   };
 }
 
-void Window::create_scene_objects() {
+void render::Window::create_scene_objects() {
   if (!renderer) {
     std::print("Error: Renderer not initialized\n");
     return;
@@ -125,12 +125,13 @@ void Window::create_scene_objects() {
       .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
   };
 
-  Buffer::BufferCreateInfo uboInfo = {.identifier = "textured_ubo",
-                                      .type = Buffer::BufferType::UNIFORM,
-                                      .usage = Buffer::BufferUsage::DYNAMIC,
-                                      .size = sizeof(TransformUBO),
-                                      .elementSize = sizeof(TransformUBO),
-                                      .initialData = &uboData};
+  device::Buffer::BufferCreateInfo uboInfo = {
+      .identifier = "textured_ubo",
+      .type = device::Buffer::BufferType::UNIFORM,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
+      .size = sizeof(TransformUBO),
+      .elementSize = sizeof(TransformUBO),
+      .initialData = &uboData};
 
   auto &bufferMgr = renderer->get_buffer_manager();
   bufferMgr.create_buffer(uboInfo);
@@ -210,7 +211,7 @@ void Window::create_scene_objects() {
   std::print("Scene objects created: triangle and cube\n");
 }
 
-void Window::update_scene_objects() {
+void render::Window::update_scene_objects() {
   static double lastTime = glfwGetTime();
   double currentTime = glfwGetTime();
   float deltaTime = static_cast<float>(currentTime - lastTime);
@@ -240,12 +241,12 @@ void Window::update_scene_objects() {
   }
 }
 
-void Window::toggle_transform_mode() {
+void render::Window::toggle_transform_mode() {
   // Toggle between CPU and GPU modes
-  if (currentTransformMode == RenderObject::TransformMode::CPU_VERTICES) {
-    currentTransformMode = RenderObject::TransformMode::GPU_MATRIX;
+  if (currentTransformMode == Object::TransformMode::CPU_VERTICES) {
+    currentTransformMode = Object::TransformMode::GPU_MATRIX;
   } else {
-    currentTransformMode = RenderObject::TransformMode::CPU_VERTICES;
+    currentTransformMode = Object::TransformMode::CPU_VERTICES;
   }
 
   // Apply to all objects
@@ -263,7 +264,7 @@ void Window::toggle_transform_mode() {
   }
 
   std::print("Transform mode switched to: {}\n",
-             currentTransformMode == RenderObject::TransformMode::CPU_VERTICES
+             currentTransformMode == Object::TransformMode::CPU_VERTICES
                  ? "CPU (vertex transformation)"
                  : "GPU (matrix transformation)");
 }

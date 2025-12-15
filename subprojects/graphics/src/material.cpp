@@ -17,12 +17,13 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-vk::VertexInputBindingDescription Material::Vertex2D::getBindingDescription() {
+vk::VertexInputBindingDescription
+render::Material::Vertex2D::getBindingDescription() {
   return {0, sizeof(Material::Vertex2D), vk::VertexInputRate::eVertex};
 }
 
 std::array<vk::VertexInputAttributeDescription, 2>
-Material::Vertex2D::getAttributeDescriptions() {
+render::Material::Vertex2D::getAttributeDescriptions() {
   return {
       vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,
                                           offsetof(Material::Vertex2D, pos)),
@@ -31,12 +32,12 @@ Material::Vertex2D::getAttributeDescriptions() {
 }
 
 vk::VertexInputBindingDescription
-Material::Vertex2DTextured::getBindingDescription() {
+render::Material::Vertex2DTextured::getBindingDescription() {
   return {0, sizeof(Material::Vertex2DTextured), vk::VertexInputRate::eVertex};
 }
 
 std::array<vk::VertexInputAttributeDescription, 3>
-Material::Vertex2DTextured::getAttributeDescriptions() {
+render::Material::Vertex2DTextured::getAttributeDescriptions() {
   return {vk::VertexInputAttributeDescription(
               0, 0, vk::Format::eR32G32Sfloat,
               offsetof(Material::Vertex2DTextured, pos)),
@@ -48,8 +49,8 @@ Material::Vertex2DTextured::getAttributeDescriptions() {
               offsetof(Material::Vertex2DTextured, color))};
 }
 
-Material::Material(const std::vector<LogicalDevice *> &devices,
-                   const MaterialCreateInfo &createInfo)
+render::Material::Material(const std::vector<device::LogicalDevice *> &devices,
+                           const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier),
       createInfo(createInfo), color(1.0f), rougthness(0.5f), metalic(0),
       logicalDevices(devices) {
@@ -62,7 +63,7 @@ Material::Material(const std::vector<LogicalDevice *> &devices,
   initialize();
 }
 
-Material::~Material() {
+render::Material::~Material() {
 
   std::lock_guard lock(materialMutex);
 
@@ -74,9 +75,9 @@ Material::~Material() {
   std::print("Material - {} - destructor executed\n", identifier);
 }
 
-bool Material::create_shader_module(LogicalDevice *device,
-                                    const std::vector<char> &code,
-                                    vk::raii::ShaderModule &shaderModule) {
+bool render::Material::create_shader_module(
+    device::LogicalDevice *device, const std::vector<char> &code,
+    vk::raii::ShaderModule &shaderModule) {
   try {
     vk::ShaderModuleCreateInfo shaderInfo{
         .codeSize = code.size(),
@@ -89,9 +90,9 @@ bool Material::create_shader_module(LogicalDevice *device,
   }
 }
 
-bool Material::create_pipeline(LogicalDevice *device,
-                               DeviceMaterialResources &resources,
-                               const MaterialCreateInfo &createInfo) {
+bool render::Material::create_pipeline(device::LogicalDevice *device,
+                                       DeviceMaterialResources &resources,
+                                       const MaterialCreateInfo &createInfo) {
   try {
     vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
         .stage = vk::ShaderStageFlagBits::eVertex,
@@ -165,7 +166,7 @@ bool Material::create_pipeline(LogicalDevice *device,
 
     // Allocate descriptor sets if needed
     if (!createInfo.descriptorBindings.empty()) {
-      uint32_t maxFrames = Config::get_instance().get_max_frames();
+      uint32_t maxFrames = general::Config::get_instance().get_max_frames();
       std::vector<vk::DescriptorSetLayout> layouts(maxFrames,
                                                    *resources.descriptorLayout);
 
@@ -188,7 +189,7 @@ bool Material::create_pipeline(LogicalDevice *device,
   }
 }
 
-bool Material::initialize() {
+bool render::Material::initialize() {
   std::lock_guard lock(materialMutex);
 
   if (initialized) {
@@ -198,8 +199,8 @@ bool Material::initialize() {
   std::vector<char> vertexCode;
   std::vector<char> fragmentCode;
 
-  if (!Common::readFile(createInfo.vertexShaders, vertexCode) ||
-      !Common::readFile(createInfo.fragmentShaders, fragmentCode)) {
+  if (!general::Common::readFile(createInfo.vertexShaders, vertexCode) ||
+      !general::Common::readFile(createInfo.fragmentShaders, fragmentCode)) {
     std::print("Failed to load shader files for material: {}\n", identifier);
     return false;
   }
@@ -260,7 +261,7 @@ bool Material::initialize() {
   return allSuccess;
 }
 
-bool Material::reinitialize() {
+bool render::Material::reinitialize() {
   {
     std::lock_guard lock(materialMutex);
 
@@ -275,8 +276,8 @@ bool Material::reinitialize() {
   return initialize();
 }
 
-void Material::bind(vk::raii::CommandBuffer &commandBuffer,
-                    uint32_t deviceIndex, uint32_t frameIndex) {
+void render::Material::bind(vk::raii::CommandBuffer &commandBuffer,
+                            uint32_t deviceIndex, uint32_t frameIndex) {
   if (!initialized) {
     std::print("Warning: Cannot bind uninitialized material '{}'\n",
                identifier);
@@ -300,8 +301,8 @@ void Material::bind(vk::raii::CommandBuffer &commandBuffer,
   }
 }
 
-void Material::bind_texture(class Image *image, uint32_t binding,
-                            uint32_t deviceIndex) {
+void render::Material::bind_texture(class Image *image, uint32_t binding,
+                                    uint32_t deviceIndex) {
   if (!initialized || !image) {
     return;
   }
@@ -334,9 +335,9 @@ void Material::bind_texture(class Image *image, uint32_t binding,
   }
 }
 
-void Material::bind_texture_for_frame(Image *image, uint32_t binding,
-                                      uint32_t deviceIndex,
-                                      uint32_t frameIndex) {
+void render::Material::bind_texture_for_frame(Image *image, uint32_t binding,
+                                              uint32_t deviceIndex,
+                                              uint32_t frameIndex) {
   if (!initialized || !image) {
     return;
   }
@@ -369,8 +370,9 @@ void Material::bind_texture_for_frame(Image *image, uint32_t binding,
   }
 }
 
-void Material::bind_uniform_buffer(Buffer *buffer, uint32_t binding,
-                                   uint32_t deviceIndex) {
+void render::Material::bind_uniform_buffer(device::Buffer *buffer,
+                                           uint32_t binding,
+                                           uint32_t deviceIndex) {
   if (!initialized || !buffer) {
     return;
   }
@@ -403,34 +405,37 @@ void Material::bind_uniform_buffer(Buffer *buffer, uint32_t binding,
   }
 }
 
-void Material::set_color(const glm::vec4 &newColor) {
+void render::Material::set_color(const glm::vec4 &newColor) {
   std::lock_guard lock(materialMutex);
   color = newColor;
 }
 
-void Material::set_roughness(const float &newRougthness) {
+void render::Material::set_roughness(const float &newRougthness) {
   std::lock_guard lock(materialMutex);
   rougthness = newRougthness;
 }
 
-void Material::set_metallic(const float &newMetallic) {
+void render::Material::set_metallic(const float &newMetallic) {
   std::lock_guard lock(materialMutex);
   metalic = newMetallic;
 }
 
-bool Material::is_initialized() const { return initialized; }
+bool render::Material::is_initialized() const { return initialized; }
 
-vk::raii::Pipeline &Material::get_pipeline(uint32_t deviceIndex) {
+vk::raii::Pipeline &render::Material::get_pipeline(uint32_t deviceIndex) {
   return deviceResources[deviceIndex]->pipeline;
 }
 
-vk::raii::PipelineLayout &Material::get_pipeline_layout(uint32_t deviceIndex) {
+vk::raii::PipelineLayout &
+render::Material::get_pipeline_layout(uint32_t deviceIndex) {
   return deviceResources[deviceIndex]->pipelineLayout;
 }
 
 vk::raii::DescriptorSetLayout &
-Material::get_descriptor_set_layout(uint32_t deviceIndex) {
+render::Material::get_descriptor_set_layout(uint32_t deviceIndex) {
   return deviceResources[deviceIndex]->descriptorLayout;
 }
 
-const std::string &Material::get_identifier() const { return identifier; }
+const std::string &render::Material::get_identifier() const {
+  return identifier;
+}
