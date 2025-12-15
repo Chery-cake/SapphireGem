@@ -1,9 +1,11 @@
 #include "window.h"
+#include "buffer.h"
 #include "render_object.h"
 #include "renderer.h"
 #include "texture.h"
 #include "texture_manager.h"
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 #include <memory>
 #include <print>
 #include <stdexcept>
@@ -112,9 +114,40 @@ void Window::create_scene_objects() {
     std::print("Rotated gradient texture 90 degrees clockwise\n");
   }
 
-  // Bind textures to the Textured material
+  // Create and bind uniform buffer for Textured material
+  struct TransformUBO {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+  };
+  
+  TransformUBO uboData = {
+    .model = glm::mat4(1.0f),  // Identity matrix
+    .view = glm::mat4(1.0f),   // Identity matrix
+    .proj = glm::mat4(1.0f)    // Identity matrix for 2D (using NDC directly)
+  };
+  
+  Buffer::BufferCreateInfo uboInfo = {
+    .identifier = "textured_ubo",
+    .type = Buffer::BufferType::UNIFORM,
+    .usage = Buffer::BufferUsage::DYNAMIC,
+    .size = sizeof(TransformUBO),
+    .elementSize = sizeof(TransformUBO),
+    .initialData = &uboData
+  };
+  
+  auto &bufferMgr = renderer->get_buffer_manager();
+  bufferMgr.create_buffer(uboInfo);
+  auto *uboBuffer = bufferMgr.get_buffer("textured_ubo");
+  
+  // Bind textures and UBO to the Textured material
   auto &materialMgr = renderer->get_material_manager();
   auto *texturedMaterial = materialMgr.get_material("Textured");
+  
+  if (texturedMaterial && uboBuffer) {
+    texturedMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+    std::print("Bound uniform buffer to Textured material\n");
+  }
   
   if (texturedMaterial && checkerboardTex) {
     texturedMaterial->bind_texture(checkerboardTex->get_image().get(), 1, 0);
