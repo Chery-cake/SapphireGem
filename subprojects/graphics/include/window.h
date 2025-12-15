@@ -20,6 +20,8 @@ private:
   // Objects for animation
   RenderObject *triangle;
   RenderObject *cube;
+  RenderObject *texturedSquare;
+  RenderObject *imageQuad;
 
   static void frame_buffer_resize_callback(GLFWwindow *window, int width,
                                            int height);

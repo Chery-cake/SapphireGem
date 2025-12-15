@@ -631,3 +631,37 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
 
   return objectManager->create_object(createInfo);
 }
+
+RenderObject *Renderer::create_square_2d(const std::string &identifier,
+                                         const glm::vec3 &position,
+                                         const glm::vec3 &rotation,
+                                         const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 2D square (quad) with 4 vertices
+  const std::vector<Material::Vertex2D> vertices = {
+      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
+      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
+      {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
+  };
+
+  // Two triangles to form a square
+  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_2D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}
