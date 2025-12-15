@@ -86,7 +86,7 @@ void Window::create_scene_objects() {
 
   // Load first texture (checkerboard) for the square
   auto *checkerboardTex =
-      textureMgr.create_texture("checkerboard", "assets/textures/checkerboard.png");
+      textureMgr.create_texture("checkerboard", "../assets/textures/checkerboard.png");
   if (checkerboardTex) {
     std::print("Loaded checkerboard texture: {}x{}\n",
                checkerboardTex->get_width(), checkerboardTex->get_height());
@@ -99,7 +99,7 @@ void Window::create_scene_objects() {
 
   // Load second texture (gradient) for the plain image
   auto *gradientTex =
-      textureMgr.create_texture("gradient", "assets/textures/gradient.png");
+      textureMgr.create_texture("gradient", "../assets/textures/gradient.png");
   if (gradientTex) {
     std::print("Loaded gradient texture: {}x{}\n", gradientTex->get_width(),
                gradientTex->get_height());
@@ -111,18 +111,32 @@ void Window::create_scene_objects() {
   }
 
   // Create a square object (will represent "textured square" visually)
+  std::print("Creating textured square object...\n");
   texturedSquare = renderer->create_square_2d(
       "textured_square",
       glm::vec3(-0.5f, 0.5f, 0.0f), // Position (top-left)
       glm::vec3(0.0f, 0.0f, 0.0f),  // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
 
+  if (texturedSquare) {
+    std::print("✓ Textured square created successfully\n");
+  } else {
+    std::print("✗ Failed to create textured square\n");
+  }
+
   // Create another square for the "plain image"
+  std::print("Creating image quad object...\n");
   imageQuad = renderer->create_square_2d(
       "image_quad",
       glm::vec3(0.5f, 0.5f, 0.0f),  // Position (top-right)
       glm::vec3(0.0f, 0.0f, 0.0f),  // Rotation
       glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
+
+  if (imageQuad) {
+    std::print("✓ Image quad created successfully\n");
+  } else {
+    std::print("✗ Failed to create image quad\n");
+  }
 
   std::print("Scene objects created: textured square and image quad\n");
   std::print(

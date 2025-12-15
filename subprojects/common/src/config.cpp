@@ -86,8 +86,11 @@ void Config::initialize_vma_functions() {
 vk::StructureChain<PhysicalDeviceFeaturesList>
 Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
   if (*physicalDevice == VK_NULL_HANDLE) {
+    vk::PhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy = VK_TRUE; // Enable anisotropic filtering
+    
     vk::StructureChain<PhysicalDeviceFeaturesList> featureChain = {
-        {},                            // vk::PhysicalDeviceFeatures2
+        {.features = deviceFeatures},  // vk::PhysicalDeviceFeatures2
         {},                            // vk::PhysicalDeviceVulkan11Features
         {.bufferDeviceAddress = true}, // vk::PhysicalDeviceVulkan12Features
         {.synchronization2 = true,
