@@ -87,6 +87,35 @@ ObjectManager::create_object(const RenderObject::ObjectCreateInfo &createInfo) {
   return objPtr;
 }
 
+RenderObject *ObjectManager::create_textured_object(
+    const RenderObject::ObjectCreateInfoTextured &createInfo) {
+  // Check if object already exists
+  if (objects.find(createInfo.identifier) != objects.end()) {
+    std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
+    return objects[createInfo.identifier].get();
+  }
+
+  auto object = std::make_unique<RenderObject>(createInfo, bufferManager,
+                                               materialManager);
+
+  // Track material usage
+  materialUsageCount[createInfo.materialIdentifier]++;
+
+  std::print("Created textured {} object '{}' using material '{}' (usage count: {})\n",
+             createInfo.type == RenderObject::ObjectType::OBJECT_2D ? "2D"
+                                                                    : "3D",
+             createInfo.identifier, createInfo.materialIdentifier,
+             materialUsageCount[createInfo.materialIdentifier]);
+
+  auto *objPtr = object.get();
+  objects[createInfo.identifier] = std::move(object);
+
+  // Rebuild render queue
+  rebuild_render_queue();
+
+  return objPtr;
+}
+
 void ObjectManager::remove_object(const std::string &identifier) {
   auto it = objects.find(identifier);
   if (it == objects.end()) {

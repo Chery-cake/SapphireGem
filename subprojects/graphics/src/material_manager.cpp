@@ -48,3 +48,12 @@ const std::vector<Material *> &MaterialManager::get_materials() const {
   }
   return ptrs;
 }
+
+Material *MaterialManager::get_material(const std::string &identifier) const {
+  for (const auto &material : materials) {
+    if (material->get_identifier() == identifier) {
+      return material.get();
+    }
+  }
+  return nullptr;
+}

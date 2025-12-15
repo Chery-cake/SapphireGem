@@ -24,4 +24,5 @@ public:
   void reload_materials();
 
   const std::vector<Material *> &get_materials() const;
+  Material *get_material(const std::string &identifier) const;
 };

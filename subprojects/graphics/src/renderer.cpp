@@ -182,6 +182,54 @@ void Renderer::init_materials() {
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
 
   materialManager->add_material(createInfo);
+
+  // Create textured material
+  vk::DescriptorSetLayoutBinding uboBinding = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex};
+
+  vk::DescriptorSetLayoutBinding samplerBinding = {
+      .binding = 1,
+      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eFragment};
+
+  auto texturedBindingDescription = Material::Vertex2DTextured::getBindingDescription();
+  auto texturedAttributeDescriptions = Material::Vertex2DTextured::getAttributeDescriptions();
+
+  Material::MaterialCreateInfo texturedCreateInfo{
+      .identifier = "Textured",
+      .vertexShaders = "../assets/shaders/textured_vert.spv",
+      .fragmentShaders = "../assets/shaders/textured_frag.spv",
+      .descriptorBindings = {uboBinding, samplerBinding},
+      .rasterizationState = {.depthClampEnable = vk::False,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState = {},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{.vertexBindingDescriptionCount = 1,
+                        .pVertexBindingDescriptions = &texturedBindingDescription,
+                        .vertexAttributeDescriptionCount =
+                            static_cast<uint32_t>(texturedAttributeDescriptions.size()),
+                        .pVertexAttributeDescriptions =
+                            texturedAttributeDescriptions.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  materialManager->add_material(texturedCreateInfo);
 }
 
 void Renderer::init_debug() {
@@ -665,4 +713,39 @@ RenderObject *Renderer::create_square_2d(const std::string &identifier,
       .visible = true};
 
   return objectManager->create_object(createInfo);
+}
+
+RenderObject *Renderer::create_textured_square_2d(const std::string &identifier,
+                                                   const std::string &textureIdentifier,
+                                                   const glm::vec3 &position,
+                                                   const glm::vec3 &rotation,
+                                                   const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 2D textured square (quad) with 4 vertices
+  const std::vector<Material::Vertex2DTextured> vertices = {
+      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
+      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
+      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
+      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
+  };
+
+  // Two triangles to form a square with counter-clockwise winding
+  const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
+
+  RenderObject::ObjectCreateInfoTextured createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_2D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Textured",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_textured_object(createInfo);
 }

@@ -112,12 +112,22 @@ void Window::create_scene_objects() {
     std::print("Rotated gradient texture 90 degrees clockwise\n");
   }
 
-  // Create a square object (will represent "textured square" visually)
+  // Bind textures to the Textured material
+  auto &materialMgr = renderer->get_material_manager();
+  auto *texturedMaterial = materialMgr.get_material("Textured");
+  
+  if (texturedMaterial && checkerboardTex) {
+    texturedMaterial->bind_texture(checkerboardTex->get_image().get(), 1, 0);
+    std::print("Bound checkerboard texture to Textured material\n");
+  }
+
+  // Create a textured square object with checkerboard texture
   std::print("Creating textured square object...\n");
-  texturedSquare = renderer->create_square_2d(
-      "textured_square", glm::vec3(-0.5f, 0.5f, 0.0f), // Position (top-left)
-      glm::vec3(0.0f, 0.0f, 0.0f),                     // Rotation
-      glm::vec3(0.4f, 0.4f, 1.0f));                    // Scale
+  texturedSquare = renderer->create_textured_square_2d(
+      "textured_square", "checkerboard",
+      glm::vec3(-0.5f, 0.5f, 0.0f), // Position (top-left)
+      glm::vec3(0.0f, 0.0f, 0.0f),  // Rotation
+      glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
 
   if (texturedSquare) {
     std::print("✓ Textured square created successfully\n");
@@ -125,15 +135,20 @@ void Window::create_scene_objects() {
     std::print("✗ Failed to create textured square\n");
   }
 
-  // Create another square for the "plain image"
+  // For the second quad, we'll need a different approach since we can only bind one texture
+  // to the material at a time. For now, let's create it but it will show the checkerboard too.
+  // In a production system, you'd want per-object texture binding.
   std::print("Creating image quad object...\n");
-  imageQuad = renderer->create_square_2d(
-      "image_quad", glm::vec3(0.5f, 0.5f, 0.0f), // Position (top-right)
-      glm::vec3(0.0f, 0.0f, 0.0f),               // Rotation
-      glm::vec3(0.4f, 0.4f, 1.0f));              // Scale
+  imageQuad = renderer->create_textured_square_2d(
+      "image_quad", "gradient",
+      glm::vec3(0.5f, 0.5f, 0.0f), // Position (top-right)
+      glm::vec3(0.0f, 0.0f, 0.0f), // Rotation
+      glm::vec3(0.4f, 0.4f, 1.0f)); // Scale
 
   if (imageQuad) {
     std::print("✓ Image quad created successfully\n");
+    // Note: Both quads will show the checkerboard texture since we're using a shared material
+    std::print("Note: Both textured quads share the same material and will show the same texture\n");
   } else {
     std::print("✗ Failed to create image quad\n");
   }

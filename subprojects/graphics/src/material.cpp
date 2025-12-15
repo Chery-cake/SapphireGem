@@ -1,6 +1,7 @@
 #include "material.h"
 #include "common.h"
 #include "config.h"
+#include "image.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
@@ -329,3 +330,35 @@ Material::get_descriptor_set_layout(uint32_t deviceIndex) {
 }
 
 const std::string &Material::get_identifier() const { return identifier; }
+
+void Material::bind_texture(Image *image, uint32_t binding, uint32_t deviceIndex) {
+  if (!initialized || !image) {
+    return;
+  }
+
+  if (deviceIndex >= deviceResources.size()) {
+    std::print("Warning: Invalid device index {} for material '{}'\n",
+               deviceIndex, identifier);
+    return;
+  }
+
+  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
+  
+  // Update all descriptor sets with the texture
+  for (size_t i = 0; i < resources.descriptorSets.size(); ++i) {
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = *image->get_sampler(deviceIndex),
+        .imageView = *image->get_image_view(deviceIndex),
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = *resources.descriptorSets[i],
+        .dstBinding = binding,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo = &imageInfo};
+
+    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(descriptorWrite, nullptr);
+  }
+}

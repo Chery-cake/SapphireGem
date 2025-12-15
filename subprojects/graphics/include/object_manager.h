@@ -85,6 +85,7 @@ public:
 
   // Object management
   RenderObject *create_object(const RenderObject::ObjectCreateInfo &createInfo);
+  RenderObject *create_textured_object(const RenderObject::ObjectCreateInfoTextured &createInfo);
   void remove_object(const std::string &identifier);
   RenderObject *get_object(const std::string &identifier);
 

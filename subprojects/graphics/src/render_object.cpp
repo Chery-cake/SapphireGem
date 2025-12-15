@@ -63,6 +63,62 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
   update_vertices();
 }
 
+RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
+                           BufferManager *bufferManager,
+                           MaterialManager *materialManager)
+    : identifier(createInfo.identifier), type(createInfo.type),
+      indexCount(createInfo.indices.size()),
+      materialIdentifier(createInfo.materialIdentifier),
+      position(createInfo.position), rotation(createInfo.rotation),
+      scale(createInfo.scale), transformDirty(true),
+      visible(createInfo.visible), bufferManager(bufferManager),
+      materialManager(materialManager), originalVertices(),
+      transformedVertices(), verticesDirty(false),
+      transformMode(TransformMode::CPU_VERTICES) {
+  // Create unique buffer names for this object
+  vertexBufferName = identifier + "_vertices";
+  indexBufferName = identifier + "_indices";
+
+  // Create vertex buffer for textured vertices
+  Buffer::BufferCreateInfo vertInfo = {
+      .identifier = vertexBufferName,
+      .type = Buffer::BufferType::VERTEX,
+      .usage = Buffer::BufferUsage::STATIC,
+      .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
+      .elementSize = sizeof(Material::Vertex2DTextured),
+      .initialData = createInfo.vertices.data()};
+
+  bufferManager->create_buffer(vertInfo);
+
+  // Create index buffer
+  Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
+                                      .type = Buffer::BufferType::INDEX,
+                                      .usage = Buffer::BufferUsage::STATIC,
+                                      .size = createInfo.indices.size() *
+                                              sizeof(uint16_t),
+                                      .initialData = createInfo.indices.data()};
+
+  bufferManager->create_buffer(indInfo);
+
+  // Get material reference
+  auto materials = materialManager->get_materials();
+  material = nullptr;
+  for (auto *mat : materials) {
+    if (mat->get_identifier() == materialIdentifier) {
+      material = mat;
+      break;
+    }
+  }
+
+  if (!material) {
+    std::print("Warning: Material '{}' not found for object '{}'\n",
+               materialIdentifier, identifier);
+  }
+
+  update_model_matrix();
+  // Note: Textured objects don't use vertex transformation
+}
+
 RenderObject::~RenderObject() {
   if (bufferManager) {
     bufferManager->remove_buffer(vertexBufferName);

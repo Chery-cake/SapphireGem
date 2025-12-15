@@ -103,6 +103,9 @@ public:
   void set_roughness(const float &newRougthness);
   void set_metallic(const float &newMetallic);
 
+  // Texture binding for textured materials
+  void bind_texture(class Image *image, uint32_t binding = 1, uint32_t deviceIndex = 0);
+
   bool is_initialized() const;
 
   vk::raii::Pipeline &get_pipeline(uint32_t deviceIndex = 0);
