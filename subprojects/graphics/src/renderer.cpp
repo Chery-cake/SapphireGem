@@ -152,8 +152,8 @@ void Renderer::init_materials() {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
-      .vertexShaders = "slang.spv",
-      .fragmentShaders = "slang.spv",
+      .vertexShaders = "vert.spv",
+      .fragmentShaders = "frag.spv",
       .descriptorBindings = {bidingInfo},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
