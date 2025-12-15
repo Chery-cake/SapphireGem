@@ -113,6 +113,7 @@ set(projects
     vulkan
     vma
     btp
+    stb
 )
 
 set(inc_dirs)

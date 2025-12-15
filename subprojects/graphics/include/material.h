@@ -24,6 +24,16 @@ public:
     getAttributeDescriptions();
   };
 
+  struct Vertex2DTextured {
+    glm::vec2 pos;
+    glm::vec2 texCoord;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 3>
+    getAttributeDescriptions();
+  };
+
   struct MaterialCreateInfo {
     std::string identifier;
 

@@ -7,6 +7,7 @@
 #include "material.h"
 #include "material_manager.h"
 #include "object_manager.h"
+#include "texture_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <iterator>
@@ -22,9 +23,9 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
-      debugMessanger(nullptr), deviceManager(nullptr), bufferManager(nullptr),
-      objectManager(nullptr), currentFrame(0), frameCount(0),
-      currentSemaphoreIndex(0) {
+      debugMessanger(nullptr), deviceManager(nullptr), textureManager(nullptr),
+      bufferManager(nullptr), objectManager(nullptr), currentFrame(0),
+      frameCount(0), currentSemaphoreIndex(0) {
   PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
   VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
@@ -54,6 +55,7 @@ Renderer::~Renderer() {
 
   objectManager.reset();
   bufferManager.reset();
+  textureManager.reset();
   materialManager.reset();
   deviceManager.reset();
 
@@ -132,6 +134,7 @@ void Renderer::init_swap_chain() {
 
 void Renderer::init_materials() {
   materialManager = std::make_unique<MaterialManager>(deviceManager.get());
+  textureManager = std::make_unique<TextureManager>(deviceManager.get());
 
   vk::DescriptorSetLayoutBinding bidingInfo = {
       .binding = 0,
@@ -150,8 +153,8 @@ void Renderer::init_materials() {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
-      .vertexShaders = "slang.spv",
-      .fragmentShaders = "slang.spv",
+      .vertexShaders = "../assets/shaders/slang.spv",
+      .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
       .rasterizationState = {.depthClampEnable = vk::False,
                              .rasterizerDiscardEnable = vk::False,
@@ -530,6 +533,8 @@ DeviceManager &Renderer::get_device_manager() { return *deviceManager; }
 
 MaterialManager &Renderer::get_material_manager() { return *materialManager; }
 
+TextureManager &Renderer::get_texture_manager() { return *textureManager; }
+
 BufferManager &Renderer::get_buffer_manager() { return *bufferManager; }
 
 ObjectManager *Renderer::get_object_manager() { return objectManager.get(); }
@@ -617,6 +622,40 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
   RenderObject::ObjectCreateInfo createInfo{
       .identifier = identifier,
       .type = RenderObject::ObjectType::OBJECT_3D,
+      .vertices = vertices,
+      .indices = indices,
+      .materialIdentifier = "Test",
+      .position = position,
+      .rotation = rotation,
+      .scale = scale,
+      .visible = true};
+
+  return objectManager->create_object(createInfo);
+}
+
+RenderObject *Renderer::create_square_2d(const std::string &identifier,
+                                         const glm::vec3 &position,
+                                         const glm::vec3 &rotation,
+                                         const glm::vec3 &scale) {
+  if (!objectManager) {
+    std::print("Error: ObjectManager not initialized\n");
+    return nullptr;
+  }
+
+  // Define a 2D square (quad) with 4 vertices
+  const std::vector<Material::Vertex2D> vertices = {
+      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
+      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
+      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
+      {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
+  };
+
+  // Two triangles to form a square
+  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+
+  RenderObject::ObjectCreateInfo createInfo{
+      .identifier = identifier,
+      .type = RenderObject::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
       .materialIdentifier = "Test",
