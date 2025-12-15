@@ -269,32 +269,36 @@ void Renderer::create_buffers() {
 
   bufferManager->create_buffer(indInfo);
 
-  struct MaterialUniformData {
-    glm::vec4 color;
-    float roughness;
-    float metallic;
-    float padding[2]; // Padding for alignment (vec4 alignment)
+  // Create UBO for Test material (matches shader expectations)
+  struct TransformUBO {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
   };
 
   // Get the first material (or iterate through all if needed)
   if (!materialManager->get_materials().empty()) {
-    Material *material = materialManager->get_materials()[0];
-
-    MaterialUniformData materialData = {
-        .color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Default white
-        .roughness = 0.5f,
-        .metallic = 0.0f,
-        .padding = {0.0f, 0.0f}};
+    TransformUBO testUboData = {
+        .model = glm::mat4(1.0f),  // Identity matrix
+        .view = glm::mat4(1.0f),   // Identity matrix
+        .proj = glm::mat4(1.0f)    // Identity matrix for 2D (using NDC directly)
+    };
 
     Buffer::BufferCreateInfo matInfo = {.identifier = "material-test",
                                         .type = Buffer::BufferType::UNIFORM,
                                         .usage = Buffer::BufferUsage::DYNAMIC,
-                                        .size = sizeof(MaterialUniformData),
-                                        .elementSize =
-                                            sizeof(MaterialUniformData),
-                                        .initialData = &materialData};
+                                        .size = sizeof(TransformUBO),
+                                        .elementSize = sizeof(TransformUBO),
+                                        .initialData = &testUboData};
 
     bufferManager->create_buffer(matInfo);
+    
+    // Bind the UBO to the Test material
+    Material *testMaterial = materialManager->get_materials()[0];
+    Buffer *testUboBuffer = bufferManager->get_buffer("material-test");
+    if (testMaterial && testUboBuffer) {
+      testMaterial->bind_uniform_buffer(testUboBuffer, 0, 0);
+    }
   }
 }
 

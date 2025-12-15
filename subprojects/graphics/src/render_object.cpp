@@ -74,7 +74,7 @@ RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
       visible(createInfo.visible), bufferManager(bufferManager),
       materialManager(materialManager), originalVertices(),
       transformedVertices(), verticesDirty(false),
-      transformMode(TransformMode::CPU_VERTICES) {
+      transformMode(TransformMode::GPU_MATRIX) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -261,10 +261,36 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     if (transformDirty) {
       update_model_matrix();
     }
-    // NOTE: GPU matrix mode is currently a placeholder
-    // Full implementation requires passing model matrix to shader
-    // via push constants or uniform buffer objects (UBO)
-    // For now, objects will appear stationary in GPU mode
+    
+    // Update UBO with object's transformation
+    // Determine which UBO buffer to use based on material
+    std::string uboBufferName;
+    if (materialIdentifier == "Textured") {
+      uboBufferName = "textured_ubo";
+    } else if (materialIdentifier == "Test") {
+      uboBufferName = "material-test";
+    }
+    
+    if (!uboBufferName.empty()) {
+      Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+      if (uboBuffer) {
+        // Prepare transformation data
+        struct TransformUBO {
+          glm::mat4 model;
+          glm::mat4 view;
+          glm::mat4 proj;
+        };
+        
+        TransformUBO uboData = {
+          .model = modelMatrix,
+          .view = glm::mat4(1.0f),   // Identity for 2D
+          .proj = glm::mat4(1.0f)    // Identity for 2D (using NDC)
+        };
+        
+        // Update the UBO buffer with this object's transformation
+        uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
+      }
+    }
   }
 
   // Bind material

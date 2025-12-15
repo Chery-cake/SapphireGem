@@ -18,7 +18,7 @@ struct VSOutput
 };
 
 [shader("vertex")]
-VSOutput vertTest(VSInput input) {
+VSOutput vertMain(VSInput input) {
     VSOutput output;
     output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 0.0, 1.0))));
     output.color = input.inColor;
@@ -26,6 +26,6 @@ VSOutput vertTest(VSInput input) {
 }
 
 [shader("fragment")]
-float4 fragTest(VSOutput vertIn) : SV_TARGET {
+float4 fragMain(VSOutput vertIn) : SV_TARGET {
     return float4(vertIn.color, 1.0);
 }
