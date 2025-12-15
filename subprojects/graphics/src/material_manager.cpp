@@ -5,6 +5,7 @@
 #include <cassert>
 #include <memory>
 #include <print>
+#include <string>
 #include <vector>
 
 MaterialManager::MaterialManager(DeviceManager *deviceManager)
@@ -35,9 +36,19 @@ void MaterialManager::remove_material(std::string identifier) {
 void MaterialManager::reload_materials() {
   for (const auto &material : materials) {
     material->reinitialize(); // TODO decide to use single or multi-thread here
-    //    Tasks::get_instance().add_task([&material]() { material->initialize();
+    //    Tasks::get_instance().add_task([&material]() {
+    //    material->initialize();
     //    },                                   BS::pr::high);
   }
+}
+
+Material *MaterialManager::get_material(const std::string &identifier) const {
+  for (const auto &material : materials) {
+    if (material->get_identifier() == identifier) {
+      return material.get();
+    }
+  }
+  return nullptr;
 }
 
 const std::vector<Material *> &MaterialManager::get_materials() const {

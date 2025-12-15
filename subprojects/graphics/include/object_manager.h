@@ -4,6 +4,7 @@
 #include "device_manager.h"
 #include "material_manager.h"
 #include "render_object.h"
+#include "texture_manager.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -60,6 +61,7 @@ private:
   DeviceManager *deviceManager;
   MaterialManager *materialManager;
   BufferManager *bufferManager;
+  class TextureManager *textureManager;
 
   MultiGPUConfig gpuConfig;
 
@@ -75,7 +77,7 @@ private:
 
 public:
   ObjectManager(DeviceManager *deviceManager, MaterialManager *materialManager,
-                BufferManager *bufferManager);
+                BufferManager *bufferManager, TextureManager *textureManager);
   ~ObjectManager();
 
   // Configuration
@@ -85,6 +87,8 @@ public:
 
   // Object management
   RenderObject *create_object(const RenderObject::ObjectCreateInfo &createInfo);
+  RenderObject *create_textured_object(
+      const RenderObject::ObjectCreateInfoTextured &createInfo);
   void remove_object(const std::string &identifier);
   RenderObject *get_object(const std::string &identifier);
 

@@ -3,6 +3,7 @@
 #include "buffer_manager.h"
 #include "material.h"
 #include "material_manager.h"
+#include "texture_manager.h"
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float3.hpp>
@@ -35,6 +36,29 @@ public:
     bool visible = true;
   };
 
+  struct ObjectCreateInfoTextured {
+    std::string identifier;
+    ObjectType type = ObjectType::OBJECT_3D;
+
+    // Geometry data
+    std::vector<Material::Vertex2DTextured> vertices;
+    std::vector<uint16_t> indices;
+
+    // Material (shared across instances)
+    std::string materialIdentifier;
+
+    // Texture identifier for textured objects
+    std::string textureIdentifier;
+
+    // Transform
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::vec3 rotation = glm::vec3(0.0f);
+    glm::vec3 scale = glm::vec3(1.0f);
+
+    // Visibility
+    bool visible = true;
+  };
+
 private:
   std::string identifier;
   ObjectType type;
@@ -47,6 +71,9 @@ private:
   // Material reference (shared, not owned)
   Material *material;
   std::string materialIdentifier;
+
+  // Texture identifier for textured objects
+  std::string textureIdentifier;
 
   // Transform
   glm::vec3 position;
@@ -61,6 +88,7 @@ private:
   // Managers (not owned)
   BufferManager *bufferManager;
   MaterialManager *materialManager;
+  class TextureManager *textureManager;
 
   // Original vertices
   std::vector<Material::Vertex2D> originalVertices;
@@ -75,7 +103,11 @@ private:
 
 public:
   RenderObject(const ObjectCreateInfo createInfo, BufferManager *bufferManager,
-               MaterialManager *materialManager);
+               MaterialManager *materialManager,
+               TextureManager *textureManager = nullptr);
+  RenderObject(const ObjectCreateInfoTextured createInfo,
+               BufferManager *bufferManager, MaterialManager *materialManager,
+               TextureManager *textureManager);
   ~RenderObject();
 
   // Render this object

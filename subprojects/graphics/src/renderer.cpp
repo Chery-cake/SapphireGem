@@ -46,7 +46,8 @@ Renderer::Renderer(GLFWwindow *window)
   create_buffers();
 
   objectManager = std::make_unique<ObjectManager>(
-      deviceManager.get(), materialManager.get(), bufferManager.get());
+      deviceManager.get(), materialManager.get(), bufferManager.get(),
+      textureManager.get());
   objectManager->set_gpu_config(gpuConfig);
 }
 
@@ -182,6 +183,60 @@ void Renderer::init_materials() {
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
 
   materialManager->add_material(createInfo);
+
+  // Create textured material
+  vk::DescriptorSetLayoutBinding uboBinding = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex};
+
+  vk::DescriptorSetLayoutBinding samplerBinding = {
+      .binding = 1,
+      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eFragment};
+
+  auto texturedBindingDescription =
+      Material::Vertex2DTextured::getBindingDescription();
+  auto texturedAttributeDescriptions =
+      Material::Vertex2DTextured::getAttributeDescriptions();
+
+  // Textured material uses textured.spv compiled from textured.slang
+  // Compile command: slangc textured.slang -target spirv -profile spirv_1_4
+  //                  -emit-spirv-directly -fvk-use-entrypoint-name
+  //                  -entry vertMain -entry fragMain -o textured.spv
+  Material::MaterialCreateInfo texturedCreateInfo{
+      .identifier = "Textured",
+      .vertexShaders = "../assets/shaders/textured.spv",
+      .fragmentShaders = "../assets/shaders/textured.spv",
+      .descriptorBindings = {uboBinding, samplerBinding},
+      .rasterizationState = {.depthClampEnable = vk::False,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState = {},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{
+          .vertexBindingDescriptionCount = 1,
+          .pVertexBindingDescriptions = &texturedBindingDescription,
+          .vertexAttributeDescriptionCount =
+              static_cast<uint32_t>(texturedAttributeDescriptions.size()),
+          .pVertexAttributeDescriptions = texturedAttributeDescriptions.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  materialManager->add_material(texturedCreateInfo);
 }
 
 void Renderer::init_debug() {
@@ -217,32 +272,38 @@ void Renderer::create_buffers() {
 
   bufferManager->create_buffer(indInfo);
 
-  struct MaterialUniformData {
-    glm::vec4 color;
-    float roughness;
-    float metallic;
-    float padding[2]; // Padding for alignment (vec4 alignment)
+  // Create UBO for Test material (matches shader expectations)
+  struct TransformUBO {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
   };
 
   // Get the first material (or iterate through all if needed)
   if (!materialManager->get_materials().empty()) {
     Material *material = materialManager->get_materials()[0];
 
-    MaterialUniformData materialData = {
-        .color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // Default white
-        .roughness = 0.5f,
-        .metallic = 0.0f,
-        .padding = {0.0f, 0.0f}};
+    TransformUBO testUboData = {
+        .model = glm::mat4(1.0f), // Identity matrix
+        .view = glm::mat4(1.0f),  // Identity matrix
+        .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
+    };
 
     Buffer::BufferCreateInfo matInfo = {.identifier = "material-test",
                                         .type = Buffer::BufferType::UNIFORM,
                                         .usage = Buffer::BufferUsage::DYNAMIC,
-                                        .size = sizeof(MaterialUniformData),
-                                        .elementSize =
-                                            sizeof(MaterialUniformData),
-                                        .initialData = &materialData};
+                                        .size = sizeof(TransformUBO),
+                                        .elementSize = sizeof(TransformUBO),
+                                        .initialData = &testUboData};
 
     bufferManager->create_buffer(matInfo);
+
+    // Bind the UBO to the Test material
+    Material *testMaterial = materialManager->get_materials()[0];
+    Buffer *testUboBuffer = bufferManager->get_buffer("material-test");
+    if (testMaterial && testUboBuffer) {
+      testMaterial->bind_uniform_buffer(testUboBuffer, 0, 0);
+    }
   }
 }
 
@@ -633,36 +694,37 @@ RenderObject *Renderer::create_cube_3d(const std::string &identifier,
   return objectManager->create_object(createInfo);
 }
 
-RenderObject *Renderer::create_square_2d(const std::string &identifier,
-                                         const glm::vec3 &position,
-                                         const glm::vec3 &rotation,
-                                         const glm::vec3 &scale) {
+RenderObject *Renderer::create_textured_square_2d(
+    const std::string &identifier, const std::string &textureIdentifier,
+    const glm::vec3 &position, const glm::vec3 &rotation,
+    const glm::vec3 &scale) {
   if (!objectManager) {
     std::print("Error: ObjectManager not initialized\n");
     return nullptr;
   }
 
-  // Define a 2D square (quad) with 4 vertices
-  const std::vector<Material::Vertex2D> vertices = {
-      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
+  // Define a 2D textured square (quad) with 4 vertices
+  const std::vector<Material::Vertex2DTextured> vertices = {
+      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
+      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
+      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
+      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
   };
 
-  // Two triangles to form a square
-  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+  // Two triangles to form a square with counter-clockwise winding
+  const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-  RenderObject::ObjectCreateInfo createInfo{
+  RenderObject::ObjectCreateInfoTextured createInfo{
       .identifier = identifier,
       .type = RenderObject::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
-      .materialIdentifier = "Test",
+      .materialIdentifier = "Textured",
+      .textureIdentifier = textureIdentifier,
       .position = position,
       .rotation = rotation,
       .scale = scale,
       .visible = true};
 
-  return objectManager->create_object(createInfo);
+  return objectManager->create_textured_object(createInfo);
 }

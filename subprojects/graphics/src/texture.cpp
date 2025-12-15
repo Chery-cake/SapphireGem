@@ -23,7 +23,7 @@ Texture::~Texture() {
 
 void Texture::generate_atlas_regions_grid(uint32_t rows, uint32_t cols) {
   if (!image || image->get_width() == 0 || image->get_height() == 0) {
-    std::print("Cannot generate atlas regions: image not loaded\n");
+    std::print(stderr, "Cannot generate atlas regions: image not loaded\n");
     return;
   }
 
@@ -60,20 +60,20 @@ void Texture::generate_atlas_regions_grid(uint32_t rows, uint32_t cols) {
 
 bool Texture::load() {
   if (imagePath.empty()) {
-    std::print("Texture - {} - no image path specified\n", identifier);
+    std::print(stderr, "Texture - {} - no image path specified\n", identifier);
     return false;
   }
 
   // Load the image from file
   if (!image->load_from_file(imagePath)) {
-    std::print("Texture - {} - failed to load image from {}\n", identifier,
-               imagePath);
+    std::print(stderr, "Texture - {} - failed to load image from {}\n",
+               identifier, imagePath);
     return false;
   }
 
   // Upload to GPU
   if (!image->update_gpu_data()) {
-    std::print("Texture - {} - failed to upload to GPU\n", identifier);
+    std::print(stderr, "Texture - {} - failed to upload to GPU\n", identifier);
     return false;
   }
 

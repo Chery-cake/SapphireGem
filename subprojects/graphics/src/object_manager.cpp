@@ -3,17 +3,20 @@
 #include "device_manager.h"
 #include "material_manager.h"
 #include "render_object.h"
+#include "texture_manager.h"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <print>
 #include <string>
 #include <vulkan/vulkan_raii.hpp>
 
 ObjectManager::ObjectManager(DeviceManager *deviceManager,
                              MaterialManager *materialManager,
-                             BufferManager *bufferManager)
+                             BufferManager *bufferManager,
+                             TextureManager *textureManager)
     : deviceManager(deviceManager), materialManager(materialManager),
-      bufferManager(bufferManager) {}
+      bufferManager(bufferManager), textureManager(textureManager) {}
 
 ObjectManager::~ObjectManager() {
   objects.clear();
@@ -73,6 +76,36 @@ ObjectManager::create_object(const RenderObject::ObjectCreateInfo &createInfo) {
   materialUsageCount[createInfo.materialIdentifier]++;
 
   std::print("Created {} object '{}' using material '{}' (usage count: {})\n",
+             createInfo.type == RenderObject::ObjectType::OBJECT_2D ? "2D"
+                                                                    : "3D",
+             createInfo.identifier, createInfo.materialIdentifier,
+             materialUsageCount[createInfo.materialIdentifier]);
+
+  auto *objPtr = object.get();
+  objects[createInfo.identifier] = std::move(object);
+
+  // Rebuild render queue
+  rebuild_render_queue();
+
+  return objPtr;
+}
+
+RenderObject *ObjectManager::create_textured_object(
+    const RenderObject::ObjectCreateInfoTextured &createInfo) {
+  // Check if object already exists
+  if (objects.find(createInfo.identifier) != objects.end()) {
+    std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
+    return objects[createInfo.identifier].get();
+  }
+
+  auto object = std::make_unique<RenderObject>(createInfo, bufferManager,
+                                               materialManager, textureManager);
+
+  // Track material usage
+  materialUsageCount[createInfo.materialIdentifier]++;
+
+  std::print("Created textured {} object '{}' using material '{}' (usage "
+             "count: {})\n",
              createInfo.type == RenderObject::ObjectType::OBJECT_2D ? "2D"
                                                                     : "3D",
              createInfo.identifier, createInfo.materialIdentifier,

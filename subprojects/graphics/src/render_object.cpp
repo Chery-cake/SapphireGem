@@ -2,6 +2,7 @@
 #include "buffer_manager.h"
 #include "material.h"
 #include "material_manager.h"
+#include "texture_manager.h"
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
 #include <print>
@@ -9,14 +10,16 @@
 
 RenderObject::RenderObject(const ObjectCreateInfo createInfo,
                            BufferManager *bufferManager,
-                           MaterialManager *materialManager)
+                           MaterialManager *materialManager,
+                           TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager), originalVertices(createInfo.vertices),
+      materialManager(materialManager), textureManager(textureManager),
+      originalVertices(createInfo.vertices),
       transformedVertices(createInfo.vertices), verticesDirty(true),
       transformMode(TransformMode::CPU_VERTICES) {
   // Create unique buffer names for this object
@@ -61,6 +64,66 @@ RenderObject::RenderObject(const ObjectCreateInfo createInfo,
 
   update_model_matrix();
   update_vertices();
+}
+
+RenderObject::RenderObject(const ObjectCreateInfoTextured createInfo,
+                           BufferManager *bufferManager,
+                           MaterialManager *materialManager,
+                           TextureManager *textureManager)
+    : identifier(createInfo.identifier), type(createInfo.type),
+      indexCount(createInfo.indices.size()),
+      materialIdentifier(createInfo.materialIdentifier),
+      textureIdentifier(createInfo.textureIdentifier),
+      position(createInfo.position), rotation(createInfo.rotation),
+      scale(createInfo.scale), transformDirty(true),
+      visible(createInfo.visible), bufferManager(bufferManager),
+      materialManager(materialManager), textureManager(textureManager),
+      originalVertices(), transformedVertices(), verticesDirty(false),
+      transformMode(TransformMode::GPU_MATRIX) {
+  // Create unique buffer names for this object
+  vertexBufferName = identifier + "_vertices";
+  indexBufferName = identifier + "_indices";
+
+  // Create vertex buffer for textured vertices
+  // Use DYNAMIC for textured objects since they don't use vertex
+  // transformation but the buffer might need updates in the future
+  Buffer::BufferCreateInfo vertInfo = {
+      .identifier = vertexBufferName,
+      .type = Buffer::BufferType::VERTEX,
+      .usage = Buffer::BufferUsage::DYNAMIC,
+      .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
+      .elementSize = sizeof(Material::Vertex2DTextured),
+      .initialData = createInfo.vertices.data()};
+
+  bufferManager->create_buffer(vertInfo);
+
+  // Create index buffer
+  Buffer::BufferCreateInfo indInfo = {.identifier = indexBufferName,
+                                      .type = Buffer::BufferType::INDEX,
+                                      .usage = Buffer::BufferUsage::STATIC,
+                                      .size = createInfo.indices.size() *
+                                              sizeof(uint16_t),
+                                      .initialData = createInfo.indices.data()};
+
+  bufferManager->create_buffer(indInfo);
+
+  // Get material reference
+  auto materials = materialManager->get_materials();
+  material = nullptr;
+  for (auto *mat : materials) {
+    if (mat->get_identifier() == materialIdentifier) {
+      material = mat;
+      break;
+    }
+  }
+
+  if (!material) {
+    std::print("Warning: Material '{}' not found for object '{}'\n",
+               materialIdentifier, identifier);
+  }
+
+  update_model_matrix();
+  // Note: Textured objects don't use vertex transformation
 }
 
 RenderObject::~RenderObject() {
@@ -194,7 +257,8 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
   // Update transformations based on mode
   if (transformMode == TransformMode::CPU_VERTICES) {
     // CPU-side: Update vertices if needed
-    if (verticesDirty) {
+    // Only update if we have vertex data (non-textured objects)
+    if (verticesDirty && !originalVertices.empty()) {
       update_vertices();
     }
   } else {
@@ -202,13 +266,41 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     if (transformDirty) {
       update_model_matrix();
     }
-    // NOTE: GPU matrix mode is currently a placeholder
-    // Full implementation requires passing model matrix to shader
-    // via push constants or uniform buffer objects (UBO)
-    // For now, objects will appear stationary in GPU mode
+
+    // Update UBO with object's transformation
+    // Determine which UBO buffer to use based on material
+    std::string uboBufferName;
+    if (materialIdentifier == "Textured") {
+      uboBufferName = "textured_ubo";
+    } else if (materialIdentifier == "Test") {
+      uboBufferName = "material-test";
+    }
+
+    if (!uboBufferName.empty()) {
+      Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+      if (uboBuffer) {
+        // Prepare transformation data
+        struct TransformUBO {
+          glm::mat4 model;
+          glm::mat4 view;
+          glm::mat4 proj;
+        };
+
+        TransformUBO uboData = {
+            .model = modelMatrix,
+            .view = glm::mat4(1.0f), // Identity for 2D
+            .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
+        };
+
+        // Update the UBO buffer with this object's transformation
+        uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
+      }
+    }
   }
 
   // Bind material
+  // Note: Textures are bound during object creation, not during draw
+  // to avoid updating descriptor sets while command buffer is recording
   material->bind(commandBuffer, deviceIndex, frameIndex);
 
   // Bind vertex buffer
@@ -257,12 +349,17 @@ void RenderObject::set_transform_mode(RenderObject::TransformMode mode) {
 
   if (mode == TransformMode::CPU_VERTICES) {
     // Switching to CPU mode: mark vertices as dirty to apply
-    // transformations
-    verticesDirty = true;
+    // transformations Only apply if we have vertex data (non-textured
+    // objects)
+    if (!originalVertices.empty()) {
+      verticesDirty = true;
+    }
   } else {
     // Switching to GPU mode: restore original vertices and mark matrix as
-    // dirty
-    restore_original_vertices();
+    // dirty Only restore if we have vertex data (non-textured objects)
+    if (!originalVertices.empty()) {
+      restore_original_vertices();
+    }
     transformDirty = true;
   }
 

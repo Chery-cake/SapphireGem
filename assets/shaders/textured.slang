@@ -1,5 +1,6 @@
 struct VSInput {
     float2 inPosition;
+    float2 inTexCoord;
     float3 inColor;
 };
 
@@ -10,9 +11,12 @@ struct UniformBuffer {
 };
 ConstantBuffer<UniformBuffer> ubo;
 
+Sampler2D texSampler;
+
 struct VSOutput
 {
     float4 pos : SV_Position;
+    float2 texCoord;
     float3 color;
 };
 
@@ -20,11 +24,13 @@ struct VSOutput
 VSOutput vertMain(VSInput input) {
     VSOutput output;
     output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 0.0, 1.0))));
+    output.texCoord = input.inTexCoord;
     output.color = input.inColor;
     return output;
 }
 
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
-    return float4(vertIn.color, 1.0);
+    float4 texColor = texSampler.Sample(vertIn.texCoord);
+    return texColor * float4(vertIn.color, 1.0);
 }

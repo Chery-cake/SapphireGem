@@ -23,5 +23,6 @@ public:
   void remove_material(std::string identifier);
   void reload_materials();
 
+  Material *get_material(const std::string &identifier) const;
   const std::vector<Material *> &get_materials() const;
 };
