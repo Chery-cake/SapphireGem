@@ -298,20 +298,9 @@ void RenderObject::draw(vk::raii::CommandBuffer &commandBuffer,
     }
   }
 
-  // Bind texture if this is a textured object (before binding material)
-  // This needs to happen before material bind so the descriptor set is updated
-  if (!textureIdentifier.empty() && textureManager) {
-    auto *texture = textureManager->get_texture(textureIdentifier);
-    if (texture) {
-      // Bind texture for the current frame only
-      material->bind_texture_for_frame(texture->get_image().get(), 1, deviceIndex, frameIndex);
-    } else {
-      std::print("Warning: Texture '{}' not found for object '{}'\n",
-                 textureIdentifier, identifier);
-    }
-  }
-  
   // Bind material
+  // Note: Textures are bound during object creation, not during draw
+  // to avoid updating descriptor sets while command buffer is recording
   material->bind(commandBuffer, deviceIndex, frameIndex);
 
   // Bind vertex buffer

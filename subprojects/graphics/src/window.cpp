@@ -180,10 +180,15 @@ void Window::create_scene_objects() {
 
   if (imageQuad) {
     std::print("✓ Image quad created successfully\n");
-    // Note: Both quads will show the checkerboard texture since we're using a shared material
-    std::print("Note: Both textured quads share the same material and will show the same texture\n");
   } else {
     std::print("✗ Failed to create image quad\n");
+  }
+  
+  // Bind gradient texture - this will be shown on both quads since they share the material
+  // This is a limitation of having a single shared material for multiple textured objects
+  if (texturedMaterial && gradientTex) {
+    texturedMaterial->bind_texture(gradientTex->get_image().get(), 1, 0);
+    std::print("Bound gradient texture to Textured material - both quads will show this texture\n");
   }
 
   // Create a 2D triangle on the left side
