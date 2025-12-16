@@ -62,38 +62,6 @@ Object::Object(const ObjectCreateInfo createInfo,
                materialIdentifier, identifier);
   }
 
-  // Create per-object UBO for Test material to avoid sharing transforms
-  if (materialIdentifier == "Test") {
-    struct TransformUBO {
-      glm::mat4 model;
-      glm::mat4 view;
-      glm::mat4 proj;
-    };
-
-    TransformUBO uboData = {
-        .model = glm::mat4(1.0f),
-        .view = glm::mat4(1.0f),
-        .proj = glm::mat4(1.0f)
-    };
-
-    std::string uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
-    Buffer::BufferCreateInfo uboInfo = {
-        .identifier = uboBufferName,
-        .type = Buffer::BufferType::UNIFORM,
-        .usage = Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(TransformUBO),
-        .elementSize = sizeof(TransformUBO),
-        .initialData = &uboData};
-
-    bufferManager->create_buffer(uboInfo);
-    
-    // Bind the UBO to the material
-    Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
-    if (material && uboBuffer) {
-      material->bind_uniform_buffer(uboBuffer, 0, 0);
-    }
-  }
-
   update_model_matrix();
 }
 
@@ -214,13 +182,13 @@ void Object::draw(vk::raii::CommandBuffer &commandBuffer,
   }
 
   // Update UBO with object's transformation
-  // Determine which UBO buffer to use based on material and object identifier
+  // Determine which UBO buffer to use based on material
   std::string uboBufferName;
   if (materialIdentifier == "Textured" || materialIdentifier.find("Textured_") == 0) {
     uboBufferName = materialIdentifier + "_ubo";
   } else if (materialIdentifier == "Test") {
-    // Create per-object UBO for Test material to avoid sharing transforms
-    uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
+    // Use shared material UBO - we'll update its data per object
+    uboBufferName = "material-test";
   }
 
   if (!uboBufferName.empty()) {
