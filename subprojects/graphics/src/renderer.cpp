@@ -660,44 +660,24 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
     return nullptr;
   }
 
-  // Define a 3D cube vertices (8 vertices, using 2D positions but arranged
-  // for 3D effect) For a simple 3D cube representation in 2D projection
+  // Define a 3D cube as a single square
+  // Since we're using 2D vertices, we'll create a square that rotates in 3D
+  // space The 3D rotation will be handled by the transformation matrix
   constexpr float cubeSize = 0.5f;
   constexpr float depthOffset =
       0.2f; // Offset for back face to create 3D effect
 
   const std::vector<Material::Vertex2D> vertices = {
-      // Front face
-      {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left
-      {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right
-      {{cubeSize, cubeSize}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right
-      {{-cubeSize, cubeSize}, {1.0f, 1.0f, 0.0f}},  // 3: Top-left
+      // Square representing the cube face
+      {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left (red)
+      {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right (green)
+      {{cubeSize, cubeSize}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right (blue)
+      {{-cubeSize, cubeSize}, {1.0f, 1.0f, 0.0f}}   // 3: Top-left (yellow)
 
-      // Back face (offset for 3D effect)
-      {{-cubeSize + depthOffset, -cubeSize + depthOffset},
-       {1.0f, 0.0f, 1.0f}}, // 4: Bottom-left
-      {{cubeSize + depthOffset, -cubeSize + depthOffset},
-       {0.0f, 1.0f, 1.0f}}, // 5: Bottom-right
-      {{cubeSize + depthOffset, cubeSize + depthOffset},
-       {1.0f, 1.0f, 1.0f}}, // 6: Top-right
-      {{-cubeSize + depthOffset, cubeSize + depthOffset},
-       {0.5f, 0.5f, 0.5f}} // 7: Top-left
   };
 
-  // Cube indices for triangles (12 triangles, 2 per face, 6 faces)
-  const std::vector<uint16_t> indices = {
-      // Front face
-      0, 1, 2, 2, 3, 0,
-      // Right face (connecting front-right to back-right)
-      1, 5, 6, 6, 2, 1,
-      // Back face
-      5, 4, 7, 7, 6, 5,
-      // Left face (connecting front-left to back-left)
-      4, 0, 3, 3, 7, 4,
-      // Top face
-      3, 2, 6, 6, 7, 3,
-      // Bottom face
-      4, 5, 1, 1, 0, 4};
+  // Square indices (2 triangles)
+  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
                                       .type = Object::ObjectType::OBJECT_3D,
@@ -737,7 +717,7 @@ render::Object *render::Renderer::create_textured_square_2d(
       .type = Object::ObjectType::OBJECT_2D,
       .vertices = vertices,
       .indices = indices,
-      .materialIdentifier = "Textured",
+      .materialIdentifier = "Textured_" + textureIdentifier,
       .textureIdentifier = textureIdentifier,
       .position = position,
       .rotation = rotation,

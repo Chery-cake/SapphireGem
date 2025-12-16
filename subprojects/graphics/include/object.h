@@ -16,7 +16,11 @@ class Object {
 public:
   enum class ObjectType { OBJECT_2D, OBJECT_3D };
 
-  enum class TransformMode { CPU_VERTICES, GPU_MATRIX };
+  enum class RotationMode {
+    SHADER_2D,    // GPU shader-based 2D rotation (Z-axis only)
+    TRANSFORM_2D, // CPU/GPU 2D rotation (Z-axis only)
+    TRANSFORM_3D  // CPU/GPU 3D rotation (X, Y, Z axes)
+  };
 
   struct ObjectCreateInfo {
     std::string identifier;
@@ -92,16 +96,9 @@ private:
   MaterialManager *materialManager;
   class TextureManager *textureManager;
 
-  // Original vertices
-  std::vector<Material::Vertex2D> originalVertices;
-  std::vector<Material::Vertex2D> transformedVertices;
-  bool verticesDirty;
-
-  TransformMode transformMode;
+  RotationMode rotationMode;
 
   void update_model_matrix();
-  void update_vertices();
-  void restore_original_vertices();
 
 public:
   Object(const ObjectCreateInfo createInfo,
@@ -116,12 +113,16 @@ public:
   void draw(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex,
             uint32_t frameIndex);
 
+  // Rotation functions
+  void rotate_2d(float angle);          // For shader-based 2D rotation (Z-axis)
+  void rotate(const glm::vec3 &angles); // For 2D/3D rotation
+
   // Transform methods
   void set_position(const glm::vec3 &pos);
   void set_rotation(const glm::vec3 &rot);
   void set_scale(const glm::vec3 &scl);
   void set_visible(bool vis);
-  void set_transform_mode(TransformMode mode);
+  void set_rotation_mode(RotationMode mode);
 
   // Getters
   const std::string &get_identifier() const;
@@ -129,7 +130,7 @@ public:
   bool is_visible() const;
   const glm::mat4 &get_model_matrix();
   Material *get_material() const;
-  TransformMode get_transform_mode() const;
+  RotationMode get_rotation_mode() const;
 };
 
 } // namespace render

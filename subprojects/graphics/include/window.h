@@ -17,8 +17,6 @@ private:
 
   std::unique_ptr<Renderer> renderer;
 
-  Object::TransformMode currentTransformMode;
-
   // Objects for animation
   Object *triangle;
   Object *cube;
@@ -32,7 +30,6 @@ private:
 
   void create_scene_objects();
   void update_scene_objects();
-  void toggle_transform_mode();
 
 public:
   Window(int width, int height, std::string title);

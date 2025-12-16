@@ -19,9 +19,8 @@ render::Object::Object(const ObjectCreateInfo createInfo,
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
       materialManager(materialManager), textureManager(textureManager),
-      originalVertices(createInfo.vertices),
-      transformedVertices(createInfo.vertices), verticesDirty(true),
-      transformMode(TransformMode::CPU_VERTICES) {
+      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
+                                                 : RotationMode::TRANSFORM_3D) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -62,8 +61,37 @@ render::Object::Object(const ObjectCreateInfo createInfo,
                materialIdentifier, identifier);
   }
 
+  // Create per-object UBO for Test material to avoid sharing transforms
+  if (materialIdentifier == "Test") {
+    struct TransformUBO {
+      glm::mat4 model;
+      glm::mat4 view;
+      glm::mat4 proj;
+    };
+
+    TransformUBO uboData = {.model = glm::mat4(1.0f),
+                            .view = glm::mat4(1.0f),
+                            .proj = glm::mat4(1.0f)};
+
+    std::string uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
+    device::Buffer::BufferCreateInfo uboInfo = {
+        .identifier = uboBufferName,
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &uboData};
+
+    bufferManager->create_buffer(uboInfo);
+
+    // Bind the UBO to the material
+    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+    if (material && uboBuffer) {
+      material->bind_uniform_buffer(uboBuffer, 0, 0);
+    }
+  }
+
   update_model_matrix();
-  update_vertices();
 }
 
 render::Object::Object(const ObjectCreateInfoTextured createInfo,
@@ -78,8 +106,8 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
       materialManager(materialManager), textureManager(textureManager),
-      originalVertices(), transformedVertices(), verticesDirty(false),
-      transformMode(TransformMode::GPU_MATRIX) {
+      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
+                                                 : RotationMode::TRANSFORM_3D) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -123,7 +151,6 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
   }
 
   update_model_matrix();
-  // Note: Textured objects don't use vertex transformation
 }
 
 render::Object::~Object() {
@@ -138,101 +165,33 @@ render::Object::~Object() {
 void render::Object::update_model_matrix() {
   modelMatrix = glm::mat4(1.0f);
   modelMatrix = glm::translate(modelMatrix, position);
-  modelMatrix =
-      glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
-  modelMatrix =
-      glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
-  modelMatrix =
-      glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+
+  // Apply rotation based on mode
+  if (rotationMode == RotationMode::SHADER_2D) {
+    // For shader-based 2D rotation, only apply Z rotation
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+  } else if (rotationMode == RotationMode::TRANSFORM_2D) {
+    // For 2D transformation, can apply X, Y rotations for projection
+    // effects
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+  } else {
+    // For 3D transformation, rotate around all axes
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+    modelMatrix =
+        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+  }
+
   modelMatrix = glm::scale(modelMatrix, scale);
   transformDirty = false;
-}
-
-void render::Object::update_vertices() {
-  if (!verticesDirty) {
-    return;
-  }
-
-  // Transform vertices based on position, rotation, and scale
-  for (size_t i = 0; i < originalVertices.size(); ++i) {
-    glm::vec2 originalPos = originalVertices[i].pos;
-
-    // Apply scale
-    glm::vec2 scaledPos = originalPos * glm::vec2(scale.x, scale.y);
-
-    if (type == ObjectType::OBJECT_2D) {
-      // 2D rotation (around Z axis only)
-      float cosZ = std::cos(rotation.z);
-      float sinZ = std::sin(rotation.z);
-
-      glm::vec2 rotatedPos;
-      rotatedPos.x = (scaledPos.x * cosZ) - (scaledPos.y * sinZ);
-      rotatedPos.y = (scaledPos.x * sinZ) + (scaledPos.y * cosZ);
-
-      // Apply translation
-      transformedVertices[i].pos =
-          rotatedPos + glm::vec2(position.x, position.y);
-    } else {
-      // 3D rotation (around X, Y, Z axes)
-      // Convert 2D position to 3D for rotation
-      glm::vec3 pos3d = glm::vec3(scaledPos.x, scaledPos.y, 0.0f);
-
-      // Rotate around X axis
-      float cosX = std::cos(rotation.x);
-      float sinX = std::sin(rotation.x);
-      glm::vec3 rotatedX;
-      rotatedX.x = pos3d.x;
-      rotatedX.y = (pos3d.y * cosX) - (pos3d.z * sinX);
-      rotatedX.z = (pos3d.y * sinX) + (pos3d.z * cosX);
-
-      // Rotate around Y axis
-      float cosY = std::cos(rotation.y);
-      float sinY = std::sin(rotation.y);
-      glm::vec3 rotatedY;
-      rotatedY.x = (rotatedX.x * cosY) + (rotatedX.z * sinY);
-      rotatedY.y = rotatedX.y;
-      rotatedY.z = (-rotatedX.x * sinY) + (rotatedX.z * cosY);
-
-      // Rotate around Z axis
-      float cosZ = std::cos(rotation.z);
-      float sinZ = std::sin(rotation.z);
-      glm::vec3 rotatedZ;
-      rotatedZ.x = (rotatedY.x * cosZ) - (rotatedY.y * sinZ);
-      rotatedZ.y = (rotatedY.x * sinZ) + (rotatedY.y * cosZ);
-      rotatedZ.z = rotatedY.z;
-
-      // Project back to 2D and apply translation
-      transformedVertices[i].pos =
-          glm::vec2(rotatedZ.x, rotatedZ.y) + glm::vec2(position.x, position.y);
-    }
-
-    // Keep the same color
-    transformedVertices[i].color = originalVertices[i].color;
-  }
-
-  // Update the vertex buffer with transformed vertices
-  device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
-  if (vertexBuffer) {
-    vertexBuffer->update_data(
-        transformedVertices.data(),
-        transformedVertices.size() * sizeof(Material::Vertex2D), 0);
-  }
-
-  verticesDirty = false;
-}
-
-void render::Object::restore_original_vertices() {
-  // Restore original vertex positions to the buffer
-  device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
-  if (vertexBuffer) {
-    vertexBuffer->update_data(
-        originalVertices.data(),
-        originalVertices.size() * sizeof(Material::Vertex2D), 0);
-  }
-
-  // Reset transformed vertices to original
-  transformedVertices = originalVertices;
-  verticesDirty = false;
 }
 
 void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
@@ -254,47 +213,41 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
     return;
   }
 
-  // Update transformations based on mode
-  if (transformMode == TransformMode::CPU_VERTICES) {
-    // CPU-side: Update vertices if needed
-    // Only update if we have vertex data (non-textured objects)
-    if (verticesDirty && !originalVertices.empty()) {
-      update_vertices();
-    }
-  } else {
-    // GPU-side: Update model matrix if needed
-    if (transformDirty) {
-      update_model_matrix();
-    }
+  // Hybrid rendering: GPU does transformations, CPU does auxiliary work
+  // Update model matrix if needed (GPU will use this via shaders)
+  if (transformDirty) {
+    update_model_matrix();
+  }
 
-    // Update UBO with object's transformation
-    // Determine which UBO buffer to use based on material
-    std::string uboBufferName;
-    if (materialIdentifier == "Textured") {
-      uboBufferName = "textured_ubo";
-    } else if (materialIdentifier == "Test") {
-      uboBufferName = "material-test";
-    }
+  // Update UBO with object's transformation
+  // Determine which UBO buffer to use based on material
+  std::string uboBufferName;
+  if (materialIdentifier == "Textured" ||
+      materialIdentifier.find("Textured_") == 0) {
+    uboBufferName = materialIdentifier + "_ubo";
+  } else if (materialIdentifier == "Test") {
+    // Use shared material UBO - we'll update its data per object
+    uboBufferName = "material-test";
+  }
 
-    if (!uboBufferName.empty()) {
-      device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
-      if (uboBuffer) {
-        // Prepare transformation data
-        struct TransformUBO {
-          glm::mat4 model;
-          glm::mat4 view;
-          glm::mat4 proj;
-        };
+  if (!uboBufferName.empty()) {
+    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+    if (uboBuffer) {
+      // Prepare transformation data
+      struct TransformUBO {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 proj;
+      };
 
-        TransformUBO uboData = {
-            .model = modelMatrix,
-            .view = glm::mat4(1.0f), // Identity for 2D
-            .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
-        };
+      TransformUBO uboData = {
+          .model = modelMatrix,
+          .view = glm::mat4(1.0f), // Identity for 2D
+          .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
+      };
 
-        // Update the UBO buffer with this object's transformation
-        uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
-      }
+      // Update the UBO buffer with this object's transformation
+      uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
     }
   }
 
@@ -323,49 +276,55 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
 void render::Object::set_position(const glm::vec3 &pos) {
   position = pos;
   transformDirty = true;
-  verticesDirty = true;
 }
 
 void render::Object::set_rotation(const glm::vec3 &rot) {
   rotation = rot;
   transformDirty = true;
-  verticesDirty = true;
 }
 
 void render::Object::set_scale(const glm::vec3 &scl) {
   scale = scl;
   transformDirty = true;
-  verticesDirty = true;
 }
 
 void render::Object::set_visible(bool vis) { visible = vis; }
 
-void render::Object::set_transform_mode(Object::TransformMode mode) {
-  if (transformMode == mode) {
+void render::Object::set_rotation_mode(Object::RotationMode mode) {
+  if (rotationMode == mode) {
     return;
   }
 
-  transformMode = mode;
+  rotationMode = mode;
+  transformDirty = true;
 
-  if (mode == TransformMode::CPU_VERTICES) {
-    // Switching to CPU mode: mark vertices as dirty to apply
-    // transformations Only apply if we have vertex data (non-textured
-    // objects)
-    if (!originalVertices.empty()) {
-      verticesDirty = true;
-    }
+  std::print("Object '{}' rotation mode changed to: {}\n", identifier,
+             mode == RotationMode::SHADER_2D      ? "SHADER_2D"
+             : mode == RotationMode::TRANSFORM_2D ? "TRANSFORM_2D"
+                                                  : "TRANSFORM_3D");
+}
+
+void render::Object::rotate_2d(float angle) {
+  // For shader-based 2D rotation (Z-axis only)
+  rotation.z = angle;
+  transformDirty = true;
+}
+
+void render::Object::rotate(const glm::vec3 &angles) {
+  // For 2D/3D rotation based on current mode
+  if (rotationMode == RotationMode::SHADER_2D) {
+    // Shader-based 2D rotation: only Z-axis
+    rotation.z = angles.z;
+  } else if (rotationMode == RotationMode::TRANSFORM_2D) {
+    // Transform 2D: can use X, Y for projection effects, Z for in-plane
+    // rotation
+    rotation = angles;
   } else {
-    // Switching to GPU mode: restore original vertices and mark matrix as
-    // dirty Only restore if we have vertex data (non-textured objects)
-    if (!originalVertices.empty()) {
-      restore_original_vertices();
-    }
-    transformDirty = true;
+    // 3D rotation: all axes
+    rotation = angles;
   }
 
-  std::print("Object '{}' transform mode changed to: {}\n", identifier,
-             mode == TransformMode::CPU_VERTICES ? "CPU_VERTICES"
-                                                 : "GPU_MATRIX");
+  transformDirty = true;
 }
 
 const std::string &render::Object::get_identifier() const { return identifier; }
@@ -383,6 +342,6 @@ const glm::mat4 &render::Object::get_model_matrix() {
 
 render::Material *render::Object::get_material() const { return material; }
 
-render::Object::TransformMode render::Object::get_transform_mode() const {
-  return transformMode;
+render::Object::RotationMode render::Object::get_rotation_mode() const {
+  return rotationMode;
 }
