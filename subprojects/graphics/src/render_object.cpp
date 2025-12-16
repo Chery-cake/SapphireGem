@@ -21,7 +21,7 @@ Object::Object(const ObjectCreateInfo createInfo,
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
       materialManager(materialManager), textureManager(textureManager),
-      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D : RotationMode::TRANSFORM_3D) {
+      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::TRANSFORM_2D : RotationMode::TRANSFORM_3D) {
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -60,6 +60,38 @@ Object::Object(const ObjectCreateInfo createInfo,
   if (!material) {
     std::print("Warning: Material '{}' not found for object '{}'\n",
                materialIdentifier, identifier);
+  }
+
+  // Create per-object UBO for Test material to avoid sharing transforms
+  if (materialIdentifier == "Test") {
+    struct TransformUBO {
+      glm::mat4 model;
+      glm::mat4 view;
+      glm::mat4 proj;
+    };
+
+    TransformUBO uboData = {
+        .model = glm::mat4(1.0f),
+        .view = glm::mat4(1.0f),
+        .proj = glm::mat4(1.0f)
+    };
+
+    std::string uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
+    Buffer::BufferCreateInfo uboInfo = {
+        .identifier = uboBufferName,
+        .type = Buffer::BufferType::UNIFORM,
+        .usage = Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &uboData};
+
+    bufferManager->create_buffer(uboInfo);
+    
+    // Bind the UBO to the material
+    Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+    if (material && uboBuffer) {
+      material->bind_uniform_buffer(uboBuffer, 0, 0);
+    }
   }
 
   update_model_matrix();
@@ -141,7 +173,9 @@ void Object::update_model_matrix() {
     // For shader-based 2D rotation, only apply Z rotation
     modelMatrix = glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
   } else if (rotationMode == RotationMode::TRANSFORM_2D) {
-    // For 2D transformation, only rotate around Z axis
+    // For 2D transformation, can apply X, Y rotations for projection effects
+    modelMatrix = glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix = glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
     modelMatrix = glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
   } else {
     // For 3D transformation, rotate around all axes
@@ -180,12 +214,13 @@ void Object::draw(vk::raii::CommandBuffer &commandBuffer,
   }
 
   // Update UBO with object's transformation
-  // Determine which UBO buffer to use based on material
+  // Determine which UBO buffer to use based on material and object identifier
   std::string uboBufferName;
   if (materialIdentifier == "Textured" || materialIdentifier.find("Textured_") == 0) {
     uboBufferName = materialIdentifier + "_ubo";
   } else if (materialIdentifier == "Test") {
-    uboBufferName = "material-test";
+    // Create per-object UBO for Test material to avoid sharing transforms
+    uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
   }
 
   if (!uboBufferName.empty()) {
@@ -269,9 +304,12 @@ void Object::rotate_2d(float angle) {
 
 void Object::rotate(const glm::vec3 &angles) {
   // For 2D/3D rotation based on current mode
-  if (rotationMode == RotationMode::TRANSFORM_2D || rotationMode == RotationMode::SHADER_2D) {
-    // 2D rotation: only Z-axis
+  if (rotationMode == RotationMode::SHADER_2D) {
+    // Shader-based 2D rotation: only Z-axis
     rotation.z = angles.z;
+  } else if (rotationMode == RotationMode::TRANSFORM_2D) {
+    // Transform 2D: can use X, Y for projection effects, Z for in-plane rotation
+    rotation = angles;
   } else {
     // 3D rotation: all axes
     rotation = angles;
