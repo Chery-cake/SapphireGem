@@ -90,6 +90,33 @@ render::Object *render::ObjectManager::create_object(
   return objPtr;
 }
 
+render::Object *render::ObjectManager::create_object_3d(
+    const Object::ObjectCreateInfo3D &createInfo) {
+  // Check if object already exists
+  if (objects.find(createInfo.identifier) != objects.end()) {
+    std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
+    return objects[createInfo.identifier].get();
+  }
+
+  auto object =
+      std::make_unique<Object>(createInfo, bufferManager, materialManager);
+
+  // Track material usage
+  materialUsageCount[createInfo.materialIdentifier]++;
+
+  std::print("Created 3D object '{}' using material '{}' (usage count: {})\n",
+             createInfo.identifier, createInfo.materialIdentifier,
+             materialUsageCount[createInfo.materialIdentifier]);
+
+  auto *objPtr = object.get();
+  objects[createInfo.identifier] = std::move(object);
+
+  // Rebuild render queue
+  rebuild_render_queue();
+
+  return objPtr;
+}
+
 render::Object *render::ObjectManager::create_textured_object(
     const Object::ObjectCreateInfoTextured &createInfo) {
   // Check if object already exists

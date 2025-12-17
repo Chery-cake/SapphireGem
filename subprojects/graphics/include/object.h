@@ -42,6 +42,26 @@ public:
     bool visible = true;
   };
 
+  struct ObjectCreateInfo3D {
+    std::string identifier;
+    ObjectType type = ObjectType::OBJECT_3D;
+
+    // Geometry data
+    std::vector<Material::Vertex3D> vertices;
+    std::vector<uint16_t> indices;
+
+    // Material (shared across instances)
+    std::string materialIdentifier;
+
+    // Transform
+    glm::vec3 position = glm::vec3(0.0f);
+    glm::vec3 rotation = glm::vec3(0.0f);
+    glm::vec3 scale = glm::vec3(1.0f);
+
+    // Visibility
+    bool visible = true;
+  };
+
   struct ObjectCreateInfoTextured {
     std::string identifier;
     ObjectType type = ObjectType::OBJECT_3D;
@@ -102,6 +122,9 @@ private:
 
 public:
   Object(const ObjectCreateInfo createInfo,
+         device::BufferManager *bufferManager, MaterialManager *materialManager,
+         TextureManager *textureManager = nullptr);
+  Object(const ObjectCreateInfo3D createInfo,
          device::BufferManager *bufferManager, MaterialManager *materialManager,
          TextureManager *textureManager = nullptr);
   Object(const ObjectCreateInfoTextured createInfo,

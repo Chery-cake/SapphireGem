@@ -94,6 +94,92 @@ render::Object::Object(const ObjectCreateInfo createInfo,
   update_model_matrix();
 }
 
+render::Object::Object(const ObjectCreateInfo3D createInfo,
+                       device::BufferManager *bufferManager,
+                       MaterialManager *materialManager,
+                       TextureManager *textureManager)
+    : identifier(createInfo.identifier), type(createInfo.type),
+      indexCount(createInfo.indices.size()),
+      materialIdentifier(createInfo.materialIdentifier),
+      position(createInfo.position), rotation(createInfo.rotation),
+      scale(createInfo.scale), transformDirty(true),
+      visible(createInfo.visible), bufferManager(bufferManager),
+      materialManager(materialManager), textureManager(textureManager),
+      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
+                                                 : RotationMode::TRANSFORM_3D) {
+  // Create unique buffer names for this object
+  vertexBufferName = identifier + "_vertices";
+  indexBufferName = identifier + "_indices";
+
+  // Create vertex buffer
+  device::Buffer::BufferCreateInfo vertInfo = {
+      .identifier = vertexBufferName,
+      .type = device::Buffer::BufferType::VERTEX,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
+      .size = createInfo.vertices.size() * sizeof(Material::Vertex3D),
+      .elementSize = sizeof(Material::Vertex3D),
+      .initialData = createInfo.vertices.data()};
+
+  bufferManager->create_buffer(vertInfo);
+
+  // Create index buffer
+  device::Buffer::BufferCreateInfo indInfo = {
+      .identifier = indexBufferName,
+      .type = device::Buffer::BufferType::INDEX,
+      .usage = device::Buffer::BufferUsage::STATIC,
+      .size = createInfo.indices.size() * sizeof(uint16_t),
+      .initialData = createInfo.indices.data()};
+
+  bufferManager->create_buffer(indInfo);
+
+  // Get material reference
+  auto materials = materialManager->get_materials();
+  material = nullptr;
+  for (auto *mat : materials) {
+    if (mat->get_identifier() == materialIdentifier) {
+      material = mat;
+      break;
+    }
+  }
+
+  if (!material) {
+    std::print("Warning: Material '{}' not found for object '{}'\n",
+               materialIdentifier, identifier);
+  }
+
+  // Create per-object UBO for Test material to avoid sharing transforms
+  if (materialIdentifier == "Test") {
+    struct TransformUBO {
+      glm::mat4 model;
+      glm::mat4 view;
+      glm::mat4 proj;
+    };
+
+    TransformUBO uboData = {.model = glm::mat4(1.0f),
+                            .view = glm::mat4(1.0f),
+                            .proj = glm::mat4(1.0f)};
+
+    std::string uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
+    device::Buffer::BufferCreateInfo uboInfo = {
+        .identifier = uboBufferName,
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(TransformUBO),
+        .elementSize = sizeof(TransformUBO),
+        .initialData = &uboData};
+
+    bufferManager->create_buffer(uboInfo);
+
+    // Bind the UBO to the material
+    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+    if (material && uboBuffer) {
+      material->bind_uniform_buffer(uboBuffer, 0, 0);
+    }
+  }
+
+  update_model_matrix();
+}
+
 render::Object::Object(const ObjectCreateInfoTextured createInfo,
                        device::BufferManager *bufferManager,
                        MaterialManager *materialManager,

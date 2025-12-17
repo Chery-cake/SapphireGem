@@ -283,12 +283,22 @@ void render::Window::create_scene_objects() {
       "triangle", glm::vec3(-0.5f, -0.5f, 0.0f), // Position (left)
       glm::vec3(0.0f, 0.0f, 0.0f),               // Rotation
       glm::vec3(0.5f, 0.5f, 1.0f));              // Scale
+  
+  // Set triangle to use 2D transform rotation (X and Y axes)
+  if (triangle) {
+    triangle->set_rotation_mode(Object::RotationMode::TRANSFORM_2D);
+  }
 
   // Create a 3D cube on the right side
   cube = renderer->create_cube_3d(
       "cube", glm::vec3(0.5f, -0.5f, 0.0f), // Position (right)
       glm::vec3(0.0f, 0.0f, 0.0f),          // Rotation
-      glm::vec3(0.3f, 0.3f, 1.0f));         // Scale
+      glm::vec3(0.3f, 0.3f, 0.3f));         // Scale (make it slightly smaller for better visibility)
+  
+  // Ensure cube uses 3D transform rotation (all axes) - this is the default for 3D objects
+  if (cube) {
+    cube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
+  }
 
   std::print("Scene objects created: triangle and cube\n");
 }

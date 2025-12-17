@@ -38,6 +38,15 @@ public:
     getAttributeDescriptions();
   };
 
+  struct Vertex3D {
+    glm::vec3 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
   struct MaterialCreateInfo {
     std::string identifier;
 

@@ -49,6 +49,20 @@ render::Material::Vertex2DTextured::getAttributeDescriptions() {
               offsetof(Material::Vertex2DTextured, color))};
 }
 
+vk::VertexInputBindingDescription
+render::Material::Vertex3D::getBindingDescription() {
+  return {0, sizeof(Material::Vertex3D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+render::Material::Vertex3D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Material::Vertex3D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Material::Vertex3D, color))};
+}
+
 render::Material::Material(const std::vector<device::LogicalDevice *> &devices,
                            const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier),
