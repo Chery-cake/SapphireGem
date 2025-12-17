@@ -703,19 +703,20 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
   };
 
   // 36 indices for 12 triangles (2 per face)
+  // All faces wound counterclockwise when viewed from outside
   const std::vector<uint16_t> indices = {
-      // Front face
+      // Front face (z = +s, facing +Z)
       0, 1, 2, 2, 3, 0,
-      // Back face
-      4, 6, 5, 6, 4, 7,
-      // Left face
+      // Back face (z = -s, facing -Z)
+      5, 4, 7, 7, 6, 5,
+      // Left face (x = -s, facing -X)
       8, 9, 10, 10, 11, 8,
-      // Right face
-      12, 14, 13, 14, 12, 15,
-      // Top face
+      // Right face (x = +s, facing +X)
+      13, 12, 15, 15, 14, 13,
+      // Top face (y = +s, facing +Y)
       16, 17, 18, 18, 19, 16,
-      // Bottom face
-      20, 22, 21, 22, 20, 23
+      // Bottom face (y = -s, facing -Y)
+      21, 20, 23, 23, 22, 21
   };
 
   Object::ObjectCreateInfo3D createInfo{.identifier = identifier,
