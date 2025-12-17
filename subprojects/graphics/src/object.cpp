@@ -5,6 +5,7 @@
 #include "texture_manager.h"
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <print>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -326,10 +327,34 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
         glm::mat4 proj;
       };
 
+      glm::mat4 viewMatrix;
+      glm::mat4 projMatrix;
+
+      if (type == ObjectType::OBJECT_3D) {
+        // For 3D objects, use perspective projection and a positioned camera
+        viewMatrix = glm::lookAt(
+            glm::vec3(0.0f, 0.0f, 3.0f),  // Camera position
+            glm::vec3(0.0f, 0.0f, 0.0f),  // Look at origin
+            glm::vec3(0.0f, 1.0f, 0.0f)   // Up vector
+        );
+        
+        // Perspective projection with 45 degree FOV
+        projMatrix = glm::perspective(
+            glm::radians(45.0f),  // FOV
+            1.0f,                  // Aspect ratio (will be adjusted by viewport)
+            0.1f,                  // Near plane
+            100.0f                 // Far plane
+        );
+      } else {
+        // For 2D objects, use identity matrices (NDC space)
+        viewMatrix = glm::mat4(1.0f);
+        projMatrix = glm::mat4(1.0f);
+      }
+
       TransformUBO uboData = {
           .model = modelMatrix,
-          .view = glm::mat4(1.0f), // Identity for 2D
-          .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
+          .view = viewMatrix,
+          .proj = projMatrix
       };
 
       // Update the UBO buffer with this object's transformation
