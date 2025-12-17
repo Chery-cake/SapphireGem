@@ -284,9 +284,9 @@ void render::Window::create_scene_objects() {
       glm::vec3(0.0f, 0.0f, 0.0f),               // Rotation
       glm::vec3(0.5f, 0.5f, 1.0f));              // Scale
   
-  // Set triangle to use 2D transform rotation (X and Y axes)
+  // Set triangle to use shader-based 2D rotation (Z axis only, in-plane rotation)
   if (triangle) {
-    triangle->set_rotation_mode(Object::RotationMode::TRANSFORM_2D);
+    triangle->set_rotation_mode(Object::RotationMode::SHADER_2D);
   }
 
   // Create a 3D cube on the right side
@@ -313,8 +313,8 @@ void render::Window::update_scene_objects() {
   time += deltaTime;
 
   if (triangle) {
-    // Rotate triangle in X and Y axes simultaneously (2D rotation mode)
-    triangle->rotate(glm::vec3(time * 0.5f, time * 0.7f, 0.0f));
+    // Rotate triangle in Z axis only (in-plane 2D rotation)
+    triangle->rotate_2d(time * 0.5f);
   }
 
   if (cube) {
