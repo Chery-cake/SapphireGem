@@ -133,7 +133,7 @@ private:
   uint32_t indexCount;
 
   // Material references (shared, not owned)
-  // Single material mode (backward compatibility)
+  // Base/default material - used as fallback for submeshes without a material
   Material *material;
   std::string materialIdentifier;
 

@@ -122,9 +122,23 @@ render::Object::Object(const ObjectCreateInfo createInfo,
     // Multi-material mode: setup submeshes with their materials
     submeshes = createInfo.submeshes;
     setup_materials_for_submeshes(submeshes);
-    material = nullptr; // Not used in multi-material mode
+    
+    // Also setup the base material for submeshes that don't specify one
+    auto materials = materialManager->get_materials();
+    material = nullptr;
+    for (auto *mat : materials) {
+      if (mat->get_identifier() == materialIdentifier) {
+        material = mat;
+        break;
+      }
+    }
+    
+    if (!material) {
+      std::print("Warning: Base material '{}' not found for object '{}'\n",
+                 materialIdentifier, identifier);
+    }
   } else {
-    // Single material mode (backward compatibility)
+    // Single material mode
     auto materials = materialManager->get_materials();
     material = nullptr;
     for (auto *mat : materials) {
@@ -214,9 +228,23 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
     // Multi-material mode: setup submeshes with their materials
     submeshes = createInfo.submeshes;
     setup_materials_for_submeshes(submeshes);
-    material = nullptr; // Not used in multi-material mode
+    
+    // Also setup the base material for submeshes that don't specify one
+    auto materials = materialManager->get_materials();
+    material = nullptr;
+    for (auto *mat : materials) {
+      if (mat->get_identifier() == materialIdentifier) {
+        material = mat;
+        break;
+      }
+    }
+    
+    if (!material) {
+      std::print("Warning: Base material '{}' not found for object '{}'\n",
+                 materialIdentifier, identifier);
+    }
   } else {
-    // Single material mode (backward compatibility)
+    // Single material mode
     auto materials = materialManager->get_materials();
     material = nullptr;
     for (auto *mat : materials) {
@@ -329,22 +357,26 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
   }
 
   if (useSubmeshes) {
-    // Multi-material mode: draw each submesh with its own material
+    // Multi-material mode: draw each submesh with its own material or base material
     for (const auto &submesh : submeshes) {
-      if (!submesh.material) {
-        std::print("Warning: Cannot draw submesh in object '{}' - no material assigned\n",
+      // Use submesh material if available, otherwise use base material
+      Material *useMaterial = submesh.material ? submesh.material : material;
+      
+      if (!useMaterial) {
+        std::print("Warning: Cannot draw submesh in object '{}' - no material assigned and no base material\n",
                    identifier);
         continue;
       }
 
-      if (!submesh.material->is_initialized()) {
+      if (!useMaterial->is_initialized()) {
         std::print("Warning: Cannot draw submesh in object '{}' - material '{}' not initialized\n",
-                   identifier, submesh.materialIdentifier);
+                   identifier, useMaterial->get_identifier());
         continue;
       }
 
-      // Update UBO with object's transformation for this submesh's material
-      std::string uboBufferName = get_ubo_buffer_name(submesh.materialIdentifier);
+      // Update UBO with object's transformation for this material
+      std::string materialId = submesh.material ? submesh.materialIdentifier : materialIdentifier;
+      std::string uboBufferName = get_ubo_buffer_name(materialId);
 
       if (!uboBufferName.empty()) {
         device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
@@ -360,7 +392,7 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
 
       // Bind material for this submesh
-      submesh.material->bind(commandBuffer, deviceIndex, frameIndex);
+      useMaterial->bind(commandBuffer, deviceIndex, frameIndex);
 
       // Draw this submesh with its specific index range
       commandBuffer.drawIndexed(submesh.indexCount, 1, submesh.indexStart, 0, 0);
