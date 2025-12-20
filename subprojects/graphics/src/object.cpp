@@ -234,7 +234,7 @@ render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
     return matIdentifier + "_ubo";
   } else if (matIdentifier == "Test") {
-    // Per-object UBO for Test material
+    // Per-object UBO for Test material - must match naming in constructor (line 156)
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";
