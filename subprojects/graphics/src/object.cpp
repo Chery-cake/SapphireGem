@@ -246,7 +246,7 @@ render::Object::~Object() {
 
 void render::Object::setup_materials_for_submeshes(std::vector<Submesh> &submeshes) {
   auto materials = materialManager->get_materials();
-  
+
   for (auto &submesh : submeshes) {
     submesh.material = nullptr;
     for (auto *mat : materials) {
@@ -255,7 +255,7 @@ void render::Object::setup_materials_for_submeshes(std::vector<Submesh> &submesh
         break;
       }
     }
-    
+
     if (!submesh.material) {
       std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
                  submesh.materialIdentifier, identifier);
