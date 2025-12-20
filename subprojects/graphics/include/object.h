@@ -78,7 +78,7 @@ public:
   // Unified ObjectCreateInfo that works for all vertex types
   struct ObjectCreateInfo {
     std::string identifier;
-    ObjectType type = ObjectType::OBJECT_2D;
+    ObjectType type;  // Must be explicitly specified (OBJECT_2D or OBJECT_3D)
 
     // Geometry data - use the appropriate vertex type based on your needs
     std::variant<
@@ -99,7 +99,9 @@ public:
     // When submeshes don't specify a material, the base materialIdentifier is used
     std::vector<Submesh> submeshes;
 
-    // Transform
+    // Transform - use vec2 for 2D objects, vec3 for 3D objects
+    // For 2D: only x,y are used; z is ignored
+    // For 3D: all x,y,z components are used
     glm::vec3 position = glm::vec3(0.0f);
     glm::vec3 rotation = glm::vec3(0.0f);
     glm::vec3 scale = glm::vec3(1.0f);
