@@ -121,22 +121,7 @@ render::Object::Object(const ObjectCreateInfo createInfo,
   if (useSubmeshes) {
     // Multi-material mode: setup submeshes with their materials
     submeshes = createInfo.submeshes;
-    auto materials = materialManager->get_materials();
-    
-    for (auto &submesh : submeshes) {
-      submesh.material = nullptr;
-      for (auto *mat : materials) {
-        if (mat->get_identifier() == submesh.materialIdentifier) {
-          submesh.material = mat;
-          break;
-        }
-      }
-      
-      if (!submesh.material) {
-        std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
-                   submesh.materialIdentifier, identifier);
-      }
-    }
+    setup_materials_for_submeshes(submeshes);
     material = nullptr; // Not used in multi-material mode
   } else {
     // Single material mode (backward compatibility)
@@ -157,12 +142,6 @@ render::Object::Object(const ObjectCreateInfo createInfo,
 
   // Create per-object UBO for Test material to avoid sharing transforms
   if (materialIdentifier == "Test" && !useSubmeshes) {
-    struct TransformUBO {
-      glm::mat4 model;
-      glm::mat4 view;
-      glm::mat4 proj;
-    };
-
     TransformUBO uboData = {.model = glm::mat4(1.0f),
                             .view = glm::mat4(1.0f),
                             .proj = glm::mat4(1.0f)};
@@ -234,22 +213,7 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
   if (useSubmeshes) {
     // Multi-material mode: setup submeshes with their materials
     submeshes = createInfo.submeshes;
-    auto materials = materialManager->get_materials();
-    
-    for (auto &submesh : submeshes) {
-      submesh.material = nullptr;
-      for (auto *mat : materials) {
-        if (mat->get_identifier() == submesh.materialIdentifier) {
-          submesh.material = mat;
-          break;
-        }
-      }
-      
-      if (!submesh.material) {
-        std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
-                   submesh.materialIdentifier, identifier);
-      }
-    }
+    setup_materials_for_submeshes(submeshes);
     material = nullptr; // Not used in multi-material mode
   } else {
     // Single material mode (backward compatibility)
@@ -278,6 +242,34 @@ render::Object::~Object() {
   }
 
   std::print("Object - {} - destructor executed\n", identifier);
+}
+
+void render::Object::setup_materials_for_submeshes(std::vector<Submesh> &submeshes) {
+  auto materials = materialManager->get_materials();
+  
+  for (auto &submesh : submeshes) {
+    submesh.material = nullptr;
+    for (auto *mat : materials) {
+      if (mat->get_identifier() == submesh.materialIdentifier) {
+        submesh.material = mat;
+        break;
+      }
+    }
+    
+    if (!submesh.material) {
+      std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
+                 submesh.materialIdentifier, identifier);
+    }
+  }
+}
+
+std::string render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
+  if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
+    return matIdentifier + "_ubo";
+  } else if (matIdentifier == "Test") {
+    return "material-test";
+  }
+  return "";
 }
 
 void render::Object::update_model_matrix() {
@@ -352,23 +344,11 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
 
       // Update UBO with object's transformation for this submesh's material
-      std::string uboBufferName;
-      if (submesh.materialIdentifier == "Textured" ||
-          submesh.materialIdentifier.find("Textured_") == 0) {
-        uboBufferName = submesh.materialIdentifier + "_ubo";
-      } else if (submesh.materialIdentifier == "Test") {
-        uboBufferName = "material-test";
-      }
+      std::string uboBufferName = get_ubo_buffer_name(submesh.materialIdentifier);
 
       if (!uboBufferName.empty()) {
         device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
         if (uboBuffer) {
-          struct TransformUBO {
-            glm::mat4 model;
-            glm::mat4 view;
-            glm::mat4 proj;
-          };
-
           TransformUBO uboData = {
               .model = modelMatrix,
               .view = glm::mat4(1.0f),
@@ -401,23 +381,11 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
     }
 
     // Update UBO with object's transformation
-    std::string uboBufferName;
-    if (materialIdentifier == "Textured" ||
-        materialIdentifier.find("Textured_") == 0) {
-      uboBufferName = materialIdentifier + "_ubo";
-    } else if (materialIdentifier == "Test") {
-      uboBufferName = "material-test";
-    }
+    std::string uboBufferName = get_ubo_buffer_name(materialIdentifier);
 
     if (!uboBufferName.empty()) {
       device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
       if (uboBuffer) {
-        struct TransformUBO {
-          glm::mat4 model;
-          glm::mat4 view;
-          glm::mat4 proj;
-        };
-
         TransformUBO uboData = {
             .model = modelMatrix,
             .view = glm::mat4(1.0f),

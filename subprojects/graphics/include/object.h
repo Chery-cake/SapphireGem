@@ -161,7 +161,17 @@ private:
 
   RotationMode rotationMode;
 
+  // Helper structures
+  struct TransformUBO {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+  };
+
+  // Helper methods
   void update_model_matrix();
+  void setup_materials_for_submeshes(std::vector<Submesh> &submeshes);
+  std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
 
 public:
   Object(const ObjectCreateInfo createInfo,
