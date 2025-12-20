@@ -70,8 +70,8 @@ render::Object *render::ObjectManager::create_object(
     return objects[createInfo.identifier].get();
   }
 
-  auto object =
-      std::make_unique<Object>(createInfo, bufferManager, materialManager);
+  auto object = std::make_unique<Object>(createInfo, bufferManager,
+                                         materialManager, textureManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;

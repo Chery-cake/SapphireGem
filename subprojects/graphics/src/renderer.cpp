@@ -160,7 +160,7 @@ void render::Renderer::init_materials() {
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::False,
+      .rasterizationState = {.depthClampEnable = vk::True,
                              .rasterizerDiscardEnable = vk::False,
                              .polygonMode = vk::PolygonMode::eFill,
                              .cullMode = vk::CullModeFlagBits::eBack,
@@ -186,6 +186,40 @@ void render::Renderer::init_materials() {
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
 
   materialManager->add_material(createInfo);
+
+  // Create 2D material (no depth testing for 2D objects)
+  Material::MaterialCreateInfo createInfo2D{
+      .identifier = "Test2D",
+      .vertexShaders = "../assets/shaders/slang.spv",
+      .fragmentShaders = "../assets/shaders/slang.spv",
+      .descriptorBindings = {bidingInfo},
+      .rasterizationState = {.depthClampEnable = vk::False,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = vk::CullModeFlagBits::eNone,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState = {.depthTestEnable = vk::False,
+                            .depthWriteEnable = vk::False},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{.vertexBindingDescriptionCount = 1,
+                        .pVertexBindingDescriptions = &bindingDescription,
+                        .vertexAttributeDescriptionCount =
+                            static_cast<uint32_t>(attributeDescriptions.size()),
+                        .pVertexAttributeDescriptions =
+                            attributeDescriptions.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  materialManager->add_material(createInfo2D);
 
   // Create textured material
   vk::DescriptorSetLayoutBinding uboBinding = {
@@ -636,7 +670,7 @@ render::Object *render::Renderer::create_triangle_2d(
                                       .type = Object::ObjectType::OBJECT_2D,
                                       .vertices = vertices,
                                       .indices = indices,
-                                      .materialIdentifier = "Test",
+                                      .materialIdentifier = "Test2D",
                                       .position = position,
                                       .rotation = rotation,
                                       .scale = scale,
@@ -699,17 +733,17 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
   // 36 indices for 12 triangles (2 per face)
   // All faces wound counterclockwise when viewed from outside
   const std::vector<uint16_t> indices = {// Front face (z = +s, facing +Z)
-                                         0, 1, 2, 2, 3, 0,
+                                         0, 2, 1, 0, 3, 2,
                                          // Back face (z = -s, facing -Z)
-                                         5, 4, 7, 7, 6, 5,
+                                         4, 5, 6, 6, 7, 4,
                                          // Left face (x = -s, facing -X)
-                                         8, 9, 10, 10, 11, 8,
+                                         8, 10, 9, 8, 11, 10,
                                          // Right face (x = +s, facing +X)
-                                         13, 12, 15, 15, 14, 13,
+                                         12, 13, 14, 14, 15, 12,
                                          // Top face (y = +s, facing +Y)
                                          16, 17, 18, 18, 19, 16,
                                          // Bottom face (y = -s, facing -Y)
-                                         21, 20, 23, 23, 22, 21};
+                                         20, 22, 21, 20, 23, 22};
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
                                       .type = Object::ObjectType::OBJECT_3D,
