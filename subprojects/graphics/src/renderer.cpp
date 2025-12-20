@@ -160,7 +160,7 @@ void render::Renderer::init_materials() {
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::False,
+      .rasterizationState = {.depthClampEnable = vk::True,
                              .rasterizerDiscardEnable = vk::False,
                              .polygonMode = vk::PolygonMode::eFill,
                              .cullMode = vk::CullModeFlagBits::eBack,
@@ -733,17 +733,17 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
   // 36 indices for 12 triangles (2 per face)
   // All faces wound counterclockwise when viewed from outside
   const std::vector<uint16_t> indices = {// Front face (z = +s, facing +Z)
-                                         0, 1, 2, 0, 2, 3,
+                                         0, 2, 1, 0, 3, 2,
                                          // Back face (z = -s, facing -Z)
-                                         5, 4, 7, 5, 7, 6,
+                                         4, 5, 6, 6, 7, 4,
                                          // Left face (x = -s, facing -X)
-                                         8, 9, 10, 8, 10, 11,
+                                         8, 10, 9, 8, 11, 10,
                                          // Right face (x = +s, facing +X)
-                                         13, 12, 15, 13, 15, 14,
+                                         12, 13, 14, 14, 15, 12,
                                          // Top face (y = +s, facing +Y)
-                                         16, 17, 18, 16, 18, 19,
+                                         16, 17, 18, 18, 19, 16,
                                          // Bottom face (y = -s, facing -Y)
-                                         23, 22, 21, 23, 21, 20};
+                                         20, 22, 21, 20, 23, 22};
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
                                       .type = Object::ObjectType::OBJECT_3D,
