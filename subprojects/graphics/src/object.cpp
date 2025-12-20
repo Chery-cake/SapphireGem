@@ -85,6 +85,7 @@ render::Object::Object(const ObjectCreateInfo createInfo,
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
+      useSubmeshes(!createInfo.submeshes.empty()),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
@@ -116,23 +117,46 @@ render::Object::Object(const ObjectCreateInfo createInfo,
 
   bufferManager->create_buffer(indInfo);
 
-  // Get material reference
-  auto materials = materialManager->get_materials();
-  material = nullptr;
-  for (auto *mat : materials) {
-    if (mat->get_identifier() == materialIdentifier) {
-      material = mat;
-      break;
+  // Setup materials
+  if (useSubmeshes) {
+    // Multi-material mode: setup submeshes with their materials
+    submeshes = createInfo.submeshes;
+    auto materials = materialManager->get_materials();
+    
+    for (auto &submesh : submeshes) {
+      submesh.material = nullptr;
+      for (auto *mat : materials) {
+        if (mat->get_identifier() == submesh.materialIdentifier) {
+          submesh.material = mat;
+          break;
+        }
+      }
+      
+      if (!submesh.material) {
+        std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
+                   submesh.materialIdentifier, identifier);
+      }
+    }
+    material = nullptr; // Not used in multi-material mode
+  } else {
+    // Single material mode (backward compatibility)
+    auto materials = materialManager->get_materials();
+    material = nullptr;
+    for (auto *mat : materials) {
+      if (mat->get_identifier() == materialIdentifier) {
+        material = mat;
+        break;
+      }
+    }
+
+    if (!material) {
+      std::print("Warning: Material '{}' not found for object '{}'\n",
+                 materialIdentifier, identifier);
     }
   }
 
-  if (!material) {
-    std::print("Warning: Material '{}' not found for object '{}'\n",
-               materialIdentifier, identifier);
-  }
-
   // Create per-object UBO for Test material to avoid sharing transforms
-  if (materialIdentifier == "Test") {
+  if (materialIdentifier == "Test" && !useSubmeshes) {
     struct TransformUBO {
       glm::mat4 model;
       glm::mat4 view;
@@ -172,6 +196,7 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
       textureIdentifier(createInfo.textureIdentifier),
+      useSubmeshes(!createInfo.submeshes.empty()),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
@@ -205,19 +230,42 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
 
   bufferManager->create_buffer(indInfo);
 
-  // Get material reference
-  auto materials = materialManager->get_materials();
-  material = nullptr;
-  for (auto *mat : materials) {
-    if (mat->get_identifier() == materialIdentifier) {
-      material = mat;
-      break;
+  // Setup materials
+  if (useSubmeshes) {
+    // Multi-material mode: setup submeshes with their materials
+    submeshes = createInfo.submeshes;
+    auto materials = materialManager->get_materials();
+    
+    for (auto &submesh : submeshes) {
+      submesh.material = nullptr;
+      for (auto *mat : materials) {
+        if (mat->get_identifier() == submesh.materialIdentifier) {
+          submesh.material = mat;
+          break;
+        }
+      }
+      
+      if (!submesh.material) {
+        std::print("Warning: Material '{}' not found for submesh in object '{}'\n",
+                   submesh.materialIdentifier, identifier);
+      }
     }
-  }
+    material = nullptr; // Not used in multi-material mode
+  } else {
+    // Single material mode (backward compatibility)
+    auto materials = materialManager->get_materials();
+    material = nullptr;
+    for (auto *mat : materials) {
+      if (mat->get_identifier() == materialIdentifier) {
+        material = mat;
+        break;
+      }
+    }
 
-  if (!material) {
-    std::print("Warning: Material '{}' not found for object '{}'\n",
-               materialIdentifier, identifier);
+    if (!material) {
+      std::print("Warning: Material '{}' not found for object '{}'\n",
+                 materialIdentifier, identifier);
+    }
   }
 
   update_model_matrix();
@@ -270,77 +318,122 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
     return;
   }
 
-  if (!material) {
-    std::print("Warning: Cannot draw object '{}' - no material assigned\n",
-               identifier);
-    return;
-  }
-
-  if (!material->is_initialized()) {
-    std::print("Warning: Cannot draw object '{}' - material '{}' not "
-               "initialized\n",
-               identifier, materialIdentifier);
-    return;
-  }
-
-  // Hybrid rendering: GPU does transformations, CPU does auxiliary work
   // Update model matrix if needed (GPU will use this via shaders)
   if (transformDirty) {
     update_model_matrix();
   }
 
-  // Update UBO with object's transformation
-  // Determine which UBO buffer to use based on material
-  std::string uboBufferName;
-  if (materialIdentifier == "Textured" ||
-      materialIdentifier.find("Textured_") == 0) {
-    uboBufferName = materialIdentifier + "_ubo";
-  } else if (materialIdentifier == "Test") {
-    // Use shared material UBO - we'll update its data per object
-    uboBufferName = "material-test";
-  }
-
-  if (!uboBufferName.empty()) {
-    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
-    if (uboBuffer) {
-      // Prepare transformation data
-      struct TransformUBO {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 proj;
-      };
-
-      TransformUBO uboData = {
-          .model = modelMatrix,
-          .view = glm::mat4(1.0f), // Identity for 2D
-          .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
-      };
-
-      // Update the UBO buffer with this object's transformation
-      uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
-    }
-  }
-
-  // Bind material
-  // Note: Textures are bound during object creation, not during draw
-  // to avoid updating descriptor sets while command buffer is recording
-  material->bind(commandBuffer, deviceIndex, frameIndex);
-
-  // Bind vertex buffer
+  // Bind vertex buffer (shared across all submeshes)
   device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
   if (vertexBuffer) {
     vertexBuffer->bind_vertex(commandBuffer, 0, 0, deviceIndex);
   }
 
-  // Bind index buffer
+  // Bind index buffer (shared across all submeshes)
   device::Buffer *indexBuffer = bufferManager->get_buffer(indexBufferName);
   if (indexBuffer) {
     indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0,
                             deviceIndex);
   }
 
-  // Draw
-  commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
+  if (useSubmeshes) {
+    // Multi-material mode: draw each submesh with its own material
+    for (const auto &submesh : submeshes) {
+      if (!submesh.material) {
+        std::print("Warning: Cannot draw submesh in object '{}' - no material assigned\n",
+                   identifier);
+        continue;
+      }
+
+      if (!submesh.material->is_initialized()) {
+        std::print("Warning: Cannot draw submesh in object '{}' - material '{}' not initialized\n",
+                   identifier, submesh.materialIdentifier);
+        continue;
+      }
+
+      // Update UBO with object's transformation for this submesh's material
+      std::string uboBufferName;
+      if (submesh.materialIdentifier == "Textured" ||
+          submesh.materialIdentifier.find("Textured_") == 0) {
+        uboBufferName = submesh.materialIdentifier + "_ubo";
+      } else if (submesh.materialIdentifier == "Test") {
+        uboBufferName = "material-test";
+      }
+
+      if (!uboBufferName.empty()) {
+        device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+        if (uboBuffer) {
+          struct TransformUBO {
+            glm::mat4 model;
+            glm::mat4 view;
+            glm::mat4 proj;
+          };
+
+          TransformUBO uboData = {
+              .model = modelMatrix,
+              .view = glm::mat4(1.0f),
+              .proj = glm::mat4(1.0f)
+          };
+
+          uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
+        }
+      }
+
+      // Bind material for this submesh
+      submesh.material->bind(commandBuffer, deviceIndex, frameIndex);
+
+      // Draw this submesh with its specific index range
+      commandBuffer.drawIndexed(submesh.indexCount, 1, submesh.indexStart, 0, 0);
+    }
+  } else {
+    // Single material mode (backward compatibility)
+    if (!material) {
+      std::print("Warning: Cannot draw object '{}' - no material assigned\n",
+                 identifier);
+      return;
+    }
+
+    if (!material->is_initialized()) {
+      std::print("Warning: Cannot draw object '{}' - material '{}' not "
+                 "initialized\n",
+                 identifier, materialIdentifier);
+      return;
+    }
+
+    // Update UBO with object's transformation
+    std::string uboBufferName;
+    if (materialIdentifier == "Textured" ||
+        materialIdentifier.find("Textured_") == 0) {
+      uboBufferName = materialIdentifier + "_ubo";
+    } else if (materialIdentifier == "Test") {
+      uboBufferName = "material-test";
+    }
+
+    if (!uboBufferName.empty()) {
+      device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+      if (uboBuffer) {
+        struct TransformUBO {
+          glm::mat4 model;
+          glm::mat4 view;
+          glm::mat4 proj;
+        };
+
+        TransformUBO uboData = {
+            .model = modelMatrix,
+            .view = glm::mat4(1.0f),
+            .proj = glm::mat4(1.0f)
+        };
+
+        uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
+      }
+    }
+
+    // Bind material
+    material->bind(commandBuffer, deviceIndex, frameIndex);
+
+    // Draw
+    commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
+  }
 }
 
 void render::Object::set_position(const glm::vec3 &pos) {

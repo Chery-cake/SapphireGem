@@ -66,6 +66,14 @@ public:
     TRANSFORM_3D  // CPU/GPU 3D rotation (X, Y, Z axes)
   };
 
+  // Submesh structure for multi-material support
+  struct Submesh {
+    uint32_t indexStart;
+    uint32_t indexCount;
+    std::string materialIdentifier;
+    Material *material;
+  };
+
   struct ObjectCreateInfo {
     std::string identifier;
     ObjectType type = ObjectType::OBJECT_3D;
@@ -74,8 +82,11 @@ public:
     std::vector<Vertex2D> vertices;
     std::vector<uint16_t> indices;
 
-    // Material (shared across instances)
+    // Material (shared across instances) - for single material objects
     std::string materialIdentifier;
+
+    // Optional: Multiple materials for different parts (e.g., different faces)
+    std::vector<Submesh> submeshes;
 
     // Transform
     glm::vec3 position = glm::vec3(0.0f);
@@ -94,11 +105,14 @@ public:
     std::vector<Vertex2DTextured> vertices;
     std::vector<uint16_t> indices;
 
-    // Material (shared across instances)
+    // Material (shared across instances) - for single material objects
     std::string materialIdentifier;
 
     // Texture identifier for textured objects
     std::string textureIdentifier;
+
+    // Optional: Multiple materials for different parts (e.g., different faces)
+    std::vector<Submesh> submeshes;
 
     // Transform
     glm::vec3 position = glm::vec3(0.0f);
@@ -118,9 +132,14 @@ private:
   std::string indexBufferName;
   uint32_t indexCount;
 
-  // Material reference (shared, not owned)
+  // Material references (shared, not owned)
+  // Single material mode (backward compatibility)
   Material *material;
   std::string materialIdentifier;
+
+  // Multi-material mode (for different faces/parts)
+  std::vector<Submesh> submeshes;
+  bool useSubmeshes;
 
   // Texture identifier for textured objects
   std::string textureIdentifier;
