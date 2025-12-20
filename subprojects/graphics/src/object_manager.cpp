@@ -71,7 +71,8 @@ render::Object *render::ObjectManager::create_object(
   }
 
   auto object =
-      std::make_unique<Object>(createInfo, bufferManager, materialManager);
+      std::make_unique<Object>(createInfo, bufferManager, materialManager,
+                               textureManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;

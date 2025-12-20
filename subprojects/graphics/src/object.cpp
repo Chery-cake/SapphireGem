@@ -139,7 +139,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
     }
   } else {
     // Single material mode
-    material = materialManager->get_material(identifier);
+    material = materialManager->get_material(materialIdentifier);
   }
 
   if (!material) {
