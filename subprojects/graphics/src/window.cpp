@@ -134,9 +134,9 @@ void render::Window::create_scene_objects() {
       .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
   auto texturedBindingDescription =
-      Material::Vertex2DTextured::getBindingDescription();
+      Object::Vertex2DTextured::getBindingDescription();
   auto texturedAttributeDescriptions =
-      Material::Vertex2DTextured::getAttributeDescriptions();
+      Object::Vertex2DTextured::getAttributeDescriptions();
 
   vk::PipelineColorBlendAttachmentState colorBlendAttachment{
       .blendEnable = vk::False,

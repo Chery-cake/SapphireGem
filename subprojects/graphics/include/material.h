@@ -18,31 +18,8 @@
 
 namespace render {
 
-// Forward declaration
-class Object;
-
 class Material {
 public:
-  // Type aliases for backward compatibility - these now reference Object's vertex types
-  // Vertex structures are now defined in Object class
-  struct Vertex2D {
-    glm::vec2 pos;
-    glm::vec3 color;
-
-    static vk::VertexInputBindingDescription getBindingDescription();
-    static std::array<vk::VertexInputAttributeDescription, 2>
-    getAttributeDescriptions();
-  };
-
-  struct Vertex2DTextured {
-    glm::vec2 pos;
-    glm::vec2 texCoord;
-    glm::vec3 color;
-
-    static vk::VertexInputBindingDescription getBindingDescription();
-    static std::array<vk::VertexInputAttributeDescription, 3>
-    getAttributeDescriptions();
-  };
 
   struct MaterialCreateInfo {
     std::string identifier;
