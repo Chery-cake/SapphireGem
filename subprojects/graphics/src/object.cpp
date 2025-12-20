@@ -147,8 +147,8 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
                materialIdentifier, identifier);
   }
 
-  // Create per-object UBO for Test material to avoid sharing transforms
-  if (materialIdentifier == "Test" && !useSubmeshes) {
+  // Create per-object UBO for Test and Test2D materials to avoid sharing transforms
+  if ((materialIdentifier == "Test" || materialIdentifier == "Test2D") && !useSubmeshes) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
                                             .view = glm::mat4(1.0f),
                                             .proj = glm::mat4(1.0f)};
@@ -233,8 +233,8 @@ std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
     return matIdentifier + "_ubo";
-  } else if (matIdentifier == "Test") {
-    // Per-object UBO for Test material - must match naming in constructor (line 156)
+  } else if (matIdentifier == "Test" || matIdentifier == "Test2D") {
+    // Per-object UBO for Test and Test2D materials - must match naming in constructor (line 151)
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";
