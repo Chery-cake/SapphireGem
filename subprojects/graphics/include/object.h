@@ -4,16 +4,60 @@
 #include "material.h"
 #include "material_manager.h"
 #include "texture_manager.h"
+#include <array>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 #include <string>
 #include <vector>
+#include <vulkan/vulkan.hpp>
 
 namespace render {
 
 class Object {
 public:
+  // Vertex structures - moved from Material to Object
+  struct Vertex2D {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex2DTextured {
+    glm::vec2 pos;
+    glm::vec2 texCoord;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 3>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex3D {
+    glm::vec3 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex3DTextured {
+    glm::vec3 pos;
+    glm::vec2 texCoord;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 3>
+    getAttributeDescriptions();
+  };
+
   enum class ObjectType { OBJECT_2D, OBJECT_3D };
 
   enum class RotationMode {
@@ -27,7 +71,7 @@ public:
     ObjectType type = ObjectType::OBJECT_3D;
 
     // Geometry data
-    std::vector<Material::Vertex2D> vertices;
+    std::vector<Vertex2D> vertices;
     std::vector<uint16_t> indices;
 
     // Material (shared across instances)
@@ -47,7 +91,7 @@ public:
     ObjectType type = ObjectType::OBJECT_3D;
 
     // Geometry data
-    std::vector<Material::Vertex2DTextured> vertices;
+    std::vector<Vertex2DTextured> vertices;
     std::vector<uint16_t> indices;
 
     // Material (shared across instances)

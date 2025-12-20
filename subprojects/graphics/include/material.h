@@ -4,6 +4,7 @@
 #include "image.h"
 #include "logical_device.h"
 #include "vulkan/vulkan.hpp"
+#include <array>
 #include <atomic>
 #include <glm/ext/vector_float4.hpp>
 #include <glm/vec2.hpp>
@@ -17,8 +18,13 @@
 
 namespace render {
 
+// Forward declaration
+class Object;
+
 class Material {
 public:
+  // Type aliases for backward compatibility - these now reference Object's vertex types
+  // Vertex structures are now defined in Object class
   struct Vertex2D {
     glm::vec2 pos;
     glm::vec3 color;

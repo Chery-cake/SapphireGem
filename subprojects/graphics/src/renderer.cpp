@@ -151,8 +151,8 @@ void render::Renderer::init_materials() {
           vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
           vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 
-  auto bindingDescription = Material::Vertex2D::getBindingDescription();
-  auto attributeDescriptions = Material::Vertex2D::getAttributeDescriptions();
+  auto bindingDescription = Object::Vertex2D::getBindingDescription();
+  auto attributeDescriptions = Object::Vertex2D::getAttributeDescriptions();
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
@@ -200,9 +200,9 @@ void render::Renderer::init_materials() {
       .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
   auto texturedBindingDescription =
-      Material::Vertex2DTextured::getBindingDescription();
+      Object::Vertex2DTextured::getBindingDescription();
   auto texturedAttributeDescriptions =
-      Material::Vertex2DTextured::getAttributeDescriptions();
+      Object::Vertex2DTextured::getAttributeDescriptions();
 
   // Textured material uses textured.spv compiled from textured.slang
   // Compile command: slangc textured.slang -target spirv -profile spirv_1_4
@@ -249,7 +249,7 @@ void render::Renderer::init_debug() {
 void render::Renderer::create_buffers() {
   bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 
-  const std::vector<Material::Vertex2D> vertices = {
+  const std::vector<Object::Vertex2D> vertices = {
       {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
       {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
       {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
@@ -259,7 +259,7 @@ void render::Renderer::create_buffers() {
       .identifier = "vertices",
       .type = device::Buffer::BufferType::VERTEX,
       .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(vertices) * sizeof(Material::Vertex2D),
+      .size = std::size(vertices) * sizeof(Object::Vertex2D),
       .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
@@ -630,7 +630,7 @@ render::Object *render::Renderer::create_triangle_2d(
   }
 
   // Define a 2D triangle vertices (in NDC space, z=0)
-  const std::vector<Material::Vertex2D> vertices = {
+  const std::vector<Object::Vertex2D> vertices = {
       {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
       {{-0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
       {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
@@ -667,7 +667,7 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
   constexpr float depthOffset =
       0.2f; // Offset for back face to create 3D effect
 
-  const std::vector<Material::Vertex2D> vertices = {
+  const std::vector<Object::Vertex2D> vertices = {
       // Square representing the cube face
       {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left (red)
       {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right (green)
@@ -702,7 +702,7 @@ render::Object *render::Renderer::create_textured_square_2d(
   }
 
   // Define a 2D textured square (quad) with 4 vertices
-  const std::vector<Material::Vertex2DTextured> vertices = {
+  const std::vector<Object::Vertex2DTextured> vertices = {
       {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
       {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
       {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right

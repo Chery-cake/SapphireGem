@@ -3,10 +3,80 @@
 #include "material.h"
 #include "material_manager.h"
 #include "texture_manager.h"
+#include <array>
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
 #include <print>
+#include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
+
+// Vertex2D implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex2D::getBindingDescription() {
+  return {0, sizeof(Object::Vertex2D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+render::Object::Vertex2D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,
+                                          offsetof(Object::Vertex2D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex2D, color))};
+}
+
+// Vertex2DTextured implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex2DTextured::getBindingDescription() {
+  return {0, sizeof(Object::Vertex2DTextured), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 3>
+render::Object::Vertex2DTextured::getAttributeDescriptions() {
+  return {vk::VertexInputAttributeDescription(
+              0, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex2DTextured, pos)),
+          vk::VertexInputAttributeDescription(
+              1, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex2DTextured, texCoord)),
+          vk::VertexInputAttributeDescription(
+              2, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex2DTextured, color))};
+}
+
+// Vertex3D implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex3D::getBindingDescription() {
+  return {0, sizeof(Object::Vertex3D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+render::Object::Vertex3D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex3D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex3D, color))};
+}
+
+// Vertex3DTextured implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex3DTextured::getBindingDescription() {
+  return {0, sizeof(Object::Vertex3DTextured), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 3>
+render::Object::Vertex3DTextured::getAttributeDescriptions() {
+  return {vk::VertexInputAttributeDescription(
+              0, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex3DTextured, pos)),
+          vk::VertexInputAttributeDescription(
+              1, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex3DTextured, texCoord)),
+          vk::VertexInputAttributeDescription(
+              2, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex3DTextured, color))};
+}
 
 render::Object::Object(const ObjectCreateInfo createInfo,
                        device::BufferManager *bufferManager,
@@ -30,8 +100,8 @@ render::Object::Object(const ObjectCreateInfo createInfo,
       .identifier = vertexBufferName,
       .type = device::Buffer::BufferType::VERTEX,
       .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
-      .elementSize = sizeof(Material::Vertex2D),
+      .size = createInfo.vertices.size() * sizeof(Object::Vertex2D),
+      .elementSize = sizeof(Object::Vertex2D),
       .initialData = createInfo.vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
@@ -119,8 +189,8 @@ render::Object::Object(const ObjectCreateInfoTextured createInfo,
       .identifier = vertexBufferName,
       .type = device::Buffer::BufferType::VERTEX,
       .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
-      .elementSize = sizeof(Material::Vertex2DTextured),
+      .size = createInfo.vertices.size() * sizeof(Object::Vertex2DTextured),
+      .elementSize = sizeof(Object::Vertex2DTextured),
       .initialData = createInfo.vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
