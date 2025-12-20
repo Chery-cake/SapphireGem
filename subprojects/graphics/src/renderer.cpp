@@ -743,7 +743,7 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
                                          // Top face (y = +s, facing +Y)
                                          16, 17, 18, 16, 18, 19,
                                          // Bottom face (y = -s, facing -Y)
-                                         20, 21, 22, 20, 22, 23};
+                                         23, 22, 21, 23, 21, 20};
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
                                       .type = Object::ObjectType::OBJECT_3D,
