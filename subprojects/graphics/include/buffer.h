@@ -52,6 +52,13 @@ public:
           descriptorSetLayout(nullptr) {}
   };
 
+  // Helper structures
+  struct TransformUBO {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+  };
+
 private:
   mutable std::mutex bufferMutex;
 

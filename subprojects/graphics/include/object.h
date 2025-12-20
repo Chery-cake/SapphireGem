@@ -6,6 +6,7 @@
 #include "texture_manager.h"
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <vector>
@@ -14,6 +15,52 @@ namespace render {
 
 class Object {
 public:
+  struct Vertex2D {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex2DTextured {
+    glm::vec2 pos;
+    glm::vec2 texCoord;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 3>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex3D {
+    glm::vec3 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 2>
+    getAttributeDescriptions();
+  };
+
+  struct Vertex3DTextured {
+    glm::vec3 pos;
+    glm::vec2 texCoord;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription();
+    static std::array<vk::VertexInputAttributeDescription, 3>
+    getAttributeDescriptions();
+  };
+
+  // Submesh structure for multi-material support
+  struct Submesh {
+    uint32_t indexStart;
+    uint32_t indexCount;
+    std::string materialIdentifier;
+    Material *material;
+  };
+
   enum class ObjectType { OBJECT_2D, OBJECT_3D };
 
   enum class RotationMode {
@@ -22,39 +69,25 @@ public:
     TRANSFORM_3D  // CPU/GPU 3D rotation (X, Y, Z axes)
   };
 
+  // Unified ObjectCreateInfo that works for all vertex types
   struct ObjectCreateInfo {
     std::string identifier;
-    ObjectType type = ObjectType::OBJECT_3D;
+    ObjectType type;
 
     // Geometry data
-    std::vector<Material::Vertex2D> vertices;
+    std::variant<std::vector<Vertex2D>, std::vector<Vertex2DTextured>,
+                 std::vector<Vertex3D>, std::vector<Vertex3DTextured>>
+        vertices;
     std::vector<uint16_t> indices;
 
     // Material (shared across instances)
     std::string materialIdentifier;
-
-    // Transform
-    glm::vec3 position = glm::vec3(0.0f);
-    glm::vec3 rotation = glm::vec3(0.0f);
-    glm::vec3 scale = glm::vec3(1.0f);
-
-    // Visibility
-    bool visible = true;
-  };
-
-  struct ObjectCreateInfoTextured {
-    std::string identifier;
-    ObjectType type = ObjectType::OBJECT_3D;
-
-    // Geometry data
-    std::vector<Material::Vertex2DTextured> vertices;
-    std::vector<uint16_t> indices;
-
-    // Material (shared across instances)
-    std::string materialIdentifier;
-
-    // Texture identifier for textured objects
     std::string textureIdentifier;
+
+    // Optional: Multiple materials for different parts (e.g., different
+    // faces) When submeshes don't specify a material, the base
+    // materialIdentifier is used
+    std::vector<Submesh> submeshes;
 
     // Transform
     glm::vec3 position = glm::vec3(0.0f);
@@ -75,11 +108,16 @@ private:
   uint32_t indexCount;
 
   // Material reference (shared, not owned)
+  // Base/default material - used as fallback for submeshes without a material
   Material *material;
   std::string materialIdentifier;
 
   // Texture identifier for textured objects
   std::string textureIdentifier;
+
+  // Multi-material mode (for different faces/parts)
+  std::vector<Submesh> submeshes;
+  bool useSubmeshes;
 
   // Transform
   glm::vec3 position;
@@ -99,14 +137,13 @@ private:
   RotationMode rotationMode;
 
   void update_model_matrix();
+  void setup_materials_for_submeshes(std::vector<Submesh> &submeshes);
+  std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
 
 public:
-  Object(const ObjectCreateInfo createInfo,
+  Object(const ObjectCreateInfo &createInfo,
          device::BufferManager *bufferManager, MaterialManager *materialManager,
          TextureManager *textureManager = nullptr);
-  Object(const ObjectCreateInfoTextured createInfo,
-         device::BufferManager *bufferManager, MaterialManager *materialManager,
-         TextureManager *textureManager);
   ~Object();
 
   // Render this object

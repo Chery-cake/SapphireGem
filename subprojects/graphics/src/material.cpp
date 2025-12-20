@@ -17,38 +17,6 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
-vk::VertexInputBindingDescription
-render::Material::Vertex2D::getBindingDescription() {
-  return {0, sizeof(Material::Vertex2D), vk::VertexInputRate::eVertex};
-}
-
-std::array<vk::VertexInputAttributeDescription, 2>
-render::Material::Vertex2D::getAttributeDescriptions() {
-  return {
-      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,
-                                          offsetof(Material::Vertex2D, pos)),
-      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
-                                          offsetof(Material::Vertex2D, color))};
-}
-
-vk::VertexInputBindingDescription
-render::Material::Vertex2DTextured::getBindingDescription() {
-  return {0, sizeof(Material::Vertex2DTextured), vk::VertexInputRate::eVertex};
-}
-
-std::array<vk::VertexInputAttributeDescription, 3>
-render::Material::Vertex2DTextured::getAttributeDescriptions() {
-  return {vk::VertexInputAttributeDescription(
-              0, 0, vk::Format::eR32G32Sfloat,
-              offsetof(Material::Vertex2DTextured, pos)),
-          vk::VertexInputAttributeDescription(
-              1, 0, vk::Format::eR32G32Sfloat,
-              offsetof(Material::Vertex2DTextured, texCoord)),
-          vk::VertexInputAttributeDescription(
-              2, 0, vk::Format::eR32G32B32Sfloat,
-              offsetof(Material::Vertex2DTextured, color))};
-}
-
 render::Material::Material(const std::vector<device::LogicalDevice *> &devices,
                            const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier),

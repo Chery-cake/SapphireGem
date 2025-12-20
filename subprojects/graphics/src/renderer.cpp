@@ -6,6 +6,7 @@
 #include "logical_device.h"
 #include "material.h"
 #include "material_manager.h"
+#include "object.h"
 #include "object_manager.h"
 #include "texture_manager.h"
 #include "vulkan/vulkan.hpp"
@@ -151,8 +152,8 @@ void render::Renderer::init_materials() {
           vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
           vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
 
-  auto bindingDescription = Material::Vertex2D::getBindingDescription();
-  auto attributeDescriptions = Material::Vertex2D::getAttributeDescriptions();
+  auto bindingDescription = Object::Vertex3D::getBindingDescription();
+  auto attributeDescriptions = Object::Vertex3D::getAttributeDescriptions();
 
   Material::MaterialCreateInfo createInfo{
       .identifier = "Test",
@@ -200,9 +201,9 @@ void render::Renderer::init_materials() {
       .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
   auto texturedBindingDescription =
-      Material::Vertex2DTextured::getBindingDescription();
+      Object::Vertex2DTextured::getBindingDescription();
   auto texturedAttributeDescriptions =
-      Material::Vertex2DTextured::getAttributeDescriptions();
+      Object::Vertex2DTextured::getAttributeDescriptions();
 
   // Textured material uses textured.spv compiled from textured.slang
   // Compile command: slangc textured.slang -target spirv -profile spirv_1_4
@@ -249,7 +250,7 @@ void render::Renderer::init_debug() {
 void render::Renderer::create_buffers() {
   bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 
-  const std::vector<Material::Vertex2D> vertices = {
+  const std::vector<Object::Vertex2D> vertices = {
       {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
       {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
       {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
@@ -259,7 +260,7 @@ void render::Renderer::create_buffers() {
       .identifier = "vertices",
       .type = device::Buffer::BufferType::VERTEX,
       .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(vertices) * sizeof(Material::Vertex2D),
+      .size = std::size(vertices) * sizeof(Object::Vertex2D),
       .initialData = vertices.data()};
 
   bufferManager->create_buffer(vertInfo);
@@ -275,18 +276,11 @@ void render::Renderer::create_buffers() {
 
   bufferManager->create_buffer(indInfo);
 
-  // Create UBO for Test material (matches shader expectations)
-  struct TransformUBO {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
-  };
-
   // Get the first material (or iterate through all if needed)
   if (!materialManager->get_materials().empty()) {
     Material *material = materialManager->get_materials()[0];
 
-    TransformUBO testUboData = {
+    device::Buffer::TransformUBO testUboData = {
         .model = glm::mat4(1.0f), // Identity matrix
         .view = glm::mat4(1.0f),  // Identity matrix
         .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
@@ -296,8 +290,8 @@ void render::Renderer::create_buffers() {
         .identifier = "material-test",
         .type = device::Buffer::BufferType::UNIFORM,
         .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(TransformUBO),
-        .elementSize = sizeof(TransformUBO),
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
         .initialData = &testUboData};
 
     bufferManager->create_buffer(matInfo);
@@ -630,10 +624,10 @@ render::Object *render::Renderer::create_triangle_2d(
   }
 
   // Define a 2D triangle vertices (in NDC space, z=0)
-  const std::vector<Material::Vertex2D> vertices = {
-      {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
-      {{-0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
+  const std::vector<Object::Vertex3D> vertices = {
+      {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
+      {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
+      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
   };
 
   const std::vector<uint16_t> indices = {0, 1, 2};
@@ -660,24 +654,62 @@ render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
     return nullptr;
   }
 
-  // Define a 3D cube as a single square
-  // Since we're using 2D vertices, we'll create a square that rotates in 3D
-  // space The 3D rotation will be handled by the transformation matrix
-  constexpr float cubeSize = 0.5f;
-  constexpr float depthOffset =
-      0.2f; // Offset for back face to create 3D effect
+  // Define a proper 3D cube with all 6 faces
+  // 8 vertices for the cube corners
+  constexpr float s = 0.5f; // Half size
 
-  const std::vector<Material::Vertex2D> vertices = {
-      // Square representing the cube face
-      {{-cubeSize, -cubeSize}, {1.0f, 0.0f, 0.0f}}, // 0: Bottom-left (red)
-      {{cubeSize, -cubeSize}, {0.0f, 1.0f, 0.0f}},  // 1: Bottom-right (green)
-      {{cubeSize, cubeSize}, {0.0f, 0.0f, 1.0f}},   // 2: Top-right (blue)
-      {{-cubeSize, cubeSize}, {1.0f, 1.0f, 0.0f}}   // 3: Top-left (yellow)
+  const std::vector<Object::Vertex3D> vertices = {
+      // Front face (red)
+      {{-s, -s, s}, {1.0f, 0.0f, 0.0f}}, // 0
+      {{s, -s, s}, {1.0f, 0.0f, 0.0f}},  // 1
+      {{s, s, s}, {1.0f, 0.0f, 0.0f}},   // 2
+      {{-s, s, s}, {1.0f, 0.0f, 0.0f}},  // 3
 
+      // Back face (green)
+      {{-s, -s, -s}, {0.0f, 1.0f, 0.0f}}, // 4
+      {{s, -s, -s}, {0.0f, 1.0f, 0.0f}},  // 5
+      {{s, s, -s}, {0.0f, 1.0f, 0.0f}},   // 6
+      {{-s, s, -s}, {0.0f, 1.0f, 0.0f}},  // 7
+
+      // Left face (blue)
+      {{-s, -s, -s}, {0.0f, 0.0f, 1.0f}}, // 8
+      {{-s, -s, s}, {0.0f, 0.0f, 1.0f}},  // 9
+      {{-s, s, s}, {0.0f, 0.0f, 1.0f}},   // 10
+      {{-s, s, -s}, {0.0f, 0.0f, 1.0f}},  // 11
+
+      // Right face (yellow)
+      {{s, -s, -s}, {1.0f, 1.0f, 0.0f}}, // 12
+      {{s, -s, s}, {1.0f, 1.0f, 0.0f}},  // 13
+      {{s, s, s}, {1.0f, 1.0f, 0.0f}},   // 14
+      {{s, s, -s}, {1.0f, 1.0f, 0.0f}},  // 15
+
+      // Top face (cyan)
+      {{-s, s, -s}, {0.0f, 1.0f, 1.0f}}, // 16
+      {{s, s, -s}, {0.0f, 1.0f, 1.0f}},  // 17
+      {{s, s, s}, {0.0f, 1.0f, 1.0f}},   // 18
+      {{-s, s, s}, {0.0f, 1.0f, 1.0f}},  // 19
+
+      // Bottom face (magenta)
+      {{-s, -s, -s}, {1.0f, 0.0f, 1.0f}}, // 20
+      {{s, -s, -s}, {1.0f, 0.0f, 1.0f}},  // 21
+      {{s, -s, s}, {1.0f, 0.0f, 1.0f}},   // 22
+      {{-s, -s, s}, {1.0f, 0.0f, 1.0f}}   // 23
   };
 
-  // Square indices (2 triangles)
-  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
+  // 36 indices for 12 triangles (2 per face)
+  // All faces wound counterclockwise when viewed from outside
+  const std::vector<uint16_t> indices = {// Front face (z = +s, facing +Z)
+                                         0, 1, 2, 2, 3, 0,
+                                         // Back face (z = -s, facing -Z)
+                                         5, 4, 7, 7, 6, 5,
+                                         // Left face (x = -s, facing -X)
+                                         8, 9, 10, 10, 11, 8,
+                                         // Right face (x = +s, facing +X)
+                                         13, 12, 15, 15, 14, 13,
+                                         // Top face (y = +s, facing +Y)
+                                         16, 17, 18, 18, 19, 16,
+                                         // Bottom face (y = -s, facing -Y)
+                                         21, 20, 23, 23, 22, 21};
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
                                       .type = Object::ObjectType::OBJECT_3D,
@@ -702,7 +734,7 @@ render::Object *render::Renderer::create_textured_square_2d(
   }
 
   // Define a 2D textured square (quad) with 4 vertices
-  const std::vector<Material::Vertex2DTextured> vertices = {
+  const std::vector<Object::Vertex2DTextured> vertices = {
       {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
       {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
       {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
@@ -712,17 +744,17 @@ render::Object *render::Renderer::create_textured_square_2d(
   // Two triangles to form a square with counter-clockwise winding
   const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-  Object::ObjectCreateInfoTextured createInfo{
-      .identifier = identifier,
-      .type = Object::ObjectType::OBJECT_2D,
-      .vertices = vertices,
-      .indices = indices,
-      .materialIdentifier = "Textured_" + textureIdentifier,
-      .textureIdentifier = textureIdentifier,
-      .position = position,
-      .rotation = rotation,
-      .scale = scale,
-      .visible = true};
+  Object::ObjectCreateInfo createInfo{.identifier = identifier,
+                                      .type = Object::ObjectType::OBJECT_2D,
+                                      .vertices = vertices,
+                                      .indices = indices,
+                                      .materialIdentifier =
+                                          "Textured_" + textureIdentifier,
+                                      .textureIdentifier = textureIdentifier,
+                                      .position = position,
+                                      .rotation = rotation,
+                                      .scale = scale,
+                                      .visible = true};
 
-  return objectManager->create_textured_object(createInfo);
+  return objectManager->create_object(createInfo);
 }

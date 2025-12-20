@@ -108,13 +108,7 @@ void render::Window::create_scene_objects() {
   auto &materialMgr = renderer->get_material_manager();
   auto &bufferMgr = renderer->get_buffer_manager();
 
-  struct TransformUBO {
-    glm::mat4 model;
-    glm::mat4 view;
-    glm::mat4 proj;
-  };
-
-  TransformUBO uboData = {
+  device::Buffer::TransformUBO uboData = {
       .model = glm::mat4(1.0f), // Identity matrix
       .view = glm::mat4(1.0f),  // Identity matrix
       .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
@@ -134,9 +128,9 @@ void render::Window::create_scene_objects() {
       .stageFlags = vk::ShaderStageFlagBits::eFragment};
 
   auto texturedBindingDescription =
-      Material::Vertex2DTextured::getBindingDescription();
+      Object::Vertex2DTextured::getBindingDescription();
   auto texturedAttributeDescriptions =
-      Material::Vertex2DTextured::getAttributeDescriptions();
+      Object::Vertex2DTextured::getAttributeDescriptions();
 
   vk::PipelineColorBlendAttachmentState colorBlendAttachment{
       .blendEnable = vk::False,
@@ -184,8 +178,8 @@ void render::Window::create_scene_objects() {
         .identifier = "Textured_checkerboard_ubo",
         .type = device::Buffer::BufferType::UNIFORM,
         .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(TransformUBO),
-        .elementSize = sizeof(TransformUBO),
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
         .initialData = &uboData};
 
     bufferMgr.create_buffer(uboInfo);
@@ -231,8 +225,8 @@ void render::Window::create_scene_objects() {
         .identifier = "Textured_gradient_ubo",
         .type = device::Buffer::BufferType::UNIFORM,
         .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(TransformUBO),
-        .elementSize = sizeof(TransformUBO),
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
         .initialData = &uboData};
 
     bufferMgr.create_buffer(uboInfo);
@@ -284,11 +278,25 @@ void render::Window::create_scene_objects() {
       glm::vec3(0.0f, 0.0f, 0.0f),               // Rotation
       glm::vec3(0.5f, 0.5f, 1.0f));              // Scale
 
+  // Set triangle to use shader-based 2D rotation (Z axis only, in-plane
+  // rotation)
+  if (triangle) {
+    triangle->set_rotation_mode(Object::RotationMode::SHADER_2D);
+  }
+
   // Create a 3D cube on the right side
   cube = renderer->create_cube_3d(
       "cube", glm::vec3(0.5f, -0.5f, 0.0f), // Position (right)
       glm::vec3(0.0f, 0.0f, 0.0f),          // Rotation
-      glm::vec3(0.3f, 0.3f, 1.0f));         // Scale
+      glm::vec3(
+          0.3f, 0.3f,
+          0.3f)); // Scale (make it slightly smaller for better visibility)
+
+  // Ensure cube uses 3D transform rotation (all axes) - this is the default
+  // for 3D objects
+  if (cube) {
+    cube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
+  }
 
   std::print("Scene objects created: triangle and cube\n");
 }
@@ -303,8 +311,8 @@ void render::Window::update_scene_objects() {
   time += deltaTime;
 
   if (triangle) {
-    // Rotate triangle in X and Y axes simultaneously (2D rotation mode)
-    triangle->rotate(glm::vec3(time * 0.5f, time * 0.7f, 0.0f));
+    // Rotate triangle in Z axis only (in-plane 2D rotation)
+    triangle->rotate_2d(time * 0.5f);
   }
 
   if (cube) {

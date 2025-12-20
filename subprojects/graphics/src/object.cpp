@@ -6,15 +6,86 @@
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
 #include <print>
+#include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
-render::Object::Object(const ObjectCreateInfo createInfo,
+// Vertex2D implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex2D::getBindingDescription() {
+  return {0, sizeof(Object::Vertex2D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+render::Object::Vertex2D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,
+                                          offsetof(Object::Vertex2D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex2D, color))};
+}
+
+// Vertex2DTextured implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex2DTextured::getBindingDescription() {
+  return {0, sizeof(Object::Vertex2DTextured), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 3>
+render::Object::Vertex2DTextured::getAttributeDescriptions() {
+  return {vk::VertexInputAttributeDescription(
+              0, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex2DTextured, pos)),
+          vk::VertexInputAttributeDescription(
+              1, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex2DTextured, texCoord)),
+          vk::VertexInputAttributeDescription(
+              2, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex2DTextured, color))};
+}
+
+// Vertex3D implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex3D::getBindingDescription() {
+  return {0, sizeof(Object::Vertex3D), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 2>
+render::Object::Vertex3D::getAttributeDescriptions() {
+  return {
+      vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex3D, pos)),
+      vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat,
+                                          offsetof(Object::Vertex3D, color))};
+}
+
+// Vertex3DTextured implementation
+vk::VertexInputBindingDescription
+render::Object::Vertex3DTextured::getBindingDescription() {
+  return {0, sizeof(Object::Vertex3DTextured), vk::VertexInputRate::eVertex};
+}
+
+std::array<vk::VertexInputAttributeDescription, 3>
+render::Object::Vertex3DTextured::getAttributeDescriptions() {
+  return {vk::VertexInputAttributeDescription(
+              0, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex3DTextured, pos)),
+          vk::VertexInputAttributeDescription(
+              1, 0, vk::Format::eR32G32Sfloat,
+              offsetof(Object::Vertex3DTextured, texCoord)),
+          vk::VertexInputAttributeDescription(
+              2, 0, vk::Format::eR32G32B32Sfloat,
+              offsetof(Object::Vertex3DTextured, color))};
+}
+
+render::Object::Object(const ObjectCreateInfo &createInfo,
                        device::BufferManager *bufferManager,
                        MaterialManager *materialManager,
                        TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
+      textureIdentifier(createInfo.textureIdentifier),
+      useSubmeshes(!createInfo.submeshes.empty()),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
@@ -25,16 +96,23 @@ render::Object::Object(const ObjectCreateInfo createInfo,
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
 
-  // Create vertex buffer
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = vertexBufferName,
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Material::Vertex2D),
-      .elementSize = sizeof(Material::Vertex2D),
-      .initialData = createInfo.vertices.data()};
+  // Create vertex buffer based on vertex type
+  std::visit(
+      [&](auto &&vertices) {
+        using T = std::decay_t<decltype(vertices)>;
+        using VertexType = typename T::value_type;
 
-  bufferManager->create_buffer(vertInfo);
+        device::Buffer::BufferCreateInfo vertInfo = {
+            .identifier = vertexBufferName,
+            .type = device::Buffer::BufferType::VERTEX,
+            .usage = device::Buffer::BufferUsage::DYNAMIC,
+            .size = vertices.size() * sizeof(VertexType),
+            .elementSize = sizeof(VertexType),
+            .initialData = vertices.data()};
+
+        bufferManager->create_buffer(vertInfo);
+      },
+      createInfo.vertices);
 
   // Create index buffer
   device::Buffer::BufferCreateInfo indInfo = {
@@ -46,14 +124,22 @@ render::Object::Object(const ObjectCreateInfo createInfo,
 
   bufferManager->create_buffer(indInfo);
 
-  // Get material reference
-  auto materials = materialManager->get_materials();
-  material = nullptr;
-  for (auto *mat : materials) {
-    if (mat->get_identifier() == materialIdentifier) {
-      material = mat;
-      break;
+  // Setup materials
+  if (useSubmeshes) {
+    // Multi-material mode: setup submeshes with their materials
+    submeshes = createInfo.submeshes;
+    setup_materials_for_submeshes(submeshes);
+
+    // Also setup the base material for submeshes that don't specify one
+    material = materialManager->get_material(materialIdentifier);
+
+    if (!material) {
+      std::print("Warning: Base material '{}' not found for object '{}'\n",
+                 materialIdentifier, identifier);
     }
+  } else {
+    // Single material mode
+    material = materialManager->get_material(identifier);
   }
 
   if (!material) {
@@ -62,24 +148,18 @@ render::Object::Object(const ObjectCreateInfo createInfo,
   }
 
   // Create per-object UBO for Test material to avoid sharing transforms
-  if (materialIdentifier == "Test") {
-    struct TransformUBO {
-      glm::mat4 model;
-      glm::mat4 view;
-      glm::mat4 proj;
-    };
-
-    TransformUBO uboData = {.model = glm::mat4(1.0f),
-                            .view = glm::mat4(1.0f),
-                            .proj = glm::mat4(1.0f)};
+  if (materialIdentifier == "Test" && !useSubmeshes) {
+    device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                            .view = glm::mat4(1.0f),
+                                            .proj = glm::mat4(1.0f)};
 
     std::string uboBufferName = materialIdentifier + "_" + identifier + "_ubo";
     device::Buffer::BufferCreateInfo uboInfo = {
         .identifier = uboBufferName,
         .type = device::Buffer::BufferType::UNIFORM,
         .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(TransformUBO),
-        .elementSize = sizeof(TransformUBO),
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
         .initialData = &uboData};
 
     bufferManager->create_buffer(uboInfo);
@@ -89,65 +169,6 @@ render::Object::Object(const ObjectCreateInfo createInfo,
     if (material && uboBuffer) {
       material->bind_uniform_buffer(uboBuffer, 0, 0);
     }
-  }
-
-  update_model_matrix();
-}
-
-render::Object::Object(const ObjectCreateInfoTextured createInfo,
-                       device::BufferManager *bufferManager,
-                       MaterialManager *materialManager,
-                       TextureManager *textureManager)
-    : identifier(createInfo.identifier), type(createInfo.type),
-      indexCount(createInfo.indices.size()),
-      materialIdentifier(createInfo.materialIdentifier),
-      textureIdentifier(createInfo.textureIdentifier),
-      position(createInfo.position), rotation(createInfo.rotation),
-      scale(createInfo.scale), transformDirty(true),
-      visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager), textureManager(textureManager),
-      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
-                                                 : RotationMode::TRANSFORM_3D) {
-  // Create unique buffer names for this object
-  vertexBufferName = identifier + "_vertices";
-  indexBufferName = identifier + "_indices";
-
-  // Create vertex buffer for textured vertices
-  // Use DYNAMIC for textured objects since they don't use vertex
-  // transformation but the buffer might need updates in the future
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = vertexBufferName,
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Material::Vertex2DTextured),
-      .elementSize = sizeof(Material::Vertex2DTextured),
-      .initialData = createInfo.vertices.data()};
-
-  bufferManager->create_buffer(vertInfo);
-
-  // Create index buffer
-  device::Buffer::BufferCreateInfo indInfo = {
-      .identifier = indexBufferName,
-      .type = device::Buffer::BufferType::INDEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = createInfo.indices.size() * sizeof(uint16_t),
-      .initialData = createInfo.indices.data()};
-
-  bufferManager->create_buffer(indInfo);
-
-  // Get material reference
-  auto materials = materialManager->get_materials();
-  material = nullptr;
-  for (auto *mat : materials) {
-    if (mat->get_identifier() == materialIdentifier) {
-      material = mat;
-      break;
-    }
-  }
-
-  if (!material) {
-    std::print("Warning: Material '{}' not found for object '{}'\n",
-               materialIdentifier, identifier);
   }
 
   update_model_matrix();
@@ -194,83 +215,134 @@ void render::Object::update_model_matrix() {
   transformDirty = false;
 }
 
+void render::Object::setup_materials_for_submeshes(
+    std::vector<Submesh> &submeshes) {
+
+  for (auto submesh : submeshes) {
+    submesh.material =
+        materialManager->get_material(submesh.materialIdentifier);
+    if (!submesh.material) {
+      std::print(
+          "Warning: Material '{}' not found for submesh in object '{}'\n",
+          submesh.materialIdentifier, identifier);
+    }
+  }
+}
+
+std::string
+render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
+  if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
+    return matIdentifier + "_ubo";
+  } else if (matIdentifier == "Test") {
+    return "material-test";
+  }
+  return "";
+}
+
 void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
                           uint32_t deviceIndex, uint32_t frameIndex) {
   if (!visible) {
     return;
   }
 
-  if (!material) {
-    std::print("Warning: Cannot draw object '{}' - no material assigned\n",
-               identifier);
-    return;
-  }
-
-  if (!material->is_initialized()) {
-    std::print("Warning: Cannot draw object '{}' - material '{}' not "
-               "initialized\n",
-               identifier, materialIdentifier);
-    return;
-  }
-
-  // Hybrid rendering: GPU does transformations, CPU does auxiliary work
   // Update model matrix if needed (GPU will use this via shaders)
   if (transformDirty) {
     update_model_matrix();
   }
 
-  // Update UBO with object's transformation
-  // Determine which UBO buffer to use based on material
-  std::string uboBufferName;
-  if (materialIdentifier == "Textured" ||
-      materialIdentifier.find("Textured_") == 0) {
-    uboBufferName = materialIdentifier + "_ubo";
-  } else if (materialIdentifier == "Test") {
-    // Use shared material UBO - we'll update its data per object
-    uboBufferName = "material-test";
-  }
-
-  if (!uboBufferName.empty()) {
-    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
-    if (uboBuffer) {
-      // Prepare transformation data
-      struct TransformUBO {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 proj;
-      };
-
-      TransformUBO uboData = {
-          .model = modelMatrix,
-          .view = glm::mat4(1.0f), // Identity for 2D
-          .proj = glm::mat4(1.0f)  // Identity for 2D (using NDC)
-      };
-
-      // Update the UBO buffer with this object's transformation
-      uboBuffer->update_data(&uboData, sizeof(TransformUBO), 0);
-    }
-  }
-
-  // Bind material
-  // Note: Textures are bound during object creation, not during draw
-  // to avoid updating descriptor sets while command buffer is recording
-  material->bind(commandBuffer, deviceIndex, frameIndex);
-
-  // Bind vertex buffer
+  // Bind vertex buffer (shared across all submeshes)
   device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
   if (vertexBuffer) {
     vertexBuffer->bind_vertex(commandBuffer, 0, 0, deviceIndex);
   }
 
-  // Bind index buffer
+  // Bind index buffer (shared across all submeshes)
   device::Buffer *indexBuffer = bufferManager->get_buffer(indexBufferName);
   if (indexBuffer) {
     indexBuffer->bind_index(commandBuffer, vk::IndexType::eUint16, 0,
                             deviceIndex);
   }
 
-  // Draw
-  commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
+  if (useSubmeshes) {
+    // Multi-material mode: draw each submesh with its own material or base
+    // material
+    for (const auto &submesh : submeshes) {
+      // Use submesh material if available, otherwise use base material
+      Material *useMaterial = submesh.material ? submesh.material : material;
+
+      if (!useMaterial) {
+        std::print("Warning: Cannot draw submesh in object '{}' - no material "
+                   "assigned and no base material\n",
+                   identifier);
+        continue;
+      }
+
+      if (!useMaterial->is_initialized()) {
+        std::print("Warning: Cannot draw submesh in object '{}' - material "
+                   "'{}' not initialized\n",
+                   identifier, useMaterial->get_identifier());
+        continue;
+      }
+
+      // Update UBO with object's transformation for this material
+      std::string uboBufferName =
+          get_ubo_buffer_name(useMaterial->get_identifier());
+
+      if (!uboBufferName.empty()) {
+        device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+        if (uboBuffer) {
+          device::Buffer::TransformUBO uboData = {.model = modelMatrix,
+                                                  .view = glm::mat4(1.0f),
+                                                  .proj = glm::mat4(1.0f)};
+
+          uboBuffer->update_data(&uboData, sizeof(device::Buffer::TransformUBO),
+                                 0);
+        }
+      }
+
+      // Bind material for this submesh
+      useMaterial->bind(commandBuffer, deviceIndex, frameIndex);
+
+      // Draw this submesh with its specific index range
+      commandBuffer.drawIndexed(submesh.indexCount, 1, submesh.indexStart, 0,
+                                0);
+    }
+  } else {
+    // Single material mode (backward compatibility)
+    if (!material) {
+      std::print("Warning: Cannot draw object '{}' - no material assigned\n",
+                 identifier);
+      return;
+    }
+
+    if (!material->is_initialized()) {
+      std::print("Warning: Cannot draw object '{}' - material '{}' not "
+                 "initialized\n",
+                 identifier, materialIdentifier);
+      return;
+    }
+
+    // Update UBO with object's transformation
+    std::string uboBufferName = get_ubo_buffer_name(materialIdentifier);
+
+    if (!uboBufferName.empty()) {
+      device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
+      if (uboBuffer) {
+        device::Buffer::TransformUBO uboData = {.model = modelMatrix,
+                                                .view = glm::mat4(1.0f),
+                                                .proj = glm::mat4(1.0f)};
+
+        uboBuffer->update_data(&uboData, sizeof(device::Buffer::TransformUBO),
+                               0);
+      }
+    }
+
+    // Bind material
+    material->bind(commandBuffer, deviceIndex, frameIndex);
+
+    // Draw
+    commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);
+  }
 }
 
 void render::Object::set_position(const glm::vec3 &pos) {
