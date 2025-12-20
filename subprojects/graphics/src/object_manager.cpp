@@ -70,42 +70,15 @@ render::Object *render::ObjectManager::create_object(
     return objects[createInfo.identifier].get();
   }
 
-  auto object =
-      std::make_unique<Object>(createInfo, bufferManager, materialManager);
-
-  // Track material usage
-  materialUsageCount[createInfo.materialIdentifier]++;
-
-  std::print("Created {} object '{}' using material '{}' (usage count: {})\n",
-             createInfo.type == Object::ObjectType::OBJECT_2D ? "2D" : "3D",
-             createInfo.identifier, createInfo.materialIdentifier,
-             materialUsageCount[createInfo.materialIdentifier]);
-
-  auto *objPtr = object.get();
-  objects[createInfo.identifier] = std::move(object);
-
-  // Rebuild render queue
-  rebuild_render_queue();
-
-  return objPtr;
-}
-
-render::Object *render::ObjectManager::create_textured_object(
-    const Object::ObjectCreateInfoTextured &createInfo) {
-  // Check if object already exists
-  if (objects.find(createInfo.identifier) != objects.end()) {
-    std::print("Warning: Object '{}' already exists\n", createInfo.identifier);
-    return objects[createInfo.identifier].get();
-  }
-
   auto object = std::make_unique<Object>(createInfo, bufferManager,
                                          materialManager, textureManager);
 
   // Track material usage
   materialUsageCount[createInfo.materialIdentifier]++;
 
-  std::print("Created textured {} object '{}' using material '{}' (usage "
-             "count: {})\n",
+  std::string objTypeStr = createInfo.textureIdentifier.empty() ? "" : "textured ";
+  std::print("Created {}{} object '{}' using material '{}' (usage count: {})\n",
+             objTypeStr,
              createInfo.type == Object::ObjectType::OBJECT_2D ? "2D" : "3D",
              createInfo.identifier, createInfo.materialIdentifier,
              materialUsageCount[createInfo.materialIdentifier]);

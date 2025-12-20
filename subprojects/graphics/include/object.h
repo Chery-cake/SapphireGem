@@ -12,6 +12,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <string>
+#include <variant>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -74,44 +75,28 @@ public:
     Material *material;
   };
 
+  // Unified ObjectCreateInfo that works for all vertex types
   struct ObjectCreateInfo {
     std::string identifier;
-    ObjectType type = ObjectType::OBJECT_3D;
+    ObjectType type = ObjectType::OBJECT_2D;
 
-    // Geometry data
-    std::vector<Vertex2D> vertices;
+    // Geometry data - use the appropriate vertex type based on your needs
+    std::variant<
+        std::vector<Vertex2D>,
+        std::vector<Vertex2DTextured>,
+        std::vector<Vertex3D>,
+        std::vector<Vertex3DTextured>
+    > vertices;
     std::vector<uint16_t> indices;
 
-    // Material (shared across instances) - for single material objects
-    std::string materialIdentifier;
-
-    // Optional: Multiple materials for different parts (e.g., different faces)
-    std::vector<Submesh> submeshes;
-
-    // Transform
-    glm::vec3 position = glm::vec3(0.0f);
-    glm::vec3 rotation = glm::vec3(0.0f);
-    glm::vec3 scale = glm::vec3(1.0f);
-
-    // Visibility
-    bool visible = true;
-  };
-
-  struct ObjectCreateInfoTextured {
-    std::string identifier;
-    ObjectType type = ObjectType::OBJECT_3D;
-
-    // Geometry data
-    std::vector<Vertex2DTextured> vertices;
-    std::vector<uint16_t> indices;
-
-    // Material (shared across instances) - for single material objects
+    // Material (shared across instances) - serves as default/base material
     std::string materialIdentifier;
 
     // Texture identifier for textured objects
-    std::string textureIdentifier;
+    std::string textureIdentifier = "";
 
     // Optional: Multiple materials for different parts (e.g., different faces)
+    // When submeshes don't specify a material, the base materialIdentifier is used
     std::vector<Submesh> submeshes;
 
     // Transform
@@ -174,12 +159,9 @@ private:
   std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
 
 public:
-  Object(const ObjectCreateInfo createInfo,
+  Object(const ObjectCreateInfo &createInfo,
          device::BufferManager *bufferManager, MaterialManager *materialManager,
          TextureManager *textureManager = nullptr);
-  Object(const ObjectCreateInfoTextured createInfo,
-         device::BufferManager *bufferManager, MaterialManager *materialManager,
-         TextureManager *textureManager);
   ~Object();
 
   // Render this object

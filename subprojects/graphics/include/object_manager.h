@@ -91,8 +91,6 @@ public:
 
   // Object management
   Object *create_object(const Object::ObjectCreateInfo &createInfo);
-  Object *
-  create_textured_object(const Object::ObjectCreateInfoTextured &createInfo);
   void remove_object(const std::string &identifier);
   Object *get_object(const std::string &identifier);
 

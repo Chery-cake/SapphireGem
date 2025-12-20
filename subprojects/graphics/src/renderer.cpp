@@ -712,7 +712,7 @@ render::Object *render::Renderer::create_textured_square_2d(
   // Two triangles to form a square with counter-clockwise winding
   const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-  Object::ObjectCreateInfoTextured createInfo{
+  Object::ObjectCreateInfo createInfo{
       .identifier = identifier,
       .type = Object::ObjectType::OBJECT_2D,
       .vertices = vertices,
@@ -724,5 +724,5 @@ render::Object *render::Renderer::create_textured_square_2d(
       .scale = scale,
       .visible = true};
 
-  return objectManager->create_textured_object(createInfo);
+  return objectManager->create_object(createInfo);
 }

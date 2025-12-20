@@ -78,13 +78,14 @@ render::Object::Vertex3DTextured::getAttributeDescriptions() {
               offsetof(Object::Vertex3DTextured, color))};
 }
 
-render::Object::Object(const ObjectCreateInfo createInfo,
+render::Object::Object(const ObjectCreateInfo &createInfo,
                        device::BufferManager *bufferManager,
                        MaterialManager *materialManager,
                        TextureManager *textureManager)
     : identifier(createInfo.identifier), type(createInfo.type),
       indexCount(createInfo.indices.size()),
       materialIdentifier(createInfo.materialIdentifier),
+      textureIdentifier(createInfo.textureIdentifier),
       useSubmeshes(!createInfo.submeshes.empty()),
       position(createInfo.position), rotation(createInfo.rotation),
       scale(createInfo.scale), transformDirty(true),
@@ -96,16 +97,21 @@ render::Object::Object(const ObjectCreateInfo createInfo,
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
 
-  // Create vertex buffer
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = vertexBufferName,
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Object::Vertex2D),
-      .elementSize = sizeof(Object::Vertex2D),
-      .initialData = createInfo.vertices.data()};
-
-  bufferManager->create_buffer(vertInfo);
+  // Create vertex buffer based on vertex type
+  std::visit([&](auto&& vertices) {
+    using T = std::decay_t<decltype(vertices)>;
+    using VertexType = typename T::value_type;
+    
+    device::Buffer::BufferCreateInfo vertInfo = {
+        .identifier = vertexBufferName,
+        .type = device::Buffer::BufferType::VERTEX,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = vertices.size() * sizeof(VertexType),
+        .elementSize = sizeof(VertexType),
+        .initialData = vertices.data()};
+    
+    bufferManager->create_buffer(vertInfo);
+  }, createInfo.vertices);
 
   // Create index buffer
   device::Buffer::BufferCreateInfo indInfo = {
@@ -175,88 +181,6 @@ render::Object::Object(const ObjectCreateInfo createInfo,
     device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
     if (material && uboBuffer) {
       material->bind_uniform_buffer(uboBuffer, 0, 0);
-    }
-  }
-
-  update_model_matrix();
-}
-
-render::Object::Object(const ObjectCreateInfoTextured createInfo,
-                       device::BufferManager *bufferManager,
-                       MaterialManager *materialManager,
-                       TextureManager *textureManager)
-    : identifier(createInfo.identifier), type(createInfo.type),
-      indexCount(createInfo.indices.size()),
-      materialIdentifier(createInfo.materialIdentifier),
-      textureIdentifier(createInfo.textureIdentifier),
-      useSubmeshes(!createInfo.submeshes.empty()),
-      position(createInfo.position), rotation(createInfo.rotation),
-      scale(createInfo.scale), transformDirty(true),
-      visible(createInfo.visible), bufferManager(bufferManager),
-      materialManager(materialManager), textureManager(textureManager),
-      rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
-                                                 : RotationMode::TRANSFORM_3D) {
-  // Create unique buffer names for this object
-  vertexBufferName = identifier + "_vertices";
-  indexBufferName = identifier + "_indices";
-
-  // Create vertex buffer for textured vertices
-  // Use DYNAMIC for textured objects since they don't use vertex
-  // transformation but the buffer might need updates in the future
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = vertexBufferName,
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::DYNAMIC,
-      .size = createInfo.vertices.size() * sizeof(Object::Vertex2DTextured),
-      .elementSize = sizeof(Object::Vertex2DTextured),
-      .initialData = createInfo.vertices.data()};
-
-  bufferManager->create_buffer(vertInfo);
-
-  // Create index buffer
-  device::Buffer::BufferCreateInfo indInfo = {
-      .identifier = indexBufferName,
-      .type = device::Buffer::BufferType::INDEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = createInfo.indices.size() * sizeof(uint16_t),
-      .initialData = createInfo.indices.data()};
-
-  bufferManager->create_buffer(indInfo);
-
-  // Setup materials
-  if (useSubmeshes) {
-    // Multi-material mode: setup submeshes with their materials
-    submeshes = createInfo.submeshes;
-    setup_materials_for_submeshes(submeshes);
-    
-    // Also setup the base material for submeshes that don't specify one
-    auto materials = materialManager->get_materials();
-    material = nullptr;
-    for (auto *mat : materials) {
-      if (mat->get_identifier() == materialIdentifier) {
-        material = mat;
-        break;
-      }
-    }
-    
-    if (!material) {
-      std::print("Warning: Base material '{}' not found for object '{}'\n",
-                 materialIdentifier, identifier);
-    }
-  } else {
-    // Single material mode
-    auto materials = materialManager->get_materials();
-    material = nullptr;
-    for (auto *mat : materials) {
-      if (mat->get_identifier() == materialIdentifier) {
-        material = mat;
-        break;
-      }
-    }
-
-    if (!material) {
-      std::print("Warning: Material '{}' not found for object '{}'\n",
-                 materialIdentifier, identifier);
     }
   }
 
