@@ -375,8 +375,7 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
 
       // Update UBO with object's transformation for this material
-      std::string materialId = submesh.material ? submesh.materialIdentifier : materialIdentifier;
-      std::string uboBufferName = get_ubo_buffer_name(materialId);
+      std::string uboBufferName = get_ubo_buffer_name(useMaterial->get_identifier());
 
       if (!uboBufferName.empty()) {
         device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
