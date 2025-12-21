@@ -158,9 +158,13 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
                materialIdentifier, identifier);
   }
 
-  // Create per-object UBO for Test and Test2D materials to avoid sharing
-  // transforms
-  if (materialIdentifier == "Test" || materialIdentifier == "Test2D") {
+  // Create per-object UBO for materials that need separate transforms per object
+  // This includes Test, Test2D, and all Textured materials
+  bool needsPerObjectUBO = 
+      (materialIdentifier == "Test" || materialIdentifier == "Test2D" ||
+       materialIdentifier.find("Textured_") == 0);
+  
+  if (needsPerObjectUBO) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
                                             .view = glm::mat4(1.0f),
                                             .proj = glm::mat4(1.0f)};
@@ -180,8 +184,12 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Create UBOs for submesh materials if needed
   if (useSubmeshes) {
     for (const auto &submesh : submeshes) {
-      if (submesh.materialIdentifier == "Test" ||
-          submesh.materialIdentifier == "Test2D") {
+      bool submeshNeedsUBO = 
+          (submesh.materialIdentifier == "Test" ||
+           submesh.materialIdentifier == "Test2D" ||
+           submesh.materialIdentifier.find("Textured_") == 0);
+      
+      if (submeshNeedsUBO) {
         // Only create if different from base material
         if (submesh.materialIdentifier != materialIdentifier) {
           device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
@@ -271,11 +279,9 @@ void render::Object::setup_materials_for_submeshes(
 
 std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
-  if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
-    return matIdentifier + "_ubo";
-  } else if (matIdentifier == "Test" || matIdentifier == "Test2D") {
-    // Per-object UBO for Test and Test2D materials - must match naming in
-    // constructor (line 151)
+  // All materials now use per-object UBOs to avoid sharing transforms
+  if (matIdentifier == "Test" || matIdentifier == "Test2D" ||
+      matIdentifier.find("Textured_") == 0) {
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";
