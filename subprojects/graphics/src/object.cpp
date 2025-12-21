@@ -368,9 +368,29 @@ void render::Object::create_descriptor_sets_for_material(
 
     auto *uboBuffer = bufferManager->get_buffer(uboName);
     if (!uboBuffer) {
-      std::print("    Warning: UBO buffer '{}' not found for material '{}'\n",
+      // UBO doesn't exist, create it now
+      std::print("    Creating missing UBO buffer '{}' for material '{}'\n",
                  uboName, matIdentifier);
-      continue;
+      
+      device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                              .view = glm::mat4(1.0f),
+                                              .proj = glm::mat4(1.0f)};
+      
+      device::Buffer::BufferCreateInfo uboInfo = {
+          .identifier = uboName,
+          .type = device::Buffer::BufferType::UNIFORM,
+          .usage = device::Buffer::BufferUsage::DYNAMIC,
+          .size = sizeof(device::Buffer::TransformUBO),
+          .elementSize = sizeof(device::Buffer::TransformUBO),
+          .initialData = &uboData};
+      
+      bufferManager->create_buffer(uboInfo);
+      uboBuffer = bufferManager->get_buffer(uboName);
+      
+      if (!uboBuffer) {
+        std::print("    Error: Failed to create UBO buffer '{}'\n", uboName);
+        continue;
+      }
     }
 
     bind_buffer_to_descriptor_sets(matIdentifier, uboBuffer, 0, deviceIdx);
