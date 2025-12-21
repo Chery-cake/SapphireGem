@@ -281,6 +281,56 @@ void render::Window::create_scene_objects() {
         .initialData = &uboData};
     bufferMgr.create_buffer(uboInfo);
   }
+  
+  // Create unique materials for each atlas quad to avoid descriptor set conflicts
+  // Each quad needs its own material to properly bind the shared atlas texture
+  for (int i = 1; i <= 4; ++i) {
+    std::string matName = "Textured_atlas_quad" + std::to_string(i);
+    if (!materialMgr.get_material(matName)) {
+      Material::MaterialCreateInfo atlasQuadMaterialInfo{
+          .identifier = matName,
+          .vertexShaders = "../assets/shaders/textured.spv",
+          .fragmentShaders = "../assets/shaders/textured.spv",
+          .descriptorBindings = {uboBinding, samplerBinding},
+          .rasterizationState = {.depthClampEnable = vk::False,
+                                 .rasterizerDiscardEnable = vk::False,
+                                 .polygonMode = vk::PolygonMode::eFill,
+                                 .cullMode = vk::CullModeFlagBits::eBack,
+                                 .frontFace = vk::FrontFace::eCounterClockwise,
+                                 .depthBiasEnable = vk::False,
+                                 .depthBiasSlopeFactor = 1.0f,
+                                 .lineWidth = 1.0f},
+          .depthStencilState = {},
+          .blendState = {.logicOpEnable = vk::False,
+                         .logicOp = vk::LogicOp::eCopy,
+                         .attachmentCount = 1,
+                         .pAttachments = &colorBlendAttachment},
+          .vertexInputState{
+              .vertexBindingDescriptionCount = 1,
+              .pVertexBindingDescriptions = &texturedBindingDescription,
+              .vertexAttributeDescriptionCount =
+                  static_cast<uint32_t>(texturedAttributeDescriptions.size()),
+              .pVertexAttributeDescriptions =
+                  texturedAttributeDescriptions.data()},
+          .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+          .viewportState{.viewportCount = 1, .scissorCount = 1},
+          .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                            .sampleShadingEnable = vk::False},
+          .dynamicStates{vk::DynamicState::eViewport,
+                         vk::DynamicState::eScissor}};
+      materialMgr.add_material(atlasQuadMaterialInfo);
+      
+      std::string uboName = matName + "_ubo";
+      device::Buffer::BufferCreateInfo uboInfo = {
+          .identifier = uboName,
+          .type = device::Buffer::BufferType::UNIFORM,
+          .usage = device::Buffer::BufferUsage::DYNAMIC,
+          .size = sizeof(device::Buffer::TransformUBO),
+          .elementSize = sizeof(device::Buffer::TransformUBO),
+          .initialData = &uboData};
+      bufferMgr.create_buffer(uboInfo);
+    }
+  }
 
   // Bind textures to materials
   auto *checkerboardMaterial = materialMgr.get_material("Textured_checkerboard");
@@ -303,14 +353,32 @@ void render::Window::create_scene_objects() {
     std::print("✓ Bound gradient texture\n");
   }
   
-  auto *atlasMaterial = materialMgr.get_material("Textured_atlas");
-  if (atlasMaterial && atlasTex) {
-    auto *uboBuffer = bufferMgr.get_buffer("Textured_atlas_ubo");
-    if (uboBuffer) {
-      atlasMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+  // Bind atlas texture to all atlas quad materials
+  if (atlasTex) {
+    // Bind to base atlas material (used by multi-material cube)
+    auto *atlasMaterial = materialMgr.get_material("Textured_atlas");
+    if (atlasMaterial) {
+      auto *uboBuffer = bufferMgr.get_buffer("Textured_atlas_ubo");
+      if (uboBuffer) {
+        atlasMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+      }
+      atlasMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
     }
-    atlasMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
-    std::print("✓ Bound atlas texture\n");
+    
+    // Bind to individual atlas quad materials
+    for (int i = 1; i <= 4; ++i) {
+      std::string matName = "Textured_atlas_quad" + std::to_string(i);
+      auto *atlasQuadMaterial = materialMgr.get_material(matName);
+      if (atlasQuadMaterial) {
+        std::string uboName = matName + "_ubo";
+        auto *uboBuffer = bufferMgr.get_buffer(uboName);
+        if (uboBuffer) {
+          atlasQuadMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
+        }
+        atlasQuadMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
+      }
+    }
+    std::print("✓ Bound atlas texture to base material and {} quad materials\n", 4);
   }
 
   // Create original objects - positions will be updated by update_object_positions()
@@ -368,7 +436,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas",
+        .materialIdentifier = "Textured_atlas_quad1",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -392,7 +460,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas",
+        .materialIdentifier = "Textured_atlas_quad2",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -416,7 +484,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas",
+        .materialIdentifier = "Textured_atlas_quad3",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -440,7 +508,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas",
+        .materialIdentifier = "Textured_atlas_quad4",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -543,20 +611,26 @@ void render::Window::update_scene_objects() {
 
 void render::Window::update_object_positions() {
   // Calculate scale factors to maintain aspect ratio
-  // We'll use a reference aspect ratio and scale objects appropriately
+  // Objects should maintain their square aspect ratio regardless of window shape
   float scaleX = 1.0f;
   float scaleY = 1.0f;
   
   if (aspectRatio > 1.0f) {
-    // Wide screen - scale X positions
+    // Wide screen - scale X positions down, and scale object Y up to compensate
     scaleX = 1.0f / aspectRatio;
-  } else {
-    // Tall screen - scale Y positions
+    scaleY = 1.0f;
+  } else if (aspectRatio < 1.0f) {
+    // Tall screen - scale Y positions down, and scale object X up to compensate
+    scaleX = 1.0f;
     scaleY = aspectRatio;
   }
   
+  // Calculate object scale compensation to prevent stretching
+  // When we compress positions in one axis, we need to expand object scale in that axis
+  float objectScaleX = aspectRatio > 1.0f ? aspectRatio : 1.0f;
+  float objectScaleY = aspectRatio < 1.0f ? (1.0f / aspectRatio) : 1.0f;
+  
   // Position objects in a grid layout that adapts to window size
-  // Top row (Y = 0.6 * scaleY)
   float topY = 0.65f * scaleY;
   float midY = 0.0f;
   float botY = -0.65f * scaleY;
@@ -567,47 +641,57 @@ void render::Window::update_object_positions() {
   float midRightX = 0.35f * scaleX;
   float rightX = 0.7f * scaleX;
   
-  // Position original objects
+  // Position original objects with scale compensation
   if (texturedSquare) {
     texturedSquare->set_position(glm::vec3(leftX, topY, 0.0f));
+    texturedSquare->set_scale(glm::vec3(0.15f * objectScaleX, 0.15f * objectScaleY, 1.0f));
   }
   
   if (imageQuad) {
     imageQuad->set_position(glm::vec3(midLeftX, topY, 0.0f));
+    imageQuad->set_scale(glm::vec3(0.15f * objectScaleX, 0.15f * objectScaleY, 1.0f));
   }
   
   if (triangle) {
     triangle->set_position(glm::vec3(leftX, botY, 0.0f));
+    triangle->set_scale(glm::vec3(0.2f * objectScaleX, 0.2f * objectScaleY, 1.0f));
   }
   
   if (cube) {
     cube->set_position(glm::vec3(midLeftX, botY, 0.0f));
+    cube->set_scale(glm::vec3(0.15f * objectScaleX, 0.15f * objectScaleY, 0.15f));
   }
   
-  // Position atlas quads in a grid
+  // Position atlas quads in a grid with scale compensation
   if (atlasQuad1) {
     atlasQuad1->set_position(glm::vec3(midRightX, topY, 0.0f));
+    atlasQuad1->set_scale(glm::vec3(0.12f * objectScaleX, 0.12f * objectScaleY, 1.0f));
   }
   
   if (atlasQuad2) {
     atlasQuad2->set_position(glm::vec3(rightX, topY, 0.0f));
+    atlasQuad2->set_scale(glm::vec3(0.12f * objectScaleX, 0.12f * objectScaleY, 1.0f));
   }
   
   if (atlasQuad3) {
     atlasQuad3->set_position(glm::vec3(midRightX, midY, 0.0f));
+    atlasQuad3->set_scale(glm::vec3(0.12f * objectScaleX, 0.12f * objectScaleY, 1.0f));
   }
   
   if (atlasQuad4) {
     atlasQuad4->set_position(glm::vec3(rightX, midY, 0.0f));
+    atlasQuad4->set_scale(glm::vec3(0.12f * objectScaleX, 0.12f * objectScaleY, 1.0f));
   }
   
-  // Position multi-material quad
+  // Position multi-material quad with scale compensation
   if (multiMaterialQuad) {
     multiMaterialQuad->set_position(glm::vec3(midX, botY, 0.0f));
+    multiMaterialQuad->set_scale(glm::vec3(0.2f * objectScaleX, 0.2f * objectScaleY, 1.0f));
   }
   
-  // Position multi-material cube
+  // Position multi-material cube with scale compensation
   if (multiMaterialCube) {
     multiMaterialCube->set_position(glm::vec3(rightX, botY, 0.0f));
+    multiMaterialCube->set_scale(glm::vec3(0.2f * objectScaleX, 0.2f * objectScaleY, 0.2f));
   }
 }
