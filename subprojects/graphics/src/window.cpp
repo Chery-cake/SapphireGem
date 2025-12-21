@@ -4,6 +4,7 @@
 #include "texture.h"
 #include "texture_manager.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <memory>
 #include <print>
 #include <stdexcept>
@@ -284,7 +285,8 @@ void render::Window::create_scene_objects() {
   
   // Create unique materials for each atlas quad to avoid descriptor set conflicts
   // Each quad needs its own material to properly bind the shared atlas texture
-  for (int i = 1; i <= 4; ++i) {
+  constexpr int NUM_ATLAS_QUADS = 4;
+  for (int i = 1; i <= NUM_ATLAS_QUADS; ++i) {
     std::string matName = "Textured_atlas_quad" + std::to_string(i);
     if (!materialMgr.get_material(matName)) {
       Material::MaterialCreateInfo atlasQuadMaterialInfo{
@@ -366,7 +368,7 @@ void render::Window::create_scene_objects() {
     }
     
     // Bind to individual atlas quad materials
-    for (int i = 1; i <= 4; ++i) {
+    for (int i = 1; i <= NUM_ATLAS_QUADS; ++i) {
       std::string matName = "Textured_atlas_quad" + std::to_string(i);
       auto *atlasQuadMaterial = materialMgr.get_material(matName);
       if (atlasQuadMaterial) {
@@ -378,7 +380,7 @@ void render::Window::create_scene_objects() {
         atlasQuadMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
       }
     }
-    std::print("✓ Bound atlas texture to base material and {} quad materials\n", 4);
+    std::print("✓ Bound atlas texture to base material and {} quad materials\n", NUM_ATLAS_QUADS);
   }
 
   // Create original objects - positions will be updated by update_object_positions()
@@ -612,23 +614,14 @@ void render::Window::update_scene_objects() {
 void render::Window::update_object_positions() {
   // Calculate scale factors to maintain aspect ratio
   // Objects should maintain their square aspect ratio regardless of window shape
-  float scaleX = 1.0f;
-  float scaleY = 1.0f;
   
-  if (aspectRatio > 1.0f) {
-    // Wide screen - scale X positions down, and scale object Y up to compensate
-    scaleX = 1.0f / aspectRatio;
-    scaleY = 1.0f;
-  } else if (aspectRatio < 1.0f) {
-    // Tall screen - scale Y positions down, and scale object X up to compensate
-    scaleX = 1.0f;
-    scaleY = aspectRatio;
-  }
+  // Position scaling: compress positions in the longer axis
+  float scaleX = aspectRatio > 1.0f ? (1.0f / aspectRatio) : 1.0f;
+  float scaleY = aspectRatio < 1.0f ? aspectRatio : 1.0f;
   
-  // Calculate object scale compensation to prevent stretching
-  // When we compress positions in one axis, we need to expand object scale in that axis
-  float objectScaleX = aspectRatio > 1.0f ? aspectRatio : 1.0f;
-  float objectScaleY = aspectRatio < 1.0f ? (1.0f / aspectRatio) : 1.0f;
+  // Object scale compensation: expand objects in the compressed axis to prevent stretching
+  float objectScaleX = std::max(aspectRatio, 1.0f);
+  float objectScaleY = std::max(1.0f / aspectRatio, 1.0f);
   
   // Position objects in a grid layout that adapts to window size
   float topY = 0.65f * scaleY;
