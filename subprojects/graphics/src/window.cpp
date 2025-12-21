@@ -301,6 +301,147 @@ void render::Window::create_scene_objects() {
     bufferMgr.create_buffer(uboInfo);
   }
 
+  // Create 3D versions of textured materials for 3D objects like the multi-material cube
+  auto textured3DBindingDescription =
+      Object::Vertex3DTextured::getBindingDescription();
+  auto textured3DAttributeDescriptions =
+      Object::Vertex3DTextured::getAttributeDescriptions();
+
+  // Create 3D material for checkerboard texture
+  if (!materialMgr.get_material("Textured3D_checkerboard")) {
+    Material::MaterialCreateInfo checkerboard3DMaterialInfo{
+        .identifier = "Textured3D_checkerboard",
+        .vertexShaders = "../assets/shaders/textured.spv",
+        .fragmentShaders = "../assets/shaders/textured.spv",
+        .descriptorBindings = {uboBinding, samplerBinding},
+        .rasterizationState = {.depthClampEnable = vk::True,
+                               .rasterizerDiscardEnable = vk::False,
+                               .polygonMode = vk::PolygonMode::eFill,
+                               .cullMode = vk::CullModeFlagBits::eBack,
+                               .frontFace = vk::FrontFace::eCounterClockwise,
+                               .depthBiasEnable = vk::False,
+                               .depthBiasSlopeFactor = 1.0f,
+                               .lineWidth = 1.0f},
+        .depthStencilState = {},
+        .blendState = {.logicOpEnable = vk::False,
+                       .logicOp = vk::LogicOp::eCopy,
+                       .attachmentCount = 1,
+                       .pAttachments = &colorBlendAttachment},
+        .vertexInputState{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &textured3DBindingDescription,
+            .vertexAttributeDescriptionCount =
+                static_cast<uint32_t>(textured3DAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions =
+                textured3DAttributeDescriptions.data()},
+        .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+        .viewportState{.viewportCount = 1, .scissorCount = 1},
+        .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                          .sampleShadingEnable = vk::False},
+        .dynamicStates{vk::DynamicState::eViewport,
+                       vk::DynamicState::eScissor}};
+    materialMgr.add_material(checkerboard3DMaterialInfo);
+
+    device::Buffer::BufferCreateInfo uboInfo = {
+        .identifier = "Textured3D_checkerboard_ubo",
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
+        .initialData = &uboData};
+    bufferMgr.create_buffer(uboInfo);
+  }
+
+  // Create 3D material for gradient texture
+  if (!materialMgr.get_material("Textured3D_gradient")) {
+    Material::MaterialCreateInfo gradient3DMaterialInfo{
+        .identifier = "Textured3D_gradient",
+        .vertexShaders = "../assets/shaders/textured.spv",
+        .fragmentShaders = "../assets/shaders/textured.spv",
+        .descriptorBindings = {uboBinding, samplerBinding},
+        .rasterizationState = {.depthClampEnable = vk::True,
+                               .rasterizerDiscardEnable = vk::False,
+                               .polygonMode = vk::PolygonMode::eFill,
+                               .cullMode = vk::CullModeFlagBits::eBack,
+                               .frontFace = vk::FrontFace::eCounterClockwise,
+                               .depthBiasEnable = vk::False,
+                               .depthBiasSlopeFactor = 1.0f,
+                               .lineWidth = 1.0f},
+        .depthStencilState = {},
+        .blendState = {.logicOpEnable = vk::False,
+                       .logicOp = vk::LogicOp::eCopy,
+                       .attachmentCount = 1,
+                       .pAttachments = &colorBlendAttachment},
+        .vertexInputState{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &textured3DBindingDescription,
+            .vertexAttributeDescriptionCount =
+                static_cast<uint32_t>(textured3DAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions =
+                textured3DAttributeDescriptions.data()},
+        .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+        .viewportState{.viewportCount = 1, .scissorCount = 1},
+        .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                          .sampleShadingEnable = vk::False},
+        .dynamicStates{vk::DynamicState::eViewport,
+                       vk::DynamicState::eScissor}};
+    materialMgr.add_material(gradient3DMaterialInfo);
+
+    device::Buffer::BufferCreateInfo uboInfo = {
+        .identifier = "Textured3D_gradient_ubo",
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
+        .initialData = &uboData};
+    bufferMgr.create_buffer(uboInfo);
+  }
+
+  // Create 3D material for atlas texture
+  if (!materialMgr.get_material("Textured3D_atlas")) {
+    Material::MaterialCreateInfo atlas3DMaterialInfo{
+        .identifier = "Textured3D_atlas",
+        .vertexShaders = "../assets/shaders/textured.spv",
+        .fragmentShaders = "../assets/shaders/textured.spv",
+        .descriptorBindings = {uboBinding, samplerBinding},
+        .rasterizationState = {.depthClampEnable = vk::True,
+                               .rasterizerDiscardEnable = vk::False,
+                               .polygonMode = vk::PolygonMode::eFill,
+                               .cullMode = vk::CullModeFlagBits::eBack,
+                               .frontFace = vk::FrontFace::eCounterClockwise,
+                               .depthBiasEnable = vk::False,
+                               .depthBiasSlopeFactor = 1.0f,
+                               .lineWidth = 1.0f},
+        .depthStencilState = {},
+        .blendState = {.logicOpEnable = vk::False,
+                       .logicOp = vk::LogicOp::eCopy,
+                       .attachmentCount = 1,
+                       .pAttachments = &colorBlendAttachment},
+        .vertexInputState{
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &textured3DBindingDescription,
+            .vertexAttributeDescriptionCount =
+                static_cast<uint32_t>(textured3DAttributeDescriptions.size()),
+            .pVertexAttributeDescriptions =
+                textured3DAttributeDescriptions.data()},
+        .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+        .viewportState{.viewportCount = 1, .scissorCount = 1},
+        .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                          .sampleShadingEnable = vk::False},
+        .dynamicStates{vk::DynamicState::eViewport,
+                       vk::DynamicState::eScissor}};
+    materialMgr.add_material(atlas3DMaterialInfo);
+
+    device::Buffer::BufferCreateInfo uboInfo = {
+        .identifier = "Textured3D_atlas_ubo",
+        .type = device::Buffer::BufferType::UNIFORM,
+        .usage = device::Buffer::BufferUsage::DYNAMIC,
+        .size = sizeof(device::Buffer::TransformUBO),
+        .elementSize = sizeof(device::Buffer::TransformUBO),
+        .initialData = &uboData};
+    bufferMgr.create_buffer(uboInfo);
+  }
+
   // No longer need unique materials for each atlas quad
   // Objects now manage their own descriptor sets, so they can share materials
 

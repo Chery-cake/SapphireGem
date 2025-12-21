@@ -159,10 +159,10 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   }
 
   // Create per-object UBO for materials that need separate transforms per object
-  // This includes Test, Test2D, and all Textured materials
+  // This includes Test, Test2D, and all Textured materials (both 2D and 3D)
   bool needsPerObjectUBO = 
       (materialIdentifier == "Test" || materialIdentifier == "Test2D" ||
-       materialIdentifier.find("Textured_") == 0);
+       materialIdentifier.find("Textured") == 0);
   
   if (needsPerObjectUBO) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
@@ -187,7 +187,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
       bool submeshNeedsUBO = 
           (submesh.materialIdentifier == "Test" ||
            submesh.materialIdentifier == "Test2D" ||
-           submesh.materialIdentifier.find("Textured_") == 0);
+           submesh.materialIdentifier.find("Textured") == 0);
       
       if (submeshNeedsUBO) {
         // Only create if different from base material
@@ -281,7 +281,7 @@ std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   // All materials now use per-object UBOs to avoid sharing transforms
   if (matIdentifier == "Test" || matIdentifier == "Test2D" ||
-      matIdentifier.find("Textured_") == 0) {
+      matIdentifier.find("Textured") == 0) {
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";
@@ -398,9 +398,16 @@ void render::Object::create_descriptor_sets_for_material(
 
   // Bind texture if this material needs it (binding 1)
   // For textured materials, extract texture name from material identifier
-  if (matIdentifier.find("Textured_") == 0) {
-    // Extract texture name from material identifier (e.g., "Textured_checkerboard" -> "checkerboard")
-    std::string textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
+  if (matIdentifier.find("Textured") == 0) {
+    // Extract texture name from material identifier
+    // e.g., "Textured_checkerboard" -> "checkerboard"
+    // e.g., "Textured3D_gradient" -> "gradient"
+    std::string textureName;
+    if (matIdentifier.find("Textured3D_") == 0) {
+      textureName = matIdentifier.substr(11); // Skip "Textured3D_" prefix
+    } else if (matIdentifier.find("Textured_") == 0) {
+      textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
+    }
     
     // Use object's textureIdentifier if available, otherwise use extracted name
     std::string textureToUse = !textureIdentifier.empty() ? textureIdentifier : textureName;

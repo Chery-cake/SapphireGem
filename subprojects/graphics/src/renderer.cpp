@@ -864,17 +864,17 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
   // * 6
   constexpr uint32_t INDICES_PER_FACE = 6;
   std::vector<Object::Submesh> submeshes = {
-      {0 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_checkerboard",
+      {0 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
        nullptr}, // Front
-      {1 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_gradient",
+      {1 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
        nullptr}, // Back
-      {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_atlas",
+      {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_atlas",
        nullptr}, // Left
       {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test",
        nullptr}, // Right (shader animation)
-      {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_checkerboard",
+      {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
        nullptr}, // Top
-      {5 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_gradient",
+      {5 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
        nullptr} // Bottom
   };
 
