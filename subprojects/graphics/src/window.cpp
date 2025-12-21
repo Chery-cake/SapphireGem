@@ -283,105 +283,13 @@ void render::Window::create_scene_objects() {
     bufferMgr.create_buffer(uboInfo);
   }
   
-  // Create unique materials for each atlas quad to avoid descriptor set conflicts
-  // Each quad needs its own material to properly bind the shared atlas texture
-  constexpr int NUM_ATLAS_QUADS = 4;
-  for (int i = 1; i <= NUM_ATLAS_QUADS; ++i) {
-    std::string matName = "Textured_atlas_quad" + std::to_string(i);
-    if (!materialMgr.get_material(matName)) {
-      Material::MaterialCreateInfo atlasQuadMaterialInfo{
-          .identifier = matName,
-          .vertexShaders = "../assets/shaders/textured.spv",
-          .fragmentShaders = "../assets/shaders/textured.spv",
-          .descriptorBindings = {uboBinding, samplerBinding},
-          .rasterizationState = {.depthClampEnable = vk::False,
-                                 .rasterizerDiscardEnable = vk::False,
-                                 .polygonMode = vk::PolygonMode::eFill,
-                                 .cullMode = vk::CullModeFlagBits::eBack,
-                                 .frontFace = vk::FrontFace::eCounterClockwise,
-                                 .depthBiasEnable = vk::False,
-                                 .depthBiasSlopeFactor = 1.0f,
-                                 .lineWidth = 1.0f},
-          .depthStencilState = {},
-          .blendState = {.logicOpEnable = vk::False,
-                         .logicOp = vk::LogicOp::eCopy,
-                         .attachmentCount = 1,
-                         .pAttachments = &colorBlendAttachment},
-          .vertexInputState{
-              .vertexBindingDescriptionCount = 1,
-              .pVertexBindingDescriptions = &texturedBindingDescription,
-              .vertexAttributeDescriptionCount =
-                  static_cast<uint32_t>(texturedAttributeDescriptions.size()),
-              .pVertexAttributeDescriptions =
-                  texturedAttributeDescriptions.data()},
-          .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-          .viewportState{.viewportCount = 1, .scissorCount = 1},
-          .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                            .sampleShadingEnable = vk::False},
-          .dynamicStates{vk::DynamicState::eViewport,
-                         vk::DynamicState::eScissor}};
-      materialMgr.add_material(atlasQuadMaterialInfo);
-      
-      std::string uboName = matName + "_ubo";
-      device::Buffer::BufferCreateInfo uboInfo = {
-          .identifier = uboName,
-          .type = device::Buffer::BufferType::UNIFORM,
-          .usage = device::Buffer::BufferUsage::DYNAMIC,
-          .size = sizeof(device::Buffer::TransformUBO),
-          .elementSize = sizeof(device::Buffer::TransformUBO),
-          .initialData = &uboData};
-      bufferMgr.create_buffer(uboInfo);
-    }
-  }
+  // No longer need unique materials for each atlas quad
+  // Objects now manage their own descriptor sets, so they can share materials
 
-  // Bind textures to materials
-  auto *checkerboardMaterial = materialMgr.get_material("Textured_checkerboard");
-  if (checkerboardMaterial && checkerboardTex) {
-    auto *uboBuffer = bufferMgr.get_buffer("Textured_checkerboard_ubo");
-    if (uboBuffer) {
-      checkerboardMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
-    }
-    checkerboardMaterial->bind_texture(checkerboardTex->get_image().get(), 1, 0);
-    std::print("✓ Bound checkerboard texture\n");
-  }
-
-  auto *gradientMaterial = materialMgr.get_material("Textured_gradient");
-  if (gradientMaterial && gradientTex) {
-    auto *uboBuffer = bufferMgr.get_buffer("Textured_gradient_ubo");
-    if (uboBuffer) {
-      gradientMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
-    }
-    gradientMaterial->bind_texture(gradientTex->get_image().get(), 1, 0);
-    std::print("✓ Bound gradient texture\n");
-  }
-  
-  // Bind atlas texture to all atlas quad materials
-  if (atlasTex) {
-    // Bind to base atlas material (used by multi-material cube)
-    auto *atlasMaterial = materialMgr.get_material("Textured_atlas");
-    if (atlasMaterial) {
-      auto *uboBuffer = bufferMgr.get_buffer("Textured_atlas_ubo");
-      if (uboBuffer) {
-        atlasMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
-      }
-      atlasMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
-    }
-    
-    // Bind to individual atlas quad materials
-    for (int i = 1; i <= NUM_ATLAS_QUADS; ++i) {
-      std::string matName = "Textured_atlas_quad" + std::to_string(i);
-      auto *atlasQuadMaterial = materialMgr.get_material(matName);
-      if (atlasQuadMaterial) {
-        std::string uboName = matName + "_ubo";
-        auto *uboBuffer = bufferMgr.get_buffer(uboName);
-        if (uboBuffer) {
-          atlasQuadMaterial->bind_uniform_buffer(uboBuffer, 0, 0);
-        }
-        atlasQuadMaterial->bind_texture(atlasTex->get_image().get(), 1, 0);
-      }
-    }
-    std::print("✓ Bound atlas texture to base material and {} quad materials\n", NUM_ATLAS_QUADS);
-  }
+  // Note: Texture and uniform buffer binding now happens automatically
+  // during Object construction via descriptor sets owned by each object.
+  // This allows multiple objects to share the same material.
+  std::print("✓ Materials created - objects will bind their own descriptors\n");
 
   // Create original objects - positions will be updated by update_object_positions()
   std::print("Creating original objects...\n");
@@ -438,7 +346,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas_quad1",
+        .materialIdentifier = "Textured_atlas",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -462,7 +370,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas_quad2",
+        .materialIdentifier = "Textured_atlas",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -486,7 +394,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas_quad3",
+        .materialIdentifier = "Textured_atlas",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),
@@ -510,7 +418,7 @@ void render::Window::create_scene_objects() {
         .type = Object::ObjectType::OBJECT_2D,
         .vertices = vertices,
         .indices = indices,
-        .materialIdentifier = "Textured_atlas_quad4",
+        .materialIdentifier = "Textured_atlas",
         .textureIdentifier = "atlas",
         .position = glm::vec3(0.0f, 0.0f, 0.0f),
         .scale = glm::vec3(0.12f, 0.12f, 1.0f),

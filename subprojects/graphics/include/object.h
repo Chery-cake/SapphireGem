@@ -10,6 +10,7 @@
 #include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <vector>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace render {
 
@@ -134,11 +135,21 @@ private:
   MaterialManager *materialManager;
   class TextureManager *textureManager;
 
+  // Per-object descriptor sets (owned by this object)
+  // Each object owns its descriptor sets to allow sharing materials
+  std::vector<vk::raii::DescriptorSets> descriptorSets; // One set per device
+  std::vector<device::LogicalDevice *> logicalDevices;
+
   RotationMode rotationMode;
 
   void update_model_matrix();
   void setup_materials_for_submeshes(std::vector<Submesh> &submeshes);
   std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
+  void create_descriptor_sets();
+  void bind_texture_to_descriptor_sets(Image *image, uint32_t binding,
+                                       uint32_t deviceIndex);
+  void bind_buffer_to_descriptor_sets(device::Buffer *buffer, uint32_t binding,
+                                      uint32_t deviceIndex);
 
 public:
   Object(const ObjectCreateInfo &createInfo,

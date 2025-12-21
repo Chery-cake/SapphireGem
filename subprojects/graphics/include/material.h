@@ -46,7 +46,7 @@ public:
     vk::raii::DescriptorSetLayout descriptorLayout{nullptr};
     vk::raii::ShaderModule vertexShader{nullptr};
     vk::raii::ShaderModule fragmentShader{nullptr};
-    std::vector<vk::raii::DescriptorSet> descriptorSets;
+    // Descriptor sets removed - now owned by Object class
   };
 
 private:
@@ -81,10 +81,12 @@ public:
   bool reinitialize();
 
   // Multi-device support
-  void bind(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex = 0,
-            uint32_t frameIndex = 0);
+  void bind(vk::raii::CommandBuffer &commandBuffer,
+            vk::raii::DescriptorSet *descriptorSet = nullptr,
+            uint32_t deviceIndex = 0);
 
-  // Texture binding for textured materials
+  // These methods are deprecated - descriptor binding should be done via Object
+  // Keeping for backward compatibility during transition
   void bind_texture(Image *image, uint32_t binding = 1,
                     uint32_t deviceIndex = 0);
 

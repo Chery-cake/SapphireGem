@@ -62,3 +62,8 @@ render::MaterialManager::get_materials() const {
   }
   return ptrs;
 }
+
+const device::DeviceManager *
+render::MaterialManager::get_device_manager() const {
+  return deviceManager;
+}

@@ -132,20 +132,8 @@ bool render::Material::create_pipeline(device::LogicalDevice *device,
     resources.pipeline = device->get_device().createGraphicsPipeline(
         nullptr, pipelineCreateInfo);
 
-    // Allocate descriptor sets if needed
-    if (!createInfo.descriptorBindings.empty()) {
-      uint32_t maxFrames = general::Config::get_instance().get_max_frames();
-      std::vector<vk::DescriptorSetLayout> layouts(maxFrames,
-                                                   *resources.descriptorLayout);
-
-      vk::DescriptorSetAllocateInfo allocInfo{
-          .descriptorPool = *device->get_descriptor_pool(),
-          .descriptorSetCount = maxFrames,
-          .pSetLayouts = layouts.data()};
-
-      resources.descriptorSets =
-          vk::raii::DescriptorSets(device->get_device(), allocInfo);
-    }
+    // Descriptor sets are now allocated and managed by Object class
+    // Material only provides the descriptor set layout
 
     return true;
   } catch (const std::exception &e) {
@@ -245,7 +233,8 @@ bool render::Material::reinitialize() {
 }
 
 void render::Material::bind(vk::raii::CommandBuffer &commandBuffer,
-                            uint32_t deviceIndex, uint32_t frameIndex) {
+                            vk::raii::DescriptorSet *descriptorSet,
+                            uint32_t deviceIndex) {
   if (!initialized) {
     std::print("Warning: Cannot bind uninitialized material '{}'\n",
                identifier);
@@ -255,121 +244,52 @@ void render::Material::bind(vk::raii::CommandBuffer &commandBuffer,
   if (deviceIndex >= deviceResources.size()) {
     std::print("Warning: Invalid device index {} for material '{}'\n",
                deviceIndex, identifier);
+    return;
   }
 
   DeviceMaterialResources &resources = *deviceResources[deviceIndex];
   commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                              *resources.pipeline);
 
-  if (!resources.descriptorSets.empty() &&
-      frameIndex < resources.descriptorSets.size()) {
+  // Bind descriptor set if provided (now managed by Object)
+  if (descriptorSet) {
     commandBuffer.bindDescriptorSets(
         vk::PipelineBindPoint::eGraphics, *resources.pipelineLayout, 0,
-        {*resources.descriptorSets[frameIndex]}, {});
+        {**descriptorSet}, {});
   }
 }
 
+// Legacy methods - kept for backward compatibility  
+// These are deprecated as descriptor sets are now managed by Object class
 void render::Material::bind_texture(class Image *image, uint32_t binding,
                                     uint32_t deviceIndex) {
-  if (!initialized || !image) {
-    return;
-  }
-
-  if (deviceIndex >= deviceResources.size()) {
-    std::print("Warning: Invalid device index {} for material '{}'\n",
-               deviceIndex, identifier);
-    return;
-  }
-
-  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
-
-  // Update all descriptor sets with the texture
-  for (size_t i = 0; i < resources.descriptorSets.size(); ++i) {
-    vk::DescriptorImageInfo imageInfo{
-        .sampler = *image->get_sampler(deviceIndex),
-        .imageView = *image->get_image_view(deviceIndex),
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
-
-    vk::WriteDescriptorSet descriptorWrite{
-        .dstSet = *resources.descriptorSets[i],
-        .dstBinding = binding,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-        .pImageInfo = &imageInfo};
-
-    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
-        descriptorWrite, nullptr);
+  // This method is deprecated - descriptor sets are now owned by Object
+  // Keeping empty stub for backward compatibility during transition
+  if (image) {
+    std::print("Warning: Material::bind_texture is deprecated for material '{}'. "
+               "Descriptor sets are now managed by Object class.\n", identifier);
   }
 }
 
 void render::Material::bind_texture_for_frame(Image *image, uint32_t binding,
                                               uint32_t deviceIndex,
                                               uint32_t frameIndex) {
-  if (!initialized || !image) {
-    return;
-  }
-
-  if (deviceIndex >= deviceResources.size()) {
-    std::print("Warning: Invalid device index {} for material '{}'\n",
-               deviceIndex, identifier);
-    return;
-  }
-
-  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
-
-  // Only update the descriptor set for the current frame
-  if (frameIndex < resources.descriptorSets.size()) {
-    vk::DescriptorImageInfo imageInfo{
-        .sampler = *image->get_sampler(deviceIndex),
-        .imageView = *image->get_image_view(deviceIndex),
-        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
-
-    vk::WriteDescriptorSet descriptorWrite{
-        .dstSet = *resources.descriptorSets[frameIndex],
-        .dstBinding = binding,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-        .pImageInfo = &imageInfo};
-
-    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
-        descriptorWrite, nullptr);
+  // This method is deprecated - descriptor sets are now owned by Object
+  // Keeping empty stub for backward compatibility during transition
+  if (image) {
+    std::print("Warning: Material::bind_texture_for_frame is deprecated for material '{}'. "
+               "Descriptor sets are now managed by Object class.\n", identifier);
   }
 }
 
 void render::Material::bind_uniform_buffer(device::Buffer *buffer,
                                            uint32_t binding,
                                            uint32_t deviceIndex) {
-  if (!initialized || !buffer) {
-    return;
-  }
-
-  if (deviceIndex >= deviceResources.size()) {
-    std::print("Warning: Invalid device index {} for material '{}'\n",
-               deviceIndex, identifier);
-    return;
-  }
-
-  DeviceMaterialResources &resources = *deviceResources[deviceIndex];
-
-  // Update all descriptor sets with the uniform buffer
-  for (size_t i = 0; i < resources.descriptorSets.size(); ++i) {
-    vk::DescriptorBufferInfo bufferInfo{.buffer =
-                                            buffer->get_buffer(deviceIndex),
-                                        .offset = 0,
-                                        .range = buffer->get_size()};
-
-    vk::WriteDescriptorSet descriptorWrite{
-        .dstSet = *resources.descriptorSets[i],
-        .dstBinding = binding,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = vk::DescriptorType::eUniformBuffer,
-        .pBufferInfo = &bufferInfo};
-
-    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
-        descriptorWrite, nullptr);
+  // This method is deprecated - descriptor sets are now owned by Object
+  // Keeping empty stub for backward compatibility during transition
+  if (buffer) {
+    std::print("Warning: Material::bind_uniform_buffer is deprecated for material '{}'. "
+               "Descriptor sets are now managed by Object class.\n", identifier);
   }
 }
 
