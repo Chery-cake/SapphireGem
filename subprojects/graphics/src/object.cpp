@@ -266,7 +266,7 @@ void render::Object::update_model_matrix() {
 void render::Object::setup_materials_for_submeshes(
     std::vector<Submesh> &submeshes) {
 
-  for (auto submesh : submeshes) {
+  for (auto &submesh : submeshes) {
     submesh.material =
         materialManager->get_material(submesh.materialIdentifier);
     if (!submesh.material) {
