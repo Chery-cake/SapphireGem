@@ -341,22 +341,29 @@ void render::Object::create_descriptor_sets_for_material(
   }
 
   // Bind texture if this material needs it (binding 1)
-  // For textured materials, bind the texture associated with this object
-  if (matIdentifier.find("Textured") == 0 && textureManager &&
-      !textureIdentifier.empty()) {
-    auto *texture = textureManager->get_texture(textureIdentifier);
-    if (!texture) {
-      std::print("    Warning: Texture '{}' not found for material '{}'\n",
-                 textureIdentifier, matIdentifier);
-    } else if (!texture->get_image()) {
-      std::print("    Warning: Texture '{}' has no image for material '{}'\n",
-                 textureIdentifier, matIdentifier);
-    } else {
-      for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
-           ++deviceIdx) {
-        bind_texture_to_descriptor_sets(matIdentifier,
-                                        texture->get_image().get(), 1,
-                                        deviceIdx);
+  // For textured materials, extract texture name from material identifier
+  if (matIdentifier.find("Textured_") == 0) {
+    // Extract texture name from material identifier (e.g., "Textured_checkerboard" -> "checkerboard")
+    std::string textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
+    
+    // Use object's textureIdentifier if available, otherwise use extracted name
+    std::string textureToUse = !textureIdentifier.empty() ? textureIdentifier : textureName;
+    
+    if (textureManager && !textureToUse.empty()) {
+      auto *texture = textureManager->get_texture(textureToUse);
+      if (!texture) {
+        std::print("    Warning: Texture '{}' not found for material '{}'\n",
+                   textureToUse, matIdentifier);
+      } else if (!texture->get_image()) {
+        std::print("    Warning: Texture '{}' has no image for material '{}'\n",
+                   textureToUse, matIdentifier);
+      } else {
+        for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
+             ++deviceIdx) {
+          bind_texture_to_descriptor_sets(matIdentifier,
+                                          texture->get_image().get(), 1,
+                                          deviceIdx);
+        }
       }
     }
   }
