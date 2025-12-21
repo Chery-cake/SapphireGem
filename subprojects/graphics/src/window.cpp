@@ -483,6 +483,17 @@ void render::Window::create_scene_objects() {
     };
     multiMaterialQuad = renderer->get_object_manager()->create_object(createInfo);
   }
+  
+  // Create a multi-material 3D cube
+  std::print("Creating multi-material 3D cube...\n");
+  multiMaterialCube = renderer->create_multi_material_cube_3d(
+      "multi_material_cube",
+      glm::vec3(0.0f, 0.0f, 0.0f),
+      glm::vec3(0.0f, 0.0f, 0.0f),
+      glm::vec3(0.2f, 0.2f, 0.2f));
+  if (multiMaterialCube) {
+    multiMaterialCube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
+  }
 
   // Set initial positions based on aspect ratio
   update_object_positions();
@@ -517,6 +528,11 @@ void render::Window::update_scene_objects() {
   if (imageQuad) {
     // Slightly faster rotation for image quad (shader-based 2D rotation)
     imageQuad->rotate_2d(time * 0.8f);
+  }
+  
+  if (multiMaterialCube) {
+    // Rotate multi-material cube to show all faces
+    multiMaterialCube->rotate(glm::vec3(time * 0.4f, time * 0.6f, time * 0.5f));
   }
 }
 
@@ -583,5 +599,10 @@ void render::Window::update_object_positions() {
   // Position multi-material quad
   if (multiMaterialQuad) {
     multiMaterialQuad->set_position(glm::vec3(midX, botY, 0.0f));
+  }
+  
+  // Position multi-material cube
+  if (multiMaterialCube) {
+    multiMaterialCube->set_position(glm::vec3(rightX, botY, 0.0f));
   }
 }
