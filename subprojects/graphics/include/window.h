@@ -22,6 +22,19 @@ private:
   Object *cube;
   Object *texturedSquare;
   Object *imageQuad;
+  
+  // New objects for requirements
+  Object *atlasQuad1;
+  Object *atlasQuad2;
+  Object *atlasQuad3;
+  Object *atlasQuad4;
+  Object *multiMaterialQuad;
+  Object *multiMaterialCube;
+  
+  // Window dimensions for aspect ratio calculations
+  int currentWidth;
+  int currentHeight;
+  float aspectRatio;
 
   static void frame_buffer_resize_callback(GLFWwindow *window, int width,
                                            int height);
@@ -30,6 +43,7 @@ private:
 
   void create_scene_objects();
   void update_scene_objects();
+  void update_object_positions();
 
 public:
   Window(int width, int height, std::string title);
