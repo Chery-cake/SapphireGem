@@ -46,7 +46,6 @@ public:
     vk::raii::DescriptorSetLayout descriptorLayout{nullptr};
     vk::raii::ShaderModule vertexShader{nullptr};
     vk::raii::ShaderModule fragmentShader{nullptr};
-    std::vector<vk::raii::DescriptorSet> descriptorSets;
   };
 
 private:
@@ -82,19 +81,7 @@ public:
 
   // Multi-device support
   void bind(vk::raii::CommandBuffer &commandBuffer, uint32_t deviceIndex = 0,
-            uint32_t frameIndex = 0);
-
-  // Texture binding for textured materials
-  void bind_texture(Image *image, uint32_t binding = 1,
-                    uint32_t deviceIndex = 0);
-
-  // Texture binding for a specific frame (per-object texture support)
-  void bind_texture_for_frame(Image *image, uint32_t binding,
-                              uint32_t deviceIndex, uint32_t frameIndex);
-
-  // Uniform buffer binding for materials
-  void bind_uniform_buffer(device::Buffer *buffer, uint32_t binding = 0,
-                           uint32_t deviceIndex = 0);
+            vk::raii::DescriptorSet *descriptorSet = nullptr);
 
   void set_color(const glm::vec4 &newColor);
   void set_roughness(const float &newRougthness);

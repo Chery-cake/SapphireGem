@@ -95,6 +95,8 @@ public:
 
   bool needs_reload() const;
   void mark_reload_complete();
+
+  void set_reload(bool r) { reload = r; };
 };
 
 } // namespace general

@@ -131,16 +131,19 @@ void render::ObjectManager::render_all_objects(
   Material *currentMaterial = nullptr;
 
   for (auto *object : renderQueue) {
-    // Only bind material if it changed (optimization)
+    // Only bind material pipeline if it changed (optimization)
+    // Objects will bind their own descriptor sets during draw()
     Material *objMaterial = object->get_material();
     if (objMaterial != currentMaterial) {
       if (objMaterial) {
-        objMaterial->bind(commandBuffer, deviceIndex, frameIndex);
+        // Bind only the pipeline, not descriptor sets (objects manage
+        // those)
+        objMaterial->bind(commandBuffer, deviceIndex);
         currentMaterial = objMaterial;
       }
     }
 
-    // Draw the object (will bind its buffers and issue draw call)
+    // Draw the object (will bind its descriptor sets and issue draw call)
     object->draw(commandBuffer, deviceIndex, frameIndex);
   }
 }

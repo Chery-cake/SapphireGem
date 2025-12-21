@@ -1,5 +1,6 @@
 #include "object.h"
 #include "buffer_manager.h"
+#include "config.h"
 #include "material.h"
 #include "material_manager.h"
 #include "texture_manager.h"
@@ -92,6 +93,15 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
       materialManager(materialManager), textureManager(textureManager),
       rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
                                                  : RotationMode::TRANSFORM_3D) {
+  // Get logical devices for descriptor set creation
+  auto *deviceManager = materialManager->get_device_manager();
+  if (deviceManager) {
+    const auto &devices = deviceManager->get_all_logical_devices();
+    for (auto *device : devices) {
+      logicalDevices.push_back(const_cast<device::LogicalDevice *>(device));
+    }
+  }
+
   // Create unique buffer names for this object
   vertexBufferName = identifier + "_vertices";
   indexBufferName = identifier + "_indices";
@@ -165,13 +175,10 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
         .initialData = &uboData};
 
     bufferManager->create_buffer(uboInfo);
-
-    // Bind the UBO to the material
-    device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
-    if (material && uboBuffer) {
-      material->bind_uniform_buffer(uboBuffer, 0, 0);
-    }
   }
+
+  // Create per-object descriptor sets
+  create_descriptor_sets();
 
   update_model_matrix();
 }
@@ -243,6 +250,172 @@ render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   return "";
 }
 
+void render::Object::create_descriptor_sets() {
+  if (!material) {
+    std::print("Warning: Cannot create descriptor sets for object '{}' - no "
+               "material\n",
+               identifier);
+    return;
+  }
+
+  std::print("Creating descriptor sets for object '{}' with material '{}'\n",
+             identifier, materialIdentifier);
+
+  // Create descriptor sets for each device
+  descriptorSets.reserve(logicalDevices.size());
+
+  for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
+    auto *device = logicalDevices[deviceIdx];
+
+    // Get descriptor set layout from material
+    const vk::DescriptorSetLayout &layout =
+        *material->get_descriptor_set_layout(deviceIdx);
+
+    // Allocate descriptor sets (one per frame)
+    uint32_t maxFrames = general::Config::get_instance().get_max_frames();
+    std::vector<vk::DescriptorSetLayout> layouts(maxFrames, layout);
+
+    vk::DescriptorSetAllocateInfo allocInfo{.descriptorPool =
+                                                *device->get_descriptor_pool(),
+                                            .descriptorSetCount = maxFrames,
+                                            .pSetLayouts = layouts.data()};
+
+    descriptorSets.emplace_back(device->get_device(), allocInfo);
+    std::print("  Allocated {} descriptor sets for device {}\n", maxFrames,
+               deviceIdx);
+  }
+
+  std::print("  Total devices: {}, descriptorSets size: {}\n",
+             logicalDevices.size(), descriptorSets.size());
+
+  // Bind uniform buffer first (binding 0)
+  for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
+    std::string uboName = get_ubo_buffer_name(materialIdentifier);
+    if (uboName.empty()) {
+      std::print("Warning: No UBO name for object '{}' with material '{}'\n",
+                 identifier, materialIdentifier);
+      continue;
+    }
+
+    auto *uboBuffer = bufferManager->get_buffer(uboName);
+    if (!uboBuffer) {
+      std::print("Warning: UBO buffer '{}' not found for object '{}'\n",
+                 uboName, identifier);
+      continue;
+    }
+
+    bind_buffer_to_descriptor_sets(uboBuffer, 0, deviceIdx);
+  }
+
+  // Bind texture if this is a textured object (binding 1)
+  if (textureManager && !textureIdentifier.empty()) {
+    auto *texture = textureManager->get_texture(textureIdentifier);
+    if (!texture) {
+      std::print("Warning: Texture '{}' not found for object '{}'\n",
+                 textureIdentifier, identifier);
+    } else if (!texture->get_image()) {
+      std::print("Warning: Texture '{}' has no image for object '{}'\n",
+                 textureIdentifier, identifier);
+    } else {
+      for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
+           ++deviceIdx) {
+        bind_texture_to_descriptor_sets(texture->get_image().get(), 1,
+                                        deviceIdx);
+      }
+    }
+  } else if (!textureIdentifier.empty()) {
+    std::print("Warning: Texture identifier '{}' specified but no texture "
+               "manager for object '{}'\n",
+               textureIdentifier, identifier);
+  }
+
+  std::print("Finished creating descriptor sets for object '{}'\n", identifier);
+}
+
+void render::Object::bind_texture_to_descriptor_sets(Image *image,
+                                                     uint32_t binding,
+                                                     uint32_t deviceIndex) {
+  if (!image || deviceIndex >= descriptorSets.size()) {
+    std::print("Warning: bind_texture failed for object '{}' - image={}, "
+               "deviceIndex={}, descriptorSets.size()={}\n",
+               identifier, (void *)image, deviceIndex, descriptorSets.size());
+    return;
+  }
+
+  std::print("Binding texture for object '{}' to binding {} on device {}, {} "
+             "frames\n",
+             identifier, binding, deviceIndex,
+             descriptorSets[deviceIndex].size());
+
+  // Update all frames for this device
+  for (size_t frameIdx = 0; frameIdx < descriptorSets[deviceIndex].size();
+       ++frameIdx) {
+    vk::DescriptorImageInfo imageInfo{
+        .sampler = *image->get_sampler(deviceIndex),
+        .imageView = *image->get_image_view(deviceIndex),
+        .imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal};
+
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = *descriptorSets[deviceIndex][frameIdx],
+        .dstBinding = binding,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .pImageInfo = &imageInfo};
+
+    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
+        descriptorWrite, nullptr);
+  }
+
+  std::print("Successfully updated {} descriptor sets for texture binding\n",
+             descriptorSets[deviceIndex].size());
+}
+
+void render::Object::bind_buffer_to_descriptor_sets(device::Buffer *buffer,
+                                                    uint32_t binding,
+                                                    uint32_t deviceIndex) {
+  if (!buffer || deviceIndex >= descriptorSets.size()) {
+    std::print("Warning: bind_buffer failed for object '{}' - buffer={}, "
+               "deviceIndex={}, descriptorSets.size()={}\n",
+               identifier, (void *)buffer, deviceIndex, descriptorSets.size());
+    return;
+  }
+
+  VkBuffer vkBuffer = buffer->get_buffer(deviceIndex);
+  if (!vkBuffer) {
+    std::print("ERROR: Buffer '{}' returned null VkBuffer handle for object "
+               "'{}' device {}\n",
+               buffer->get_identifier(), identifier, deviceIndex);
+    return;
+  }
+
+  std::print("Binding UBO for object '{}' (buffer='{}', handle={}) to binding "
+             "{} on device {}, {} frames\n",
+             identifier, buffer->get_identifier(), (void *)vkBuffer, binding,
+             deviceIndex, descriptorSets[deviceIndex].size());
+
+  // Update all frames for this device
+  for (size_t frameIdx = 0; frameIdx < descriptorSets[deviceIndex].size();
+       ++frameIdx) {
+    vk::DescriptorBufferInfo bufferInfo{
+        .buffer = vkBuffer, .offset = 0, .range = buffer->get_size()};
+
+    vk::WriteDescriptorSet descriptorWrite{
+        .dstSet = *descriptorSets[deviceIndex][frameIdx],
+        .dstBinding = binding,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = vk::DescriptorType::eUniformBuffer,
+        .pBufferInfo = &bufferInfo};
+
+    logicalDevices[deviceIndex]->get_device().updateDescriptorSets(
+        descriptorWrite, nullptr);
+  }
+
+  std::print("Successfully updated {} descriptor sets for UBO binding\n",
+             descriptorSets[deviceIndex].size());
+}
+
 void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
                           uint32_t deviceIndex, uint32_t frameIndex) {
   if (!visible) {
@@ -304,8 +477,13 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
         }
       }
 
-      // Bind material for this submesh
-      useMaterial->bind(commandBuffer, deviceIndex, frameIndex);
+      // Bind material for this submesh with object's descriptor set
+      vk::raii::DescriptorSet *descriptorSet = nullptr;
+      if (deviceIndex < descriptorSets.size() &&
+          frameIndex < descriptorSets[deviceIndex].size()) {
+        descriptorSet = &descriptorSets[deviceIndex][frameIndex];
+      }
+      useMaterial->bind(commandBuffer, deviceIndex, descriptorSet);
 
       // Draw this submesh with its specific index range
       commandBuffer.drawIndexed(submesh.indexCount, 1, submesh.indexStart, 0,
@@ -341,8 +519,13 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
     }
 
-    // Bind material
-    material->bind(commandBuffer, deviceIndex, frameIndex);
+    // Bind material with object's descriptor set
+    vk::raii::DescriptorSet *descriptorSet = nullptr;
+    if (deviceIndex < descriptorSets.size() &&
+        frameIndex < descriptorSets[deviceIndex].size()) {
+      descriptorSet = &descriptorSets[deviceIndex][frameIndex];
+    }
+    material->bind(commandBuffer, deviceIndex, descriptorSet);
 
     // Draw
     commandBuffer.drawIndexed(indexCount, 1, 0, 0, 0);

@@ -27,6 +27,9 @@ public:
 
   Material *get_material(const std::string &identifier) const;
   const std::vector<Material *> &get_materials() const;
+
+  // Access to device manager for descriptor set creation
+  const device::DeviceManager *get_device_manager() const;
 };
 
 } // namespace render
