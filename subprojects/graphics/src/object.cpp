@@ -159,9 +159,10 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   }
 
   // Create per-object UBO for materials that need separate transforms per object
-  // This includes Test, Test2D, and all Textured materials (both 2D and 3D)
+  // This includes Test, Test2D, Test3DTextured, and all Textured materials (both 2D and 3D)
   bool needsPerObjectUBO = 
       (materialIdentifier == "Test" || materialIdentifier == "Test2D" ||
+       materialIdentifier == "Test3DTextured" ||
        materialIdentifier.find("Textured") == 0);
   
   if (needsPerObjectUBO) {
@@ -187,6 +188,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
       bool submeshNeedsUBO = 
           (submesh.materialIdentifier == "Test" ||
            submesh.materialIdentifier == "Test2D" ||
+           submesh.materialIdentifier == "Test3DTextured" ||
            submesh.materialIdentifier.find("Textured") == 0);
       
       if (submeshNeedsUBO) {
@@ -281,6 +283,7 @@ std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   // All materials now use per-object UBOs to avoid sharing transforms
   if (matIdentifier == "Test" || matIdentifier == "Test2D" ||
+      matIdentifier == "Test3DTextured" ||
       matIdentifier.find("Textured") == 0) {
     return matIdentifier + "_" + identifier + "_ubo";
   }

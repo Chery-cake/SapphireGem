@@ -221,6 +221,42 @@ void render::Renderer::init_materials() {
 
   materialManager->add_material(createInfo2D);
 
+  // Create 3D textured version of Test material (for multi-material cubes with textured vertices)
+  auto bindingDescription3DTextured = Object::Vertex3DTextured::getBindingDescription();
+  auto attributeDescriptions3DTextured = Object::Vertex3DTextured::getAttributeDescriptions();
+
+  Material::MaterialCreateInfo createInfo3DTextured{
+      .identifier = "Test3DTextured",
+      .vertexShaders = "../assets/shaders/slang.spv",
+      .fragmentShaders = "../assets/shaders/slang.spv",
+      .descriptorBindings = {bidingInfo},
+      .rasterizationState = {.depthClampEnable = vk::True,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState = {},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{.vertexBindingDescriptionCount = 1,
+                        .pVertexBindingDescriptions = &bindingDescription3DTextured,
+                        .vertexAttributeDescriptionCount =
+                            static_cast<uint32_t>(attributeDescriptions3DTextured.size()),
+                        .pVertexAttributeDescriptions =
+                            attributeDescriptions3DTextured.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  materialManager->add_material(createInfo3DTextured);
+
   // Create textured material
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
@@ -870,7 +906,7 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
        nullptr}, // Back
       {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_atlas",
        nullptr}, // Left
-      {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test",
+      {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test3DTextured",
        nullptr}, // Right (shader animation)
       {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
        nullptr}, // Top
@@ -883,7 +919,7 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
                                       .vertices = vertices,
                                       .indices = indices,
                                       .materialIdentifier =
-                                          "Test", // Default material
+                                          "Test3DTextured", // Default material
                                       .submeshes = submeshes,
                                       .position = position,
                                       .rotation = rotation,
