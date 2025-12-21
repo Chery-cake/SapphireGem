@@ -8,6 +8,7 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -136,7 +137,9 @@ private:
 
   // Per-object descriptor sets (owned by this object)
   // Each object owns its descriptor sets to allow sharing materials
-  std::vector<vk::raii::DescriptorSets> descriptorSets; // One set per device
+  // Map: material identifier -> device index -> frame descriptor sets
+  std::map<std::string, std::vector<vk::raii::DescriptorSets>>
+      materialDescriptorSets;
   std::vector<device::LogicalDevice *> logicalDevices;
 
   RotationMode rotationMode;
@@ -146,9 +149,12 @@ private:
   std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
 
   void create_descriptor_sets();
-  void bind_texture_to_descriptor_sets(Image *image, uint32_t binding,
+  void create_descriptor_sets_for_material(const std::string &matIdentifier);
+  void bind_texture_to_descriptor_sets(const std::string &matIdentifier,
+                                       Image *image, uint32_t binding,
                                        uint32_t deviceIndex);
-  void bind_buffer_to_descriptor_sets(device::Buffer *buffer, uint32_t binding,
+  void bind_buffer_to_descriptor_sets(const std::string &matIdentifier,
+                                      device::Buffer *buffer, uint32_t binding,
                                       uint32_t deviceIndex);
 
 public:

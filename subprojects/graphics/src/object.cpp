@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
 #include <print>
+#include <set>
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
@@ -157,10 +158,15 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
                materialIdentifier, identifier);
   }
 
-  // Create per-object UBO for Test and Test2D materials to avoid sharing
-  // transforms
-  if ((materialIdentifier == "Test" || materialIdentifier == "Test2D") &&
-      !useSubmeshes) {
+  // Create per-object UBO for materials that need separate transforms per
+  // object This includes Test, Test2D, Test3DTextured, and all Textured
+  // materials (both 2D and 3D)
+  bool needsPerObjectUBO =
+      (materialIdentifier == "Test" || materialIdentifier == "Test2D" ||
+       materialIdentifier == "Test3DTextured" ||
+       materialIdentifier.find("Textured") == 0);
+
+  if (needsPerObjectUBO) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
                                             .view = glm::mat4(1.0f),
                                             .proj = glm::mat4(1.0f)};
@@ -175,6 +181,41 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
         .initialData = &uboData};
 
     bufferManager->create_buffer(uboInfo);
+  }
+
+  // Create UBOs for submesh materials if needed
+  if (useSubmeshes) {
+    for (const auto &submesh : submeshes) {
+      bool submeshNeedsUBO = (submesh.materialIdentifier == "Test" ||
+                              submesh.materialIdentifier == "Test2D" ||
+                              submesh.materialIdentifier == "Test3DTextured" ||
+                              submesh.materialIdentifier.find("Textured") == 0);
+
+      if (submeshNeedsUBO) {
+        // Only create if different from base material
+        if (submesh.materialIdentifier != materialIdentifier) {
+          device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                                  .view = glm::mat4(1.0f),
+                                                  .proj = glm::mat4(1.0f)};
+
+          std::string uboBufferName =
+              submesh.materialIdentifier + "_" + identifier + "_ubo";
+
+          // Check if buffer doesn't already exist
+          if (!bufferManager->get_buffer(uboBufferName)) {
+            device::Buffer::BufferCreateInfo uboInfo = {
+                .identifier = uboBufferName,
+                .type = device::Buffer::BufferType::UNIFORM,
+                .usage = device::Buffer::BufferUsage::DYNAMIC,
+                .size = sizeof(device::Buffer::TransformUBO),
+                .elementSize = sizeof(device::Buffer::TransformUBO),
+                .initialData = &uboData};
+
+            bufferManager->create_buffer(uboInfo);
+          }
+        }
+      }
+    }
   }
 
   // Create per-object descriptor sets
@@ -227,7 +268,7 @@ void render::Object::update_model_matrix() {
 void render::Object::setup_materials_for_submeshes(
     std::vector<Submesh> &submeshes) {
 
-  for (auto submesh : submeshes) {
+  for (auto &submesh : submeshes) {
     submesh.material =
         materialManager->get_material(submesh.materialIdentifier);
     if (!submesh.material) {
@@ -240,11 +281,10 @@ void render::Object::setup_materials_for_submeshes(
 
 std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
-  if (matIdentifier == "Textured" || matIdentifier.find("Textured_") == 0) {
-    return matIdentifier + "_ubo";
-  } else if (matIdentifier == "Test" || matIdentifier == "Test2D") {
-    // Per-object UBO for Test and Test2D materials - must match naming in
-    // constructor (line 151)
+  // All materials now use per-object UBOs to avoid sharing transforms
+  if (matIdentifier == "Test" || matIdentifier == "Test2D" ||
+      matIdentifier == "Test3DTextured" ||
+      matIdentifier.find("Textured") == 0) {
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";
@@ -261,15 +301,48 @@ void render::Object::create_descriptor_sets() {
   std::print("Creating descriptor sets for object '{}' with material '{}'\n",
              identifier, materialIdentifier);
 
+  // Collect all unique materials used by this object
+  std::set<std::string> materialsToSetup;
+  materialsToSetup.insert(materialIdentifier); // Base material
+
+  // Add materials from submeshes
+  if (useSubmeshes) {
+    for (const auto &submesh : submeshes) {
+      if (!submesh.materialIdentifier.empty()) {
+        materialsToSetup.insert(submesh.materialIdentifier);
+      }
+    }
+  }
+
+  // Create descriptor sets for each unique material
+  for (const auto &matId : materialsToSetup) {
+    create_descriptor_sets_for_material(matId);
+  }
+
+  std::print("Finished creating descriptor sets for object '{}'\n", identifier);
+}
+
+void render::Object::create_descriptor_sets_for_material(
+    const std::string &matIdentifier) {
+  Material *mat = materialManager->get_material(matIdentifier);
+  if (!mat) {
+    std::print("Warning: Material '{}' not found for object '{}'\n",
+               matIdentifier, identifier);
+    return;
+  }
+
+  std::print("Creating descriptor sets for material '{}'\n", matIdentifier);
+
   // Create descriptor sets for each device
-  descriptorSets.reserve(logicalDevices.size());
+  std::vector<vk::raii::DescriptorSets> descriptorSetsForMaterial;
+  descriptorSetsForMaterial.reserve(logicalDevices.size());
 
   for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
     auto *device = logicalDevices[deviceIdx];
 
     // Get descriptor set layout from material
     const vk::DescriptorSetLayout &layout =
-        *material->get_descriptor_set_layout(deviceIdx);
+        *mat->get_descriptor_set_layout(deviceIdx);
 
     // Allocate descriptor sets (one per frame)
     uint32_t maxFrames = general::Config::get_instance().get_max_frames();
@@ -280,71 +353,113 @@ void render::Object::create_descriptor_sets() {
                                             .descriptorSetCount = maxFrames,
                                             .pSetLayouts = layouts.data()};
 
-    descriptorSets.emplace_back(device->get_device(), allocInfo);
-    std::print("  Allocated {} descriptor sets for device {}\n", maxFrames,
+    descriptorSetsForMaterial.emplace_back(device->get_device(), allocInfo);
+    std::print("Allocated {} descriptor sets for device {}\n", maxFrames,
                deviceIdx);
   }
 
-  std::print("  Total devices: {}, descriptorSets size: {}\n",
-             logicalDevices.size(), descriptorSets.size());
+  // Store the descriptor sets for this material
+  materialDescriptorSets[matIdentifier] = std::move(descriptorSetsForMaterial);
 
-  // Bind uniform buffer first (binding 0)
+  // Bind uniform buffer (binding 0)
   for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
-    std::string uboName = get_ubo_buffer_name(materialIdentifier);
+    std::string uboName = get_ubo_buffer_name(matIdentifier);
     if (uboName.empty()) {
-      std::print("Warning: No UBO name for object '{}' with material '{}'\n",
-                 identifier, materialIdentifier);
+      std::print("Warning: No UBO name for material '{}'\n", matIdentifier);
       continue;
     }
 
     auto *uboBuffer = bufferManager->get_buffer(uboName);
     if (!uboBuffer) {
-      std::print("Warning: UBO buffer '{}' not found for object '{}'\n",
-                 uboName, identifier);
-      continue;
-    }
+      // UBO doesn't exist, create it now
+      std::print("Creating missing UBO buffer '{}' for material '{}'\n",
+                 uboName, matIdentifier);
 
-    bind_buffer_to_descriptor_sets(uboBuffer, 0, deviceIdx);
-  }
+      device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                              .view = glm::mat4(1.0f),
+                                              .proj = glm::mat4(1.0f)};
 
-  // Bind texture if this is a textured object (binding 1)
-  if (textureManager && !textureIdentifier.empty()) {
-    auto *texture = textureManager->get_texture(textureIdentifier);
-    if (!texture) {
-      std::print("Warning: Texture '{}' not found for object '{}'\n",
-                 textureIdentifier, identifier);
-    } else if (!texture->get_image()) {
-      std::print("Warning: Texture '{}' has no image for object '{}'\n",
-                 textureIdentifier, identifier);
-    } else {
-      for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
-           ++deviceIdx) {
-        bind_texture_to_descriptor_sets(texture->get_image().get(), 1,
-                                        deviceIdx);
+      device::Buffer::BufferCreateInfo uboInfo = {
+          .identifier = uboName,
+          .type = device::Buffer::BufferType::UNIFORM,
+          .usage = device::Buffer::BufferUsage::DYNAMIC,
+          .size = sizeof(device::Buffer::TransformUBO),
+          .elementSize = sizeof(device::Buffer::TransformUBO),
+          .initialData = &uboData};
+
+      bufferManager->create_buffer(uboInfo);
+      uboBuffer = bufferManager->get_buffer(uboName);
+
+      if (!uboBuffer) {
+        std::print("Error: Failed to create UBO buffer '{}'\n", uboName);
+        continue;
       }
     }
-  } else if (!textureIdentifier.empty()) {
-    std::print("Warning: Texture identifier '{}' specified but no texture "
-               "manager for object '{}'\n",
-               textureIdentifier, identifier);
+
+    bind_buffer_to_descriptor_sets(matIdentifier, uboBuffer, 0, deviceIdx);
   }
 
-  std::print("Finished creating descriptor sets for object '{}'\n", identifier);
+  // Bind texture if this material needs it (binding 1)
+  // For textured materials, extract texture name from material identifier
+  if (matIdentifier.find("Textured") == 0) {
+    // Extract texture name from material identifier
+    // e.g., "Textured_checkerboard" -> "checkerboard"
+    // e.g., "Textured3D_gradient" -> "gradient"
+    std::string textureName;
+    if (matIdentifier.find("Textured3D_") == 0) {
+      textureName = matIdentifier.substr(11); // Skip "Textured3D_" prefix
+    } else if (matIdentifier.find("Textured_") == 0) {
+      textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
+    }
+
+    // Use object's textureIdentifier if available, otherwise use extracted
+    // name
+    std::string textureToUse =
+        !textureIdentifier.empty() ? textureIdentifier : textureName;
+
+    if (textureManager && !textureToUse.empty()) {
+      auto *texture = textureManager->get_texture(textureToUse);
+      if (!texture) {
+        std::print("    Warning: Texture '{}' not found for material '{}'\n",
+                   textureToUse, matIdentifier);
+      } else if (!texture->get_image()) {
+        std::print("    Warning: Texture '{}' has no image for "
+                   "material '{}'\n",
+                   textureToUse, matIdentifier);
+      } else {
+        for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
+             ++deviceIdx) {
+          bind_texture_to_descriptor_sets(
+              matIdentifier, texture->get_image().get(), 1, deviceIdx);
+        }
+      }
+    }
+  }
 }
 
-void render::Object::bind_texture_to_descriptor_sets(Image *image,
-                                                     uint32_t binding,
-                                                     uint32_t deviceIndex) {
-  if (!image || deviceIndex >= descriptorSets.size()) {
-    std::print("Warning: bind_texture failed for object '{}' - image={}, "
-               "deviceIndex={}, descriptorSets.size()={}\n",
-               identifier, (void *)image, deviceIndex, descriptorSets.size());
+void render::Object::bind_texture_to_descriptor_sets(
+    const std::string &matIdentifier, Image *image, uint32_t binding,
+    uint32_t deviceIndex) {
+  auto it = materialDescriptorSets.find(matIdentifier);
+  if (it == materialDescriptorSets.end()) {
+    std::print("Warning: No descriptor sets found for material '{}' in object "
+               "'{}'\n",
+               matIdentifier, identifier);
     return;
   }
 
-  std::print("Binding texture for object '{}' to binding {} on device {}, {} "
-             "frames\n",
-             identifier, binding, deviceIndex,
+  auto &descriptorSets = it->second;
+  if (!image || deviceIndex >= descriptorSets.size()) {
+    std::print("Warning: bind_texture failed for object '{}' material '{}' - "
+               "image={}, deviceIndex={}, descriptorSets.size()={}\n",
+               identifier, matIdentifier, (void *)image, deviceIndex,
+               descriptorSets.size());
+    return;
+  }
+
+  std::print("Binding texture for material '{}' to binding {} on device "
+             "{}, {} frames\n",
+             matIdentifier, binding, deviceIndex,
              descriptorSets[deviceIndex].size());
 
   // Update all frames for this device
@@ -371,27 +486,38 @@ void render::Object::bind_texture_to_descriptor_sets(Image *image,
              descriptorSets[deviceIndex].size());
 }
 
-void render::Object::bind_buffer_to_descriptor_sets(device::Buffer *buffer,
-                                                    uint32_t binding,
-                                                    uint32_t deviceIndex) {
+void render::Object::bind_buffer_to_descriptor_sets(
+    const std::string &matIdentifier, device::Buffer *buffer, uint32_t binding,
+    uint32_t deviceIndex) {
+  auto it = materialDescriptorSets.find(matIdentifier);
+  if (it == materialDescriptorSets.end()) {
+    std::print("Warning: No descriptor sets found for material '{}' in "
+               "object '{}'\n",
+               matIdentifier, identifier);
+    return;
+  }
+
+  auto &descriptorSets = it->second;
   if (!buffer || deviceIndex >= descriptorSets.size()) {
-    std::print("Warning: bind_buffer failed for object '{}' - buffer={}, "
-               "deviceIndex={}, descriptorSets.size()={}\n",
-               identifier, (void *)buffer, deviceIndex, descriptorSets.size());
+    std::print("Warning: bind_buffer failed for object '{}' material '{}' - "
+               "buffer={}, deviceIndex={}, descriptorSets.size()={}\n",
+               identifier, matIdentifier, (void *)buffer, deviceIndex,
+               descriptorSets.size());
     return;
   }
 
   VkBuffer vkBuffer = buffer->get_buffer(deviceIndex);
   if (!vkBuffer) {
     std::print("ERROR: Buffer '{}' returned null VkBuffer handle for object "
-               "'{}' device {}\n",
-               buffer->get_identifier(), identifier, deviceIndex);
+               "'{}' material '{}' device {}\n",
+               buffer->get_identifier(), identifier, matIdentifier,
+               deviceIndex);
     return;
   }
 
-  std::print("Binding UBO for object '{}' (buffer='{}', handle={}) to binding "
-             "{} on device {}, {} frames\n",
-             identifier, buffer->get_identifier(), (void *)vkBuffer, binding,
+  std::print("Binding UBO for material '{}' (buffer='{}', handle={}) to "
+             "binding {} on device {}, {} frames\n",
+             matIdentifier, buffer->get_identifier(), (void *)vkBuffer, binding,
              deviceIndex, descriptorSets[deviceIndex].size());
 
   // Update all frames for this device
@@ -462,8 +588,8 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
 
       // Update UBO with object's transformation for this material
-      std::string uboBufferName =
-          get_ubo_buffer_name(useMaterial->get_identifier());
+      std::string useMaterialId = useMaterial->get_identifier();
+      std::string uboBufferName = get_ubo_buffer_name(useMaterialId);
 
       if (!uboBufferName.empty()) {
         device::Buffer *uboBuffer = bufferManager->get_buffer(uboBufferName);
@@ -477,12 +603,15 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
         }
       }
 
-      // Bind material for this submesh with object's descriptor set
+      // Get descriptor set for this material
       vk::raii::DescriptorSet *descriptorSet = nullptr;
-      if (deviceIndex < descriptorSets.size() &&
-          frameIndex < descriptorSets[deviceIndex].size()) {
-        descriptorSet = &descriptorSets[deviceIndex][frameIndex];
+      auto it = materialDescriptorSets.find(useMaterialId);
+      if (it != materialDescriptorSets.end() &&
+          deviceIndex < it->second.size() &&
+          frameIndex < it->second[deviceIndex].size()) {
+        descriptorSet = &it->second[deviceIndex][frameIndex];
       }
+      // Bind material for this submesh with the correct descriptor set
       useMaterial->bind(commandBuffer, deviceIndex, descriptorSet);
 
       // Draw this submesh with its specific index range
@@ -519,12 +648,14 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       }
     }
 
-    // Bind material with object's descriptor set
+    // Get descriptor set for the base material
     vk::raii::DescriptorSet *descriptorSet = nullptr;
-    if (deviceIndex < descriptorSets.size() &&
-        frameIndex < descriptorSets[deviceIndex].size()) {
-      descriptorSet = &descriptorSets[deviceIndex][frameIndex];
+    auto it = materialDescriptorSets.find(materialIdentifier);
+    if (it != materialDescriptorSets.end() && deviceIndex < it->second.size() &&
+        frameIndex < it->second[deviceIndex].size()) {
+      descriptorSet = &it->second[deviceIndex][frameIndex];
     }
+    // Bind material with object's descriptor set
     material->bind(commandBuffer, deviceIndex, descriptorSet);
 
     // Draw
