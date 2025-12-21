@@ -160,7 +160,7 @@ void render::Renderer::init_materials() {
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::False,
+      .rasterizationState = {.depthClampEnable = vk::True,
                              .rasterizerDiscardEnable = vk::False,
                              .polygonMode = vk::PolygonMode::eFill,
                              .cullMode = vk::CullModeFlagBits::eBack,

@@ -160,8 +160,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
 
   // Create per-object UBO for Test and Test2D materials to avoid sharing
   // transforms
-  if ((materialIdentifier == "Test" || materialIdentifier == "Test2D") &&
-      !useSubmeshes) {
+  if (materialIdentifier == "Test" || materialIdentifier == "Test2D") {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
                                             .view = glm::mat4(1.0f),
                                             .proj = glm::mat4(1.0f)};
@@ -176,6 +175,37 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
         .initialData = &uboData};
 
     bufferManager->create_buffer(uboInfo);
+  }
+
+  // Create UBOs for submesh materials if needed
+  if (useSubmeshes) {
+    for (const auto &submesh : submeshes) {
+      if (submesh.materialIdentifier == "Test" ||
+          submesh.materialIdentifier == "Test2D") {
+        // Only create if different from base material
+        if (submesh.materialIdentifier != materialIdentifier) {
+          device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                                  .view = glm::mat4(1.0f),
+                                                  .proj = glm::mat4(1.0f)};
+
+          std::string uboBufferName =
+              submesh.materialIdentifier + "_" + identifier + "_ubo";
+          
+          // Check if buffer doesn't already exist
+          if (!bufferManager->get_buffer(uboBufferName)) {
+            device::Buffer::BufferCreateInfo uboInfo = {
+                .identifier = uboBufferName,
+                .type = device::Buffer::BufferType::UNIFORM,
+                .usage = device::Buffer::BufferUsage::DYNAMIC,
+                .size = sizeof(device::Buffer::TransformUBO),
+                .elementSize = sizeof(device::Buffer::TransformUBO),
+                .initialData = &uboData};
+
+            bufferManager->create_buffer(uboInfo);
+          }
+        }
+      }
+    }
   }
 
   // Create per-object descriptor sets
