@@ -330,12 +330,8 @@ void render::Renderer::create_buffers() {
 
     bufferManager->create_buffer(matInfo);
 
-    // Bind the UBO to the Test material
-    Material *testMaterial = materialManager->get_materials()[0];
-    device::Buffer *testUboBuffer = bufferManager->get_buffer("material-test");
-    if (testMaterial && testUboBuffer) {
-      testMaterial->bind_uniform_buffer(testUboBuffer, 0, 0);
-    }
+    // Note: UBO binding is now handled by individual objects
+    // Objects will bind their descriptor sets during creation
   }
 }
 

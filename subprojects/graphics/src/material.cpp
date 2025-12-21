@@ -259,40 +259,6 @@ void render::Material::bind(vk::raii::CommandBuffer &commandBuffer,
   }
 }
 
-// Legacy methods - kept for backward compatibility  
-// These are deprecated as descriptor sets are now managed by Object class
-void render::Material::bind_texture(class Image *image, uint32_t binding,
-                                    uint32_t deviceIndex) {
-  // This method is deprecated - descriptor sets are now owned by Object
-  // Keeping empty stub for backward compatibility during transition
-  if (image) {
-    std::print("Warning: Material::bind_texture is deprecated for material '{}'. "
-               "Descriptor sets are now managed by Object class.\n", identifier);
-  }
-}
-
-void render::Material::bind_texture_for_frame(Image *image, uint32_t binding,
-                                              uint32_t deviceIndex,
-                                              uint32_t frameIndex) {
-  // This method is deprecated - descriptor sets are now owned by Object
-  // Keeping empty stub for backward compatibility during transition
-  if (image) {
-    std::print("Warning: Material::bind_texture_for_frame is deprecated for material '{}'. "
-               "Descriptor sets are now managed by Object class.\n", identifier);
-  }
-}
-
-void render::Material::bind_uniform_buffer(device::Buffer *buffer,
-                                           uint32_t binding,
-                                           uint32_t deviceIndex) {
-  // This method is deprecated - descriptor sets are now owned by Object
-  // Keeping empty stub for backward compatibility during transition
-  if (buffer) {
-    std::print("Warning: Material::bind_uniform_buffer is deprecated for material '{}'. "
-               "Descriptor sets are now managed by Object class.\n", identifier);
-  }
-}
-
 void render::Material::set_color(const glm::vec4 &newColor) {
   std::lock_guard lock(materialMutex);
   color = newColor;

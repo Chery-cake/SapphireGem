@@ -85,19 +85,6 @@ public:
             vk::raii::DescriptorSet *descriptorSet = nullptr,
             uint32_t deviceIndex = 0);
 
-  // These methods are deprecated - descriptor binding should be done via Object
-  // Keeping for backward compatibility during transition
-  void bind_texture(Image *image, uint32_t binding = 1,
-                    uint32_t deviceIndex = 0);
-
-  // Texture binding for a specific frame (per-object texture support)
-  void bind_texture_for_frame(Image *image, uint32_t binding,
-                              uint32_t deviceIndex, uint32_t frameIndex);
-
-  // Uniform buffer binding for materials
-  void bind_uniform_buffer(device::Buffer *buffer, uint32_t binding = 0,
-                           uint32_t deviceIndex = 0);
-
   void set_color(const glm::vec4 &newColor);
   void set_roughness(const float &newRougthness);
   void set_metallic(const float &newMetallic);

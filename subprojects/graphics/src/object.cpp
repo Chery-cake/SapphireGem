@@ -441,7 +441,8 @@ render::Object::RotationMode render::Object::get_rotation_mode() const {
 
 void render::Object::create_descriptor_sets() {
   if (!material) {
-    return; // Cannot create descriptor sets without a material
+    std::print("Warning: Cannot create descriptor sets for object '{}' - no material\n", identifier);
+    return;
   }
   
   // Create descriptor sets for each device
@@ -465,25 +466,42 @@ void render::Object::create_descriptor_sets() {
     descriptorSets.emplace_back(device->get_device(), allocInfo);
   }
   
-  // Bind texture if this is a textured object
+  // Bind uniform buffer first (binding 0)
+  for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
+    std::string uboName = get_ubo_buffer_name(materialIdentifier);
+    if (uboName.empty()) {
+      std::print("Warning: No UBO name for object '{}' with material '{}'\n", 
+                 identifier, materialIdentifier);
+      continue;
+    }
+    
+    auto *uboBuffer = bufferManager->get_buffer(uboName);
+    if (!uboBuffer) {
+      std::print("Warning: UBO buffer '{}' not found for object '{}'\n", 
+                 uboName, identifier);
+      continue;
+    }
+    
+    bind_buffer_to_descriptor_sets(uboBuffer, 0, deviceIdx);
+  }
+  
+  // Bind texture if this is a textured object (binding 1)
   if (textureManager && !textureIdentifier.empty()) {
     auto *texture = textureManager->get_texture(textureIdentifier);
-    if (texture && texture->get_image()) {
+    if (!texture) {
+      std::print("Warning: Texture '{}' not found for object '{}'\n", 
+                 textureIdentifier, identifier);
+    } else if (!texture->get_image()) {
+      std::print("Warning: Texture '{}' has no image for object '{}'\n", 
+                 textureIdentifier, identifier);
+    } else {
       for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
         bind_texture_to_descriptor_sets(texture->get_image().get(), 1, deviceIdx);
       }
     }
-  }
-  
-  // Bind uniform buffer
-  for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
-    std::string uboName = get_ubo_buffer_name(materialIdentifier);
-    if (!uboName.empty()) {
-      auto *uboBuffer = bufferManager->get_buffer(uboName);
-      if (uboBuffer) {
-        bind_buffer_to_descriptor_sets(uboBuffer, 0, deviceIdx);
-      }
-    }
+  } else if (!textureIdentifier.empty()) {
+    std::print("Warning: Texture identifier '{}' specified but no texture manager for object '{}'\n",
+               textureIdentifier, identifier);
   }
 }
 
