@@ -894,9 +894,9 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
                                          // Right face (Test - animated shader)
                                          12, 13, 14, 14, 15, 12,
                                          // Top face (Textured_checkerboard)
-                                         16, 17, 18, 18, 19, 16,
+                                         17, 19, 16, 17, 18, 19,
                                          // Bottom face (Textured_gradient)
-                                         20, 22, 21, 20, 23, 22};
+                                         20, 21, 22, 20, 22, 23};
 
   // Define submeshes for each face with different materials
   // Each cube face uses 6 indices (2 triangles), starting at index =
