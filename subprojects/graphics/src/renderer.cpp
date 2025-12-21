@@ -859,13 +859,15 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
   };
 
   // Define submeshes for each face with different materials
+  // Each cube face uses 6 indices (2 triangles), starting at index = face_index * 6
+  constexpr uint32_t INDICES_PER_FACE = 6;
   std::vector<Object::Submesh> submeshes = {
-      {0, 6, "Textured_checkerboard", nullptr},  // Front
-      {6, 6, "Textured_gradient", nullptr},      // Back
-      {12, 6, "Textured_atlas", nullptr},        // Left
-      {18, 6, "Test", nullptr},                  // Right (shader animation)
-      {24, 6, "Textured_checkerboard", nullptr}, // Top
-      {30, 6, "Textured_gradient", nullptr}      // Bottom
+      {0 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_checkerboard", nullptr},  // Front
+      {1 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_gradient", nullptr},      // Back
+      {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_atlas", nullptr},         // Left
+      {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test", nullptr},                   // Right (shader animation)
+      {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_checkerboard", nullptr},  // Top
+      {5 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured_gradient", nullptr}       // Bottom
   };
 
   Object::ObjectCreateInfo createInfo{

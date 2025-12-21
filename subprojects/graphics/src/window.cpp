@@ -349,8 +349,9 @@ void render::Window::create_scene_objects() {
   std::print("Creating atlas quads...\n");
   
   // Define UV bounds for the 2x2 atlas grid
-  constexpr float atlasHalfU = 0.5f;
-  constexpr float atlasHalfV = 0.5f;
+  // Each region is 0.5 x 0.5 in UV space (50% of texture width/height)
+  constexpr float atlasHalfU = 0.5f; // Midpoint of U coordinate (horizontal)
+  constexpr float atlasHalfV = 0.5f; // Midpoint of V coordinate (vertical)
   
   // Atlas quad 1 - Top-left (Red) region (UV: 0.0-0.5, 0.0-0.5)
   {
@@ -468,9 +469,10 @@ void render::Window::create_scene_objects() {
         4, 6, 5, 4, 7, 6   // Right triangle pair (gradient)
     };
     
+    // Define submeshes: Each quad uses 6 indices (2 triangles)
     std::vector<Object::Submesh> submeshes = {
-        {0, 6, "Textured_checkerboard", nullptr},
-        {6, 6, "Textured_gradient", nullptr}
+        {0, 6, "Textured_checkerboard", nullptr},  // Start at index 0, use 6 indices
+        {6, 6, "Textured_gradient", nullptr}       // Start at index 6, use 6 indices
     };
     
     Object::ObjectCreateInfo createInfo{
