@@ -347,15 +347,18 @@ void render::Window::create_scene_objects() {
 
   // Create atlas quads with UV coordinates for each region
   std::print("Creating atlas quads...\n");
-  const auto &atlasRegions = atlasTex->get_atlas_regions();
   
-  // Atlas quad 1 - Top-left (Red) region
+  // Define UV bounds for the 2x2 atlas grid
+  constexpr float atlasHalfU = 0.5f;
+  constexpr float atlasHalfV = 0.5f;
+  
+  // Atlas quad 1 - Top-left (Red) region (UV: 0.0-0.5, 0.0-0.5)
   {
     const std::vector<Object::Vertex2DTextured> vertices = {
         {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, -0.5f}, {0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, 0.5f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+        {{0.5f, -0.5f}, {atlasHalfU, 0.0f}, {1.0f, 1.0f, 1.0f}},
+        {{0.5f, 0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {0.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}}
     };
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
     
@@ -373,13 +376,13 @@ void render::Window::create_scene_objects() {
     atlasQuad1 = renderer->get_object_manager()->create_object(createInfo);
   }
   
-  // Atlas quad 2 - Top-right (Green) region
+  // Atlas quad 2 - Top-right (Green) region (UV: 0.5-1.0, 0.0-0.5)
   {
     const std::vector<Object::Vertex2DTextured> vertices = {
-        {{-0.5f, -0.5f}, {0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {atlasHalfU, 0.0f}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, 0.5f}, {1.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+        {{0.5f, 0.5f}, {1.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}}
     };
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
     
@@ -397,12 +400,12 @@ void render::Window::create_scene_objects() {
     atlasQuad2 = renderer->get_object_manager()->create_object(createInfo);
   }
   
-  // Atlas quad 3 - Bottom-left (Blue) region
+  // Atlas quad 3 - Bottom-left (Blue) region (UV: 0.0-0.5, 0.5-1.0)
   {
     const std::vector<Object::Vertex2DTextured> vertices = {
-        {{-0.5f, -0.5f}, {0.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, -0.5f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, 0.5f}, {0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {0.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
+        {{0.5f, -0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
+        {{0.5f, 0.5f}, {atlasHalfU, 1.0f}, {1.0f, 1.0f, 1.0f}},
         {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}
     };
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
@@ -421,13 +424,13 @@ void render::Window::create_scene_objects() {
     atlasQuad3 = renderer->get_object_manager()->create_object(createInfo);
   }
   
-  // Atlas quad 4 - Bottom-right (Yellow) region
+  // Atlas quad 4 - Bottom-right (Yellow) region (UV: 0.5-1.0, 0.5-1.0)
   {
     const std::vector<Object::Vertex2DTextured> vertices = {
-        {{-0.5f, -0.5f}, {0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, -0.5f}, {1.0f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
+        {{0.5f, -0.5f}, {1.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}}
+        {{-0.5f, 0.5f}, {atlasHalfU, 1.0f}, {1.0f, 1.0f, 1.0f}}
     };
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
     
