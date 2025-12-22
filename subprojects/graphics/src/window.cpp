@@ -31,6 +31,12 @@ render::Window::Window(int width, int height, std::string title)
   glfwSetKeyCallback(window, key_callback);
 
   renderer = std::make_unique<Renderer>(window);
+  
+  // Set up callback for post-reload object recreation
+  renderer->set_post_reload_callback([this]() {
+    std::print("Recreating scene objects after reload...\n");
+    create_scene_objects();
+  });
 
   create_scene_objects();
 }
@@ -92,6 +98,18 @@ void render::Window::create_scene_objects() {
     std::print("Error: Renderer not initialized\n");
     return;
   }
+  
+  // Reset all object pointers (in case this is called during reload)
+  triangle = nullptr;
+  cube = nullptr;
+  texturedSquare = nullptr;
+  imageQuad = nullptr;
+  atlasQuad1 = nullptr;
+  atlasQuad2 = nullptr;
+  atlasQuad3 = nullptr;
+  atlasQuad4 = nullptr;
+  multiMaterialQuad = nullptr;
+  multiMaterialCube = nullptr;
 
   // Load textures using the TextureManager
   auto &textureMgr = renderer->get_texture_manager();

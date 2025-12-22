@@ -608,6 +608,11 @@ void render::Renderer::reload() {
   objectManager->set_gpu_config(gpuConfig);
 
   std::print("Reload complete!\n");
+  
+  // Notify callback that reload is complete and objects can be recreated
+  if (postReloadCallback) {
+    postReloadCallback();
+  }
 }
 
 void render::Renderer::draw_frame() {
@@ -667,6 +672,10 @@ void render::Renderer::set_gpu_config(
     const ObjectManager::MultiGPUConfig &config) {
   gpuConfig = config;
   objectManager->set_gpu_config(config);
+}
+
+void render::Renderer::set_post_reload_callback(std::function<void()> callback) {
+  postReloadCallback = std::move(callback);
 }
 
 device::DeviceManager &render::Renderer::get_device_manager() {
