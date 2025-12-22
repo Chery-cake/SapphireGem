@@ -8,6 +8,7 @@
 #include "texture_manager.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <sys/types.h>
 #include <vulkan/vulkan.hpp>
@@ -39,6 +40,8 @@ private:
   uint32_t currentFrame;
   uint32_t frameCount; // total frames rendered
   uint32_t currentSemaphoreIndex;
+
+  std::function<void()> postReloadCallback;
 
   void init_instance();
   void init_surface();
@@ -72,6 +75,8 @@ public:
 
   void set_render_strategy(ObjectManager::RenderStrategy strategy);
   void set_gpu_config(const ObjectManager::MultiGPUConfig &config);
+
+  void set_post_reload_callback(std::function<void()> callback);
 
   device::DeviceManager &get_device_manager();
   MaterialManager &get_material_manager();

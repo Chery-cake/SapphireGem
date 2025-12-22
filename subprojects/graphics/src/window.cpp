@@ -31,6 +31,10 @@ render::Window::Window(int width, int height, std::string title)
   glfwSetKeyCallback(window, key_callback);
 
   renderer = std::make_unique<Renderer>(window);
+  renderer->set_post_reload_callback([this]() {
+    std::print("Recreating scene objects after reload...\n");
+    create_scene_objects();
+  });
 
   create_scene_objects();
 }
@@ -62,11 +66,11 @@ void render::Window::key_callback(GLFWwindow *window, int key, int scancode,
   // Reserved for future keyboard input handling
 
   if (key == GLFW_KEY_R) {
-    std::print("R key pressed\n");
+    std::print("\n\nR key pressed\n");
     win->renderer->reload();
   }
   if (key == GLFW_KEY_F) {
-    std::print("F key pressed\n");
+    std::print("\n\nF key pressed\n");
     general::Config::get_instance().set_reload(true);
     win->renderer->reload();
   }
