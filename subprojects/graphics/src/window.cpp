@@ -1,5 +1,6 @@
 #include "window.h"
 #include "config.h"
+#include "naming.h"
 #include "object.h"
 #include "renderer.h"
 #include "texture.h"
@@ -472,17 +473,23 @@ void render::Window::create_scene_objects() {
   // Create original objects - positions will be updated by
   // update_object_positions()
   std::print("Creating original objects...\n");
+  
+  // Use standardized naming for consistent object identification
   texturedSquare = renderer->create_textured_square_2d(
-      "textured_square", "checkerboard",
+      naming::make_object_name(naming::ObjectType::SQUARE_2D, "textured"), 
+      naming::make_texture_name("checkerboard"),
       glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.15f, 0.15f, 1.0f));
 
   imageQuad = renderer->create_textured_square_2d(
-      "image_quad", "gradient", glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
+      naming::make_object_name(naming::ObjectType::QUAD_2D, "image"), 
+      naming::make_texture_name("gradient"), 
+      glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.15f, 0.15f, 1.0f));
 
   triangle = renderer->create_triangle_2d(
-      "triangle", glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
+      naming::make_object_name(naming::ObjectType::TRIANGLE_2D, "main"), 
+      glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 1.0f));
   if (triangle) {
     triangle->set_rotation_mode(Object::RotationMode::SHADER_2D);
@@ -490,7 +497,8 @@ void render::Window::create_scene_objects() {
 
   // Create a 3D cube on the right side
   cube = renderer->create_cube_3d(
-      "cube", glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
+      naming::make_object_name(naming::ObjectType::CUBE_3D, "main"), 
+      glm::vec3(0.0f, 0.0f, 0.0f), // Temp position
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.15f, 0.15f, 0.15f));
   if (cube) {
     cube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
@@ -513,15 +521,16 @@ void render::Window::create_scene_objects() {
         {{-0.5f, 0.5f}, {0.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}}};
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-    Object::ObjectCreateInfo createInfo{.identifier = "atlas_quad1",
-                                        .type = Object::ObjectType::OBJECT_2D,
-                                        .vertices = vertices,
-                                        .indices = indices,
-                                        .materialIdentifier = "Textured_atlas",
-                                        .textureIdentifier = "atlas",
-                                        .position = glm::vec3(0.0f, 0.0f, 0.0f),
-                                        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
-                                        .visible = true};
+    Object::ObjectCreateInfo createInfo{
+        .identifier = naming::make_object_name(naming::ObjectType::QUAD_2D, "atlas1"),
+        .type = Object::ObjectType::OBJECT_2D,
+        .vertices = vertices,
+        .indices = indices,
+        .materialIdentifier = naming::make_material_name(naming::MaterialType::TEXTURED_ATLAS),
+        .textureIdentifier = naming::make_texture_name("atlas"),
+        .position = glm::vec3(0.0f, 0.0f, 0.0f),
+        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
+        .visible = true};
     atlasQuad1 = renderer->get_object_manager()->create_object(createInfo);
   }
 
@@ -534,15 +543,16 @@ void render::Window::create_scene_objects() {
         {{-0.5f, 0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}}};
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-    Object::ObjectCreateInfo createInfo{.identifier = "atlas_quad2",
-                                        .type = Object::ObjectType::OBJECT_2D,
-                                        .vertices = vertices,
-                                        .indices = indices,
-                                        .materialIdentifier = "Textured_atlas",
-                                        .textureIdentifier = "atlas",
-                                        .position = glm::vec3(0.0f, 0.0f, 0.0f),
-                                        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
-                                        .visible = true};
+    Object::ObjectCreateInfo createInfo{
+        .identifier = naming::make_object_name(naming::ObjectType::QUAD_2D, "atlas2"),
+        .type = Object::ObjectType::OBJECT_2D,
+        .vertices = vertices,
+        .indices = indices,
+        .materialIdentifier = naming::make_material_name(naming::MaterialType::TEXTURED_ATLAS),
+        .textureIdentifier = naming::make_texture_name("atlas"),
+        .position = glm::vec3(0.0f, 0.0f, 0.0f),
+        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
+        .visible = true};
     atlasQuad2 = renderer->get_object_manager()->create_object(createInfo);
   }
 
@@ -555,15 +565,16 @@ void render::Window::create_scene_objects() {
         {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}};
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-    Object::ObjectCreateInfo createInfo{.identifier = "atlas_quad3",
-                                        .type = Object::ObjectType::OBJECT_2D,
-                                        .vertices = vertices,
-                                        .indices = indices,
-                                        .materialIdentifier = "Textured_atlas",
-                                        .textureIdentifier = "atlas",
-                                        .position = glm::vec3(0.0f, 0.0f, 0.0f),
-                                        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
-                                        .visible = true};
+    Object::ObjectCreateInfo createInfo{
+        .identifier = naming::make_object_name(naming::ObjectType::QUAD_2D, "atlas3"),
+        .type = Object::ObjectType::OBJECT_2D,
+        .vertices = vertices,
+        .indices = indices,
+        .materialIdentifier = naming::make_material_name(naming::MaterialType::TEXTURED_ATLAS),
+        .textureIdentifier = naming::make_texture_name("atlas"),
+        .position = glm::vec3(0.0f, 0.0f, 0.0f),
+        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
+        .visible = true};
     atlasQuad3 = renderer->get_object_manager()->create_object(createInfo);
   }
 
@@ -576,15 +587,16 @@ void render::Window::create_scene_objects() {
         {{-0.5f, 0.5f}, {atlasHalfU, 1.0f}, {1.0f, 1.0f, 1.0f}}};
     const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
 
-    Object::ObjectCreateInfo createInfo{.identifier = "atlas_quad4",
-                                        .type = Object::ObjectType::OBJECT_2D,
-                                        .vertices = vertices,
-                                        .indices = indices,
-                                        .materialIdentifier = "Textured_atlas",
-                                        .textureIdentifier = "atlas",
-                                        .position = glm::vec3(0.0f, 0.0f, 0.0f),
-                                        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
-                                        .visible = true};
+    Object::ObjectCreateInfo createInfo{
+        .identifier = naming::make_object_name(naming::ObjectType::QUAD_2D, "atlas4"),
+        .type = Object::ObjectType::OBJECT_2D,
+        .vertices = vertices,
+        .indices = indices,
+        .materialIdentifier = naming::make_material_name(naming::MaterialType::TEXTURED_ATLAS),
+        .textureIdentifier = naming::make_texture_name("atlas"),
+        .position = glm::vec3(0.0f, 0.0f, 0.0f),
+        .scale = glm::vec3(0.12f, 0.12f, 1.0f),
+        .visible = true};
     atlasQuad4 = renderer->get_object_manager()->create_object(createInfo);
   }
 
@@ -609,21 +621,21 @@ void render::Window::create_scene_objects() {
 
     // Define submeshes: Each quad uses 6 indices (2 triangles)
     std::vector<Object::Submesh> submeshes = {
-        {0, 6, "Textured_checkerboard",
+        {0, 6, naming::make_material_name(naming::MaterialType::TEXTURED_CHECKERBOARD),
          nullptr},                           // Start at index 0, use 6 indices
-        {6, 6, "Textured_gradient", nullptr} // Start at index 6, use 6 indices
+        {6, 6, naming::make_material_name(naming::MaterialType::TEXTURED_GRADIENT), nullptr} // Start at index 6, use 6 indices
     };
 
-    Object::ObjectCreateInfo createInfo{.identifier = "multi_material_quad",
-                                        .type = Object::ObjectType::OBJECT_2D,
-                                        .vertices = vertices,
-                                        .indices = indices,
-                                        .materialIdentifier =
-                                            "Textured_checkerboard",
-                                        .submeshes = submeshes,
-                                        .position = glm::vec3(0.0f, 0.0f, 0.0f),
-                                        .scale = glm::vec3(0.2f, 0.2f, 1.0f),
-                                        .visible = true};
+    Object::ObjectCreateInfo createInfo{
+        .identifier = naming::make_object_name(naming::ObjectType::QUAD_2D, "multi_material"),
+        .type = Object::ObjectType::OBJECT_2D,
+        .vertices = vertices,
+        .indices = indices,
+        .materialIdentifier = naming::make_material_name(naming::MaterialType::TEXTURED_CHECKERBOARD),
+        .submeshes = submeshes,
+        .position = glm::vec3(0.0f, 0.0f, 0.0f),
+        .scale = glm::vec3(0.2f, 0.2f, 1.0f),
+        .visible = true};
     multiMaterialQuad =
         renderer->get_object_manager()->create_object(createInfo);
   }
@@ -631,7 +643,8 @@ void render::Window::create_scene_objects() {
   // Create a multi-material 3D cube
   std::print("Creating multi-material 3D cube...\n");
   multiMaterialCube = renderer->create_multi_material_cube_3d(
-      "multi_material_cube", glm::vec3(0.0f, 0.0f, 0.0f),
+      naming::make_object_name(naming::ObjectType::CUBE_3D, "multi_material"), 
+      glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 0.2f));
   if (multiMaterialCube) {
     multiMaterialCube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
