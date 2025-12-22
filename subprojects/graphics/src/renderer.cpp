@@ -885,16 +885,17 @@ render::Object *render::Renderer::create_multi_material_cube_3d(
   };
 
   // 36 indices for 12 triangles (2 per face)
+  // All faces wound counter-clockwise when viewed from outside the cube
   const std::vector<uint16_t> indices = {// Front face (Textured_checkerboard)
-                                         0, 2, 1, 0, 3, 2,
-                                         // Back face (Textured_gradient)
-                                         4, 5, 6, 6, 7, 4,
+                                         0, 1, 2, 0, 2, 3,
+                                         // Back face (Textured_gradient)  
+                                         4, 6, 5, 4, 7, 6,
                                          // Left face (Textured_atlas)
-                                         8, 10, 9, 8, 11, 10,
+                                         8, 9, 10, 8, 10, 11,
                                          // Right face (Test - animated shader)
-                                         12, 13, 14, 14, 15, 12,
+                                         12, 14, 13, 12, 15, 14,
                                          // Top face (Textured_checkerboard)
-                                         17, 19, 16, 17, 18, 19,
+                                         16, 18, 17, 16, 19, 18,
                                          // Bottom face (Textured_gradient)
                                          20, 21, 22, 20, 22, 23};
 
