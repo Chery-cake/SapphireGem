@@ -76,49 +76,41 @@ inline std::string make_object_name(ObjectType type, const std::string& descript
  * Format: <MaterialType>
  * Examples: Textured_atlas, Test2D, Textured_checkerboard
  */
-inline std::string make_material_name(MaterialType type, const std::string& suffix = "") {
-  std::string name;
-  
+inline std::string make_material_name(MaterialType type) {
   switch (type) {
     case MaterialType::TEST:
-      name = "Test";
-      break;
+      return "Test";
     case MaterialType::TEST_2D:
-      name = "Test2D";
-      break;
+      return "Test2D";
     case MaterialType::TEST_3D_TEXTURED:
-      name = "Test3DTextured";
-      break;
+      return "Test3DTextured";
     case MaterialType::TEXTURED:
-      name = "Textured";
-      break;
+      return "Textured";
     case MaterialType::TEXTURED_CHECKERBOARD:
-      name = "Textured_checkerboard";
-      break;
+      return "Textured_checkerboard";
     case MaterialType::TEXTURED_GRADIENT:
-      name = "Textured_gradient";
-      break;
+      return "Textured_gradient";
     case MaterialType::TEXTURED_ATLAS:
-      name = "Textured_atlas";
-      break;
+      return "Textured_atlas";
     case MaterialType::TEXTURED_3D_CHECKERBOARD:
-      name = "Textured3D_checkerboard";
-      break;
+      return "Textured3D_checkerboard";
     case MaterialType::TEXTURED_3D_GRADIENT:
-      name = "Textured3D_gradient";
-      break;
+      return "Textured3D_gradient";
     case MaterialType::TEXTURED_3D_ATLAS:
-      name = "Textured3D_atlas";
-      break;
+      return "Textured3D_atlas";
     case MaterialType::CUSTOM:
-      return suffix;
+      return ""; // Custom materials should use the overload below
   }
   
-  if (!suffix.empty()) {
-    return std::format("{}_{}", name, suffix);
-  }
-  
-  return name;
+  return ""; // Fallback for unknown types
+}
+
+/**
+ * Generate a custom material name
+ * Use this for custom materials that don't fit standard types
+ */
+inline std::string make_material_name(const std::string& customName) {
+  return customName;
 }
 
 /**
