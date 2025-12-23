@@ -2,55 +2,55 @@
 #include "texture.h"
 #include <print>
 
-namespace render {
+namespace scene {
 
-Scene3::Scene3(MaterialManager *matMgr, TextureManager *texMgr,
-               device::BufferManager *bufMgr, ObjectManager *objMgr)
-    : Scene(matMgr, texMgr, bufMgr, objMgr), multiMaterialQuad(nullptr),
+Scene3::Scene3(render::MaterialManager *matMgr, render::TextureManager *texMgr,
+               device::BufferManager *bufMgr, render::ObjectManager *objMgr)
+    : render::Scene(matMgr, texMgr, bufMgr, objMgr), multiMaterialQuad(nullptr),
       multiMaterialCube(nullptr) {}
 
 void Scene3::setup() {
   std::print("Setting up Scene 3: Multi-Material Objects\n");
 
   // Create textures
-  create_texture(TextureId::CHECKERBOARD, "../assets/textures/checkerboard.png");
-  create_texture(TextureId::GRADIENT, "../assets/textures/gradient.png");
-  create_texture_atlas(TextureId::ATLAS, "../assets/textures/atlas.png", 2, 2);
+  create_texture(render::TextureId::CHECKERBOARD, "../assets/textures/checkerboard.png");
+  create_texture(render::TextureId::GRADIENT, "../assets/textures/gradient.png");
+  create_texture_atlas(render::TextureId::ATLAS, "../assets/textures/atlas.png", 2, 2);
 
   // Create textured materials for 2D
-  create_textured_material(MaterialId::TEXTURED_CHECKERBOARD, true);
-  create_textured_material(MaterialId::TEXTURED_GRADIENT, true);
-  create_textured_material(MaterialId::TEXTURED_ATLAS, true);
+  create_textured_material(render::MaterialId::TEXTURED_CHECKERBOARD, true);
+  create_textured_material(render::MaterialId::TEXTURED_GRADIENT, true);
+  create_textured_material(render::MaterialId::TEXTURED_ATLAS, true);
 
   // Create textured materials for 3D
-  create_textured_material(MaterialId::TEXTURED_3D_CHECKERBOARD, false);
-  create_textured_material(MaterialId::TEXTURED_3D_GRADIENT, false);
-  create_textured_material(MaterialId::TEXTURED_3D_ATLAS, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_CHECKERBOARD, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_GRADIENT, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS, false);
 
   // Create basic 3D material for one face
-  create_basic_material(MaterialId::SIMPLE_SHADERS_3D_TEXTURED, false, true);
+  create_basic_material(render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED, false, true);
 
   // Create a 2D quad with two different materials (split horizontally)
   multiMaterialQuad = create_multi_material_quad_2d(
       "scene3_multi_material_quad",
-      {MaterialId::TEXTURED_CHECKERBOARD, MaterialId::TEXTURED_GRADIENT},
-      {TextureId::CHECKERBOARD, TextureId::GRADIENT},
+      {render::MaterialId::TEXTURED_CHECKERBOARD, render::MaterialId::TEXTURED_GRADIENT},
+      {render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT},
       glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.3f, 0.3f, 1.0f));
 
   // Create a 3D cube with different materials on each face
   multiMaterialCube = create_multi_material_cube_3d(
       "scene3_multi_material_cube",
-      {MaterialId::TEXTURED_3D_CHECKERBOARD, MaterialId::TEXTURED_3D_GRADIENT,
-       MaterialId::TEXTURED_3D_ATLAS, MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
-       MaterialId::TEXTURED_3D_CHECKERBOARD, MaterialId::TEXTURED_3D_GRADIENT},
-      {TextureId::CHECKERBOARD, TextureId::GRADIENT, TextureId::ATLAS,
-       TextureId::CHECKERBOARD, TextureId::CHECKERBOARD, TextureId::GRADIENT},
+      {render::MaterialId::TEXTURED_3D_CHECKERBOARD, render::MaterialId::TEXTURED_3D_GRADIENT,
+       render::MaterialId::TEXTURED_3D_ATLAS, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
+       render::MaterialId::TEXTURED_3D_CHECKERBOARD, render::MaterialId::TEXTURED_3D_GRADIENT},
+      {render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT, render::TextureId::ATLAS,
+       render::TextureId::CHECKERBOARD, render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT},
       glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.25f, 0.25f, 0.25f));
 
   if (multiMaterialCube) {
-    multiMaterialCube->set_rotation_mode(Object::RotationMode::TRANSFORM_3D);
+    multiMaterialCube->set_rotation_mode(render::Object::RotationMode::TRANSFORM_3D);
   }
 
   std::print("Scene 3 setup complete\n");
@@ -68,4 +68,4 @@ std::string Scene3::get_name() const {
   return "Scene 3: Multi-Material Objects";
 }
 
-} // namespace render
+} // namespace scene

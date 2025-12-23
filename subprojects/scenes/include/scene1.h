@@ -2,21 +2,21 @@
 
 #include "scene.h"
 
-namespace render {
+namespace scene {
 
 // Scene 1: Basic shapes - triangles and cubes with colored vertices
-class Scene1 : public Scene {
+class Scene1 : public render::Scene {
 private:
-  Object *triangle;
-  Object *cube;
+  render::Object *triangle;
+  render::Object *cube;
 
 public:
-  Scene1(MaterialManager *matMgr, TextureManager *texMgr,
-         device::BufferManager *bufMgr, ObjectManager *objMgr);
+  Scene1(render::MaterialManager *matMgr, render::TextureManager *texMgr,
+         device::BufferManager *bufMgr, render::ObjectManager *objMgr);
 
   void setup() override;
   void update(float deltaTime, float totalTime) override;
   std::string get_name() const override;
 };
 
-} // namespace render
+} // namespace scene

@@ -2,21 +2,21 @@
 
 #include "scene.h"
 
-namespace render {
+namespace scene {
 
 // Scene 3: Multi-material objects - objects with multiple materials
-class Scene3 : public Scene {
+class Scene3 : public render::Scene {
 private:
-  Object *multiMaterialQuad;
-  Object *multiMaterialCube;
+  render::Object *multiMaterialQuad;
+  render::Object *multiMaterialCube;
 
 public:
-  Scene3(MaterialManager *matMgr, TextureManager *texMgr,
-         device::BufferManager *bufMgr, ObjectManager *objMgr);
+  Scene3(render::MaterialManager *matMgr, render::TextureManager *texMgr,
+         device::BufferManager *bufMgr, render::ObjectManager *objMgr);
 
   void setup() override;
   void update(float deltaTime, float totalTime) override;
   std::string get_name() const override;
 };
 
-} // namespace render
+} // namespace scene

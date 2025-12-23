@@ -29,7 +29,7 @@ render::Window::Window(int width, int height, std::string title)
 
   renderer = std::make_unique<Renderer>(window);
   renderer->set_post_reload_callback([this]() {
-    std::print("Recreating scenes after reload...\n");
+    std::print("Recreating active scene after reload...\n");
     create_scenes();
   });
 
@@ -108,29 +108,41 @@ void render::Window::create_scenes() {
   auto &bufferMgr = renderer->get_buffer_manager();
   auto *objectMgr = renderer->get_object_manager();
 
-  // Create the three scenes
-  std::print("Creating scenes...\n");
+  // Create the three scenes (but don't setup yet - lazy loading)
+  std::print("Creating scene instances...\n");
 
-  scenes.push_back(std::make_unique<Scene1>(&materialMgr, &textureMgr,
+  scenes.push_back(std::make_unique<scene::Scene1>(&materialMgr, &textureMgr,
                                             &bufferMgr, objectMgr));
-  scenes.push_back(std::make_unique<Scene2>(&materialMgr, &textureMgr,
+  scenes.push_back(std::make_unique<scene::Scene2>(&materialMgr, &textureMgr,
                                             &bufferMgr, objectMgr));
-  scenes.push_back(std::make_unique<Scene3>(&materialMgr, &textureMgr,
+  scenes.push_back(std::make_unique<scene::Scene3>(&materialMgr, &textureMgr,
                                             &bufferMgr, objectMgr));
 
-  // Setup all scenes
-  for (auto &scene : scenes) {
-    scene->setup();
+  // Setup only the first scene (active scene)
+  if (!scenes.empty()) {
+    std::print("Loading initial scene: {}\n", scenes[currentSceneIndex]->get_name());
+    scenes[currentSceneIndex]->setup();
   }
-
-  std::print("All scenes created. Current scene: {}\n",
-             scenes[currentSceneIndex]->get_name());
 }
 
 void render::Window::switch_scene() {
+  if (scenes.empty()) {
+    return;
+  }
+
+  // Unload current scene (cleanup will happen in Scene destructor if needed)
+  std::print("Unloading scene: {}\n", scenes[currentSceneIndex]->get_name());
+  
   // Cycle to next scene
+  size_t previousSceneIndex = currentSceneIndex;
   currentSceneIndex = (currentSceneIndex + 1) % scenes.size();
-  std::print("Switched to {}\n", scenes[currentSceneIndex]->get_name());
+  
+  // Check if new scene is already loaded, if not, setup
+  // For now, we'll re-setup each time to ensure fresh state
+  // In a more sophisticated implementation, we could track which scenes are loaded
+  std::print("Switching to {}\n", scenes[currentSceneIndex]->get_name());
+  std::print("Loading scene into GPU...\n");
+  scenes[currentSceneIndex]->setup();
 }
 
 void render::Window::update_current_scene() {
