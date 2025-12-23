@@ -1,6 +1,7 @@
 #include "object.h"
 #include "buffer_manager.h"
 #include "config.h"
+#include "identifiers.h"
 #include "material.h"
 #include "material_manager.h"
 #include "texture_manager.h"
@@ -159,10 +160,8 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   }
 
   // Create per-object UBO for materials that need separate transforms per object
-  // Materials need per-object UBO if they start with "simple_shaders" or "Textured"
-  bool needsPerObjectUBO =
-      (materialIdentifier.find("simple_shaders") == 0 ||
-       materialIdentifier.find("Textured") == 0);
+  // Use centralized function to check if material needs UBO based on naming convention
+  bool needsPerObjectUBO = material_needs_per_object_ubo(materialIdentifier);
 
   if (needsPerObjectUBO) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
@@ -184,8 +183,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Create UBOs for submesh materials if needed
   if (useSubmeshes) {
     for (const auto &submesh : submeshes) {
-      bool submeshNeedsUBO = (submesh.materialIdentifier.find("simple_shaders") == 0 ||
-                              submesh.materialIdentifier.find("Textured") == 0);
+      bool submeshNeedsUBO = material_needs_per_object_ubo(submesh.materialIdentifier);
 
       if (submeshNeedsUBO) {
         // Only create if different from base material
@@ -277,10 +275,8 @@ void render::Object::setup_materials_for_submeshes(
 
 std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
-  // All materials now use per-object UBOs to avoid sharing transforms
-  // Materials that start with "simple_shaders" or "Textured" need UBOs
-  if (matIdentifier.find("simple_shaders") == 0 ||
-      matIdentifier.find("Textured") == 0) {
+  // Use centralized function to check if material needs UBO
+  if (material_needs_per_object_ubo(matIdentifier)) {
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";

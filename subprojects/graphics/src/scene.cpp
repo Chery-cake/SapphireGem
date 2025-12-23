@@ -14,8 +14,21 @@ Scene::Scene(MaterialManager *matMgr, TextureManager *texMgr,
       objectManager(objMgr) {}
 
 Scene::~Scene() {
-  // Objects are managed by ObjectManager, so we don't delete them here
+  // Cleanup will remove objects from managers
+  cleanup();
+}
+
+void Scene::cleanup() {
+  // Remove all scene objects from the object manager
+  // This frees GPU resources while keeping the Scene object in RAM
+  for (Object *obj : sceneObjects) {
+    if (obj && objectManager) {
+      objectManager->remove_object(obj->get_identifier());
+    }
+  }
   sceneObjects.clear();
+  
+  std::print("Scene cleanup: GPU resources freed\n");
 }
 
 const std::vector<Object *> &Scene::get_objects() const {

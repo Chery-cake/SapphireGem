@@ -130,16 +130,15 @@ void render::Window::switch_scene() {
     return;
   }
 
-  // Unload current scene (cleanup will happen in Scene destructor if needed)
+  // Cleanup/unload current scene to free GPU resources
   std::print("Unloading scene: {}\n", scenes[currentSceneIndex]->get_name());
+  scenes[currentSceneIndex]->cleanup();
   
   // Cycle to next scene
   size_t previousSceneIndex = currentSceneIndex;
   currentSceneIndex = (currentSceneIndex + 1) % scenes.size();
   
-  // Check if new scene is already loaded, if not, setup
-  // For now, we'll re-setup each time to ensure fresh state
-  // In a more sophisticated implementation, we could track which scenes are loaded
+  // Setup the new scene (load into GPU)
   std::print("Switching to {}\n", scenes[currentSceneIndex]->get_name());
   std::print("Loading scene into GPU...\n");
   scenes[currentSceneIndex]->setup();

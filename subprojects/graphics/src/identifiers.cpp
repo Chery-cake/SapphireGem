@@ -79,4 +79,34 @@ TextureId texture_id_from_string(const std::string &str) {
   throw std::runtime_error("Unknown texture identifier: " + str);
 }
 
+bool material_needs_per_object_ubo(const std::string &materialIdentifier) {
+  // Materials that need per-object UBOs are those with transform uniforms
+  // This includes all materials in our current system except for potential
+  // future materials that might not need transforms
+  // 
+  // The naming convention is:
+  // - Materials starting with "simple_shaders" need UBOs (basic colored materials)
+  // - Materials starting with "Textured" or "TEXTURED" need UBOs (textured materials)
+  //
+  // This function centralizes the logic so adding new materials following
+  // these naming conventions automatically works without code changes
+  
+  if (materialIdentifier.empty()) {
+    return false;
+  }
+  
+  // Check for simple_shaders prefix (case-sensitive)
+  if (materialIdentifier.rfind("simple_shaders", 0) == 0) {
+    return true;
+  }
+  
+  // Check for Textured prefix (handles both "Textured" and "TEXTURED")
+  if (materialIdentifier.rfind("Textured", 0) == 0 || 
+      materialIdentifier.rfind("TEXTURED", 0) == 0) {
+    return true;
+  }
+  
+  return false;
+}
+
 } // namespace render

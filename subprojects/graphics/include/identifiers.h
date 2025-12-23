@@ -34,4 +34,8 @@ std::string to_string(TextureId id);
 MaterialId material_id_from_string(const std::string &str);
 TextureId texture_id_from_string(const std::string &str);
 
+// Helper function to check if a material needs per-object UBO
+// Returns true for materials that require separate transform buffers per object
+bool material_needs_per_object_ubo(const std::string &materialIdentifier);
+
 } // namespace render

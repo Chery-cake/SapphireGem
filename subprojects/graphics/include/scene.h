@@ -95,6 +95,9 @@ public:
   // Setup the scene (create objects, materials, textures)
   virtual void setup() = 0;
 
+  // Cleanup the scene (remove objects from GPU, keep data in RAM)
+  virtual void cleanup();
+
   // Update the scene (animations, transformations)
   virtual void update(float deltaTime, float totalTime) = 0;
 
