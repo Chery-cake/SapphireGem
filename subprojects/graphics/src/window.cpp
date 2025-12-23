@@ -54,7 +54,6 @@ void render::Window::frame_buffer_resize_callback(GLFWwindow *window, int width,
   win->currentWidth = width;
   win->currentHeight = height;
   win->aspectRatio = static_cast<float>(width) / static_cast<float>(height);
-  win->update_objects_positions();
 }
 
 void render::Window::key_callback(GLFWwindow *window, int key, int scancode,

@@ -20,7 +20,7 @@ class Renderer {
 
 private:
   GLFWwindow *window;
-  vk::detail::DynamicLoader dl;
+  vk::DynamicLoader dl;
 
   vk::raii::Context context;
   vk::raii::Instance instance;
