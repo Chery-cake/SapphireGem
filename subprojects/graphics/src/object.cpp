@@ -158,12 +158,10 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
                materialIdentifier, identifier);
   }
 
-  // Create per-object UBO for materials that need separate transforms per
-  // object This includes simple_shaders, simple_shaders_2d, simple_shaders_3d_textured, and all Textured
-  // materials (both 2D and 3D)
+  // Create per-object UBO for materials that need separate transforms per object
+  // Materials need per-object UBO if they start with "simple_shaders" or "Textured"
   bool needsPerObjectUBO =
-      (materialIdentifier == "simple_shaders" || materialIdentifier == "simple_shaders_2d" ||
-       materialIdentifier == "simple_shaders_3d_textured" ||
+      (materialIdentifier.find("simple_shaders") == 0 ||
        materialIdentifier.find("Textured") == 0);
 
   if (needsPerObjectUBO) {
@@ -186,9 +184,7 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Create UBOs for submesh materials if needed
   if (useSubmeshes) {
     for (const auto &submesh : submeshes) {
-      bool submeshNeedsUBO = (submesh.materialIdentifier == "simple_shaders" ||
-                              submesh.materialIdentifier == "simple_shaders_2d" ||
-                              submesh.materialIdentifier == "simple_shaders_3d_textured" ||
+      bool submeshNeedsUBO = (submesh.materialIdentifier.find("simple_shaders") == 0 ||
                               submesh.materialIdentifier.find("Textured") == 0);
 
       if (submeshNeedsUBO) {
@@ -282,8 +278,8 @@ void render::Object::setup_materials_for_submeshes(
 std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
   // All materials now use per-object UBOs to avoid sharing transforms
-  if (matIdentifier == "simple_shaders" || matIdentifier == "simple_shaders_2d" ||
-      matIdentifier == "simple_shaders_3d_textured" ||
+  // Materials that start with "simple_shaders" or "Textured" need UBOs
+  if (matIdentifier.find("simple_shaders") == 0 ||
       matIdentifier.find("Textured") == 0) {
     return matIdentifier + "_" + identifier + "_ubo";
   }

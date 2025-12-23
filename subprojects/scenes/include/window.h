@@ -1,13 +1,15 @@
 #pragma once
 
 #include "renderer.h"
-#include "scene.h"
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace render {
+
+// Forward declaration
+class Scene;
 
 class Window {
 

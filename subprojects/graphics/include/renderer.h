@@ -51,8 +51,6 @@ private:
 
   void init_debug();
 
-  void create_buffers();
-
   // Helper methods for drawFrame
   bool acquire_next_image(device::LogicalDevice *device, uint32_t &imageIndex,
                           uint32_t &semaphoreIndex);

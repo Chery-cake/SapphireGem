@@ -45,8 +45,6 @@ render::Renderer::Renderer(GLFWwindow *window)
   init_swap_chain();
   init_materials();
 
-  create_buffers();
-
   objectManager = std::make_unique<ObjectManager>(
       deviceManager.get(), materialManager.get(), bufferManager.get(),
       textureManager.get());
@@ -140,237 +138,12 @@ void render::Renderer::init_swap_chain() {
 void render::Renderer::init_materials() {
   materialManager = std::make_unique<MaterialManager>(deviceManager.get());
   textureManager = std::make_unique<TextureManager>(deviceManager.get());
-
-  vk::DescriptorSetLayoutBinding bidingInfo = {
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
-  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-      .blendEnable = vk::False,
-      .colorWriteMask =
-          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
-  auto bindingDescription = Object::Vertex3D::getBindingDescription();
-  auto attributeDescriptions = Object::Vertex3D::getAttributeDescriptions();
-
-  Material::MaterialCreateInfo createInfo{
-      .identifier = "simple_shaders",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::True,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{.vertexBindingDescriptionCount = 1,
-                        .pVertexBindingDescriptions = &bindingDescription,
-                        .vertexAttributeDescriptionCount =
-                            static_cast<uint32_t>(attributeDescriptions.size()),
-                        .pVertexAttributeDescriptions =
-                            attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo);
-
-  // Create 2D material (no depth testing for 2D objects)
-  Material::MaterialCreateInfo createInfo2D{
-      .identifier = "simple_shaders_2d",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::False,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eNone,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {.depthTestEnable = vk::False,
-                            .depthWriteEnable = vk::False},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{.vertexBindingDescriptionCount = 1,
-                        .pVertexBindingDescriptions = &bindingDescription,
-                        .vertexAttributeDescriptionCount =
-                            static_cast<uint32_t>(attributeDescriptions.size()),
-                        .pVertexAttributeDescriptions =
-                            attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo2D);
-
-  // Create 3D textured version of Test material (for multi-material cubes
-  // with textured vertices)
-  auto bindingDescription3DTextured =
-      Object::Vertex3DTextured::getBindingDescription();
-  auto attributeDescriptions3DTextured =
-      Object::Vertex3DTextured::getAttributeDescriptions();
-
-  Material::MaterialCreateInfo createInfo3DTextured{
-      .identifier = "simple_shaders_3d_textured",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::True,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{
-          .vertexBindingDescriptionCount = 1,
-          .pVertexBindingDescriptions = &bindingDescription3DTextured,
-          .vertexAttributeDescriptionCount =
-              static_cast<uint32_t>(attributeDescriptions3DTextured.size()),
-          .pVertexAttributeDescriptions =
-              attributeDescriptions3DTextured.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo3DTextured);
-
-  // Create textured material
-  vk::DescriptorSetLayoutBinding uboBinding = {
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
-  vk::DescriptorSetLayoutBinding samplerBinding = {
-      .binding = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eFragment};
-
-  auto texturedBindingDescription =
-      Object::Vertex2DTextured::getBindingDescription();
-  auto texturedAttributeDescriptions =
-      Object::Vertex2DTextured::getAttributeDescriptions();
-
-  // Textured material uses textured.spv compiled from textured.slang
-  // Compile command: slangc textured.slang -target spirv -profile spirv_1_4
-  //                  -emit-spirv-directly -fvk-use-entrypoint-name
-  //                  -entry vertMain -entry fragMain -o textured.spv
-  Material::MaterialCreateInfo texturedCreateInfo{
-      .identifier = "Textured",
-      .vertexShaders = "../assets/shaders/textured.spv",
-      .fragmentShaders = "../assets/shaders/textured.spv",
-      .descriptorBindings = {uboBinding, samplerBinding},
-      .rasterizationState = {.depthClampEnable = vk::False,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{
-          .vertexBindingDescriptionCount = 1,
-          .pVertexBindingDescriptions = &texturedBindingDescription,
-          .vertexAttributeDescriptionCount =
-              static_cast<uint32_t>(texturedAttributeDescriptions.size()),
-          .pVertexAttributeDescriptions = texturedAttributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(texturedCreateInfo);
+  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 }
 
 void render::Renderer::init_debug() {
   debugMessanger =
       general::Config::get_instance().set_up_debug_messanger(instance);
-}
-
-void render::Renderer::create_buffers() {
-  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
-
-  const std::vector<Object::Vertex2D> vertices = {
-      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
-
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = "vertices",
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(vertices) * sizeof(Object::Vertex2D),
-      .initialData = vertices.data()};
-
-  bufferManager->create_buffer(vertInfo);
-
-  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
-
-  device::Buffer::BufferCreateInfo indInfo = {
-      .identifier = "indices",
-      .type = device::Buffer::BufferType::INDEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(indices) * sizeof(uint16_t),
-      .initialData = indices.data()};
-
-  bufferManager->create_buffer(indInfo);
-
-  // Get the first material (or iterate through all if needed)
-  if (!materialManager->get_materials().empty()) {
-    Material *material = materialManager->get_materials()[0];
-
-    device::Buffer::TransformUBO testUboData = {
-        .model = glm::mat4(1.0f), // Identity matrix
-        .view = glm::mat4(1.0f),  // Identity matrix
-        .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
-    };
-
-    device::Buffer::BufferCreateInfo matInfo = {
-        .identifier = "material-test",
-        .type = device::Buffer::BufferType::UNIFORM,
-        .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(device::Buffer::TransformUBO),
-        .elementSize = sizeof(device::Buffer::TransformUBO),
-        .initialData = &testUboData};
-
-    bufferManager->create_buffer(matInfo);
-  }
 }
 
 bool render::Renderer::acquire_next_image(device::LogicalDevice *device,
@@ -601,7 +374,6 @@ void render::Renderer::reload() {
 
   init_swap_chain();
   init_materials();
-  create_buffers();
 
   objectManager = std::make_unique<ObjectManager>(
       deviceManager.get(), materialManager.get(), bufferManager.get(),
