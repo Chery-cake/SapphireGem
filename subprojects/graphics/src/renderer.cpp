@@ -157,7 +157,7 @@ void render::Renderer::init_materials() {
   auto attributeDescriptions = Object::Vertex3D::getAttributeDescriptions();
 
   Material::MaterialCreateInfo createInfo{
-      .identifier = "Test",
+      .identifier = "simple_shaders",
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
@@ -190,7 +190,7 @@ void render::Renderer::init_materials() {
 
   // Create 2D material (no depth testing for 2D objects)
   Material::MaterialCreateInfo createInfo2D{
-      .identifier = "Test2D",
+      .identifier = "simple_shaders_2d",
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
@@ -230,7 +230,7 @@ void render::Renderer::init_materials() {
       Object::Vertex3DTextured::getAttributeDescriptions();
 
   Material::MaterialCreateInfo createInfo3DTextured{
-      .identifier = "Test3DTextured",
+      .identifier = "simple_shaders_3d_textured",
       .vertexShaders = "../assets/shaders/slang.spv",
       .fragmentShaders = "../assets/shaders/slang.spv",
       .descriptorBindings = {bidingInfo},
@@ -698,249 +698,4 @@ device::BufferManager &render::Renderer::get_buffer_manager() {
 
 render::ObjectManager *render::Renderer::get_object_manager() {
   return objectManager.get();
-}
-
-render::Object *render::Renderer::create_triangle_2d(
-    const std::string &identifier, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 2D triangle vertices (in NDC space, z=0)
-  const std::vector<Object::Vertex3D> vertices = {
-      {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
-      {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
-      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
-  };
-
-  const std::vector<uint16_t> indices = {0, 1, 2};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = "Test2D",
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
-                                                 const glm::vec3 &position,
-                                                 const glm::vec3 &rotation,
-                                                 const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a proper 3D cube with all 6 faces
-  // 8 vertices for the cube corners
-  constexpr float s = 0.5f; // Half size
-
-  const std::vector<Object::Vertex3D> vertices = {
-      // Front face (red)
-      {{-s, -s, s}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {1.0f, 0.0f, 0.0f}},  // 3
-
-      // Back face (green)
-      {{-s, -s, -s}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f, 0.0f}},  // 7
-
-      // Left face (blue)
-      {{-s, -s, -s}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s}, {0.0f, 0.0f, 1.0f}},  // 9
-      {{-s, s, s}, {0.0f, 0.0f, 1.0f}},   // 10
-      {{-s, s, -s}, {0.0f, 0.0f, 1.0f}},  // 11
-
-      // Right face (yellow)
-      {{s, -s, -s}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {1.0f, 1.0f, 0.0f}},  // 15
-
-      // Top face (cyan)
-      {{-s, s, -s}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f, 1.0f}},  // 19
-
-      // Bottom face (magenta)
-      {{-s, -s, -s}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
-
-  // 36 indices for 12 triangles (2 per face)
-  // All faces wound counterclockwise when viewed from outside
-  const std::vector<uint16_t> indices = {// Front face (z = +s, facing +Z)
-                                         0, 2, 1, 0, 3, 2,
-                                         // Back face (z = -s, facing -Z)
-                                         4, 5, 6, 6, 7, 4,
-                                         // Left face (x = -s, facing -X)
-                                         8, 10, 9, 8, 11, 10,
-                                         // Right face (x = +s, facing +X)
-                                         12, 13, 14, 14, 15, 12,
-                                         // Top face (y = +s, facing +Y)
-                                         16, 17, 18, 18, 19, 16,
-                                         // Bottom face (y = -s, facing -Y)
-                                         20, 22, 21, 20, 23, 22};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = "Test",
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_textured_square_2d(
-    const std::string &identifier, const std::string &textureIdentifier,
-    const glm::vec3 &position, const glm::vec3 &rotation,
-    const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 2D textured square (quad) with 4 vertices
-  const std::vector<Object::Vertex2DTextured> vertices = {
-      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
-      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
-      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
-      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
-  };
-
-  // Two triangles to form a square with counter-clockwise winding
-  const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          "Textured_" + textureIdentifier,
-                                      .textureIdentifier = textureIdentifier,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_multi_material_cube_3d(
-    const std::string &identifier, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 3D cube with textured vertices for all 6 faces
-  constexpr float s = 0.5f; // Half size
-
-  const std::vector<Object::Vertex3DTextured> vertices = {
-      // Front face (Textured_checkerboard - red background)
-      {{-s, -s, s}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
-
-      // Back face (Textured_gradient - green background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
-
-      // Left face (Textured_atlas - blue background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s},
-       {0.5f, 0.0f},
-       {0.0f, 0.0f, 1.0f}}, // 9 - using top-left atlas region
-      {{-s, s, s}, {0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // 10
-      {{-s, s, -s}, {0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}}, // 11
-
-      // Right face (Test - animated shader - yellow background)
-      {{s, -s, -s}, {0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {0.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},  // 15
-
-      // Top face (Textured_checkerboard again - cyan background)
-      {{-s, s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},  // 19
-
-      // Bottom face (Textured_gradient again - magenta background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
-
-  // 36 indices for 12 triangles (2 per face)
-  // All faces wound counter-clockwise when viewed from outside the cube
-  const std::vector<uint16_t> indices = {// Front face (Textured_checkerboard)
-                                         0, 1, 2, 0, 2, 3,
-                                         // Back face (Textured_gradient)
-                                         4, 6, 5, 4, 7, 6,
-                                         // Left face (Textured_atlas)
-                                         8, 9, 10, 8, 10, 11,
-                                         // Right face (Test - animated shader)
-                                         12, 14, 13, 12, 15, 14,
-                                         // Top face (Textured_checkerboard)
-                                         16, 18, 17, 16, 19, 18,
-                                         // Bottom face (Textured_gradient)
-                                         20, 21, 22, 20, 22, 23};
-
-  // Define submeshes for each face with different materials
-  // Each cube face uses 6 indices (2 triangles), starting at index =
-  // face_index
-  // * 6
-  constexpr uint32_t INDICES_PER_FACE = 6;
-  std::vector<Object::Submesh> submeshes = {
-      {0 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
-       nullptr}, // Front
-      {1 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
-       nullptr}, // Back
-      {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_atlas",
-       nullptr}, // Left
-      {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test3DTextured",
-       nullptr}, // Right (shader animation)
-      {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
-       nullptr}, // Top
-      {5 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
-       nullptr} // Bottom
-  };
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          "Test", // Default material
-                                      .submeshes = submeshes,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
 }

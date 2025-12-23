@@ -1,10 +1,11 @@
 #pragma once
 
-#include "object.h"
 #include "renderer.h"
+#include "scene.h"
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace render {
 
@@ -22,26 +23,18 @@ private:
   int currentHeight;
   float aspectRatio;
 
-  // Objects for animation
-  Object *triangle;
-  Object *cube;
-  Object *texturedSquare;
-  Object *imageQuad;
-  Object *atlasQuad1;
-  Object *atlasQuad2;
-  Object *atlasQuad3;
-  Object *atlasQuad4;
-  Object *multiMaterialQuad;
-  Object *multiMaterialCube;
+  // Scene management
+  std::vector<std::unique_ptr<Scene>> scenes;
+  size_t currentSceneIndex;
 
   static void frame_buffer_resize_callback(GLFWwindow *window, int width,
                                            int height);
   static void key_callback(GLFWwindow *window, int key, int scancode,
                            int action, int mods);
 
-  void create_scene_objects();
-  void update_scene_objects();
-  void update_objects_positions();
+  void create_scenes();
+  void switch_scene();
+  void update_current_scene();
 
 public:
   Window(int width, int height, std::string title);

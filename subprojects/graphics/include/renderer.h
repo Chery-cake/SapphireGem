@@ -83,26 +83,6 @@ public:
   TextureManager &get_texture_manager();
   device::BufferManager &get_buffer_manager();
   ObjectManager *get_object_manager();
-
-  // Helper functions to create objects
-  Object *create_triangle_2d(const std::string &identifier,
-                             const glm::vec3 &position = glm::vec3(0.0f),
-                             const glm::vec3 &rotation = glm::vec3(0.0f),
-                             const glm::vec3 &scale = glm::vec3(1.0f));
-  Object *create_cube_3d(const std::string &identifier,
-                         const glm::vec3 &position = glm::vec3(0.0f),
-                         const glm::vec3 &rotation = glm::vec3(0.0f),
-                         const glm::vec3 &scale = glm::vec3(1.0f));
-  Object *create_textured_square_2d(const std::string &identifier,
-                                    const std::string &textureIdentifier,
-                                    const glm::vec3 &position = glm::vec3(0.0f),
-                                    const glm::vec3 &rotation = glm::vec3(0.0f),
-                                    const glm::vec3 &scale = glm::vec3(1.0f));
-  Object *
-  create_multi_material_cube_3d(const std::string &identifier,
-                                const glm::vec3 &position = glm::vec3(0.0f),
-                                const glm::vec3 &rotation = glm::vec3(0.0f),
-                                const glm::vec3 &scale = glm::vec3(1.0f));
 };
 
 } // namespace render
