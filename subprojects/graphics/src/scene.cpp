@@ -51,7 +51,12 @@ render::Object *render::Scene::create_quad_2d(
     const glm::vec3 &rotation, const glm::vec3 &scale,
     const std::vector<uint16_t> &customIndices) {
   // Determine if we need textured vertices
-  bool useTexture = textureId.has_value() || !submeshes.empty();
+  // Use textured vertices if:
+  // 1. A texture ID is explicitly provided, OR
+  // 2. Submeshes are provided (for multi-material objects), OR
+  // 3. The material itself expects textured vertices
+  bool useTexture = textureId.has_value() || !submeshes.empty() ||
+                    material_uses_textured_vertices(materialId);
 
   std::vector<uint16_t> indices;
 
@@ -149,7 +154,12 @@ render::Object *render::Scene::create_cube_3d(
   constexpr float s = 0.5f; // Half size
 
   // Determine if we need textured vertices
-  bool useTexture = textureId.has_value() || !submeshes.empty();
+  // Use textured vertices if:
+  // 1. A texture ID is explicitly provided, OR
+  // 2. Submeshes are provided (for multi-material objects), OR
+  // 3. The material itself expects textured vertices
+  bool useTexture = textureId.has_value() || !submeshes.empty() ||
+                    material_uses_textured_vertices(materialId);
 
   std::vector<uint16_t> indices;
 

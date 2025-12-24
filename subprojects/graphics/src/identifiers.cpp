@@ -111,4 +111,27 @@ bool material_needs_per_object_ubo(const std::string &materialIdentifier) {
   return false;
 }
 
+bool material_uses_textured_vertices(MaterialId id) {
+  switch (id) {
+  // Materials that use textured vertices
+  case MaterialId::TEXTURED:
+  case MaterialId::TEXTURED_CHECKERBOARD:
+  case MaterialId::TEXTURED_GRADIENT:
+  case MaterialId::TEXTURED_ATLAS:
+  case MaterialId::TEXTURED_3D_CHECKERBOARD:
+  case MaterialId::TEXTURED_3D_GRADIENT:
+  case MaterialId::TEXTURED_3D_ATLAS:
+  case MaterialId::SIMPLE_SHADERS_3D_TEXTURED:
+    return true;
+  
+  // Materials that use non-textured vertices
+  case MaterialId::SIMPLE_SHADERS:
+  case MaterialId::SIMPLE_SHADERS_2D:
+    return false;
+  
+  default:
+    return false;
+  }
+}
+
 } // namespace render
