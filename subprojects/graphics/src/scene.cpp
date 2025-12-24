@@ -364,7 +364,10 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
                                                              vk::False,
                                                          .depthWriteEnable =
                                                              vk::False}
-               : vk::PipelineDepthStencilStateCreateInfo{},
+               : vk::PipelineDepthStencilStateCreateInfo{
+                     .depthTestEnable = vk::True,
+                     .depthWriteEnable = vk::True,
+                     .depthCompareOp = vk::CompareOp::eLess},
       .blendState = {.logicOpEnable = vk::False,
                      .logicOp = vk::LogicOp::eCopy,
                      .attachmentCount = 1,
@@ -454,7 +457,10 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
                                                              vk::False,
                                                          .depthWriteEnable =
                                                              vk::False}
-               : vk::PipelineDepthStencilStateCreateInfo{},
+               : vk::PipelineDepthStencilStateCreateInfo{
+                     .depthTestEnable = vk::True,
+                     .depthWriteEnable = vk::True,
+                     .depthCompareOp = vk::CompareOp::eLess},
       .blendState = {.logicOpEnable = vk::False,
                      .logicOp = vk::LogicOp::eCopy,
                      .attachmentCount = 1,
