@@ -26,6 +26,12 @@ private:
   vk::raii::ImageView imageView;
   vk::raii::DeviceMemory imageMemory;
 
+  // depth buffer
+  vk::raii::Image depthImage;
+  vk::raii::ImageView depthImageView;
+  vk::raii::DeviceMemory depthImageMemory;
+  vk::Format depthFormat;
+
   vk::SurfaceFormatKHR surfaceFormat;
   vk::Extent2D extent2D;
 
@@ -41,6 +47,9 @@ public:
   void create_swap_chain();
   void clear_swap_chain();
   void create_swap_image_views();
+
+  void create_depth_resources();
+  void destroy_depth_resources();
 
   void recreate_swap_chain();
   void recreate_swap_chain(vk::SurfaceFormatKHR format, vk::Extent2D extent);

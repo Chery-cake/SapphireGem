@@ -35,4 +35,14 @@ TextureId texture_id_from_string(const std::string &str);
 // Returns true for materials that require separate transform buffers per object
 bool material_needs_per_object_ubo(const std::string &materialIdentifier);
 
+// Helper function to check if a material uses textured vertices
+// Returns true for materials that expect Vertex3DTextured or Vertex2DTextured
+// format
+bool material_uses_textured_vertices(MaterialId id);
+
+// Helper function to check if a material is designed for 2D rendering
+// Returns true for 2D materials (which expect Vertex2DTextured or Vertex3D with
+// z=0)
+bool material_is_2d(MaterialId id);
+
 } // namespace render

@@ -10,13 +10,16 @@ device::SwapChain::SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
                              vk::raii::SurfaceKHR &surface)
     : logicalDevice(logicalDevice), window(window), surface(&surface),
       swapChain(nullptr), image(nullptr), imageView(nullptr),
-      imageMemory(nullptr) {}
+      imageMemory(nullptr), depthImage(nullptr), depthImageView(nullptr),
+      depthImageMemory(nullptr), depthFormat(vk::Format::eD32Sfloat) {}
 
 device::SwapChain::SwapChain(LogicalDevice *logicalDevice,
                              vk::SurfaceFormatKHR format, vk::Extent2D extent2D)
     : logicalDevice(logicalDevice), window(nullptr), surface(nullptr),
       swapChain(nullptr), image(nullptr), imageView(nullptr),
-      imageMemory(nullptr), surfaceFormat(format), extent2D(extent2D) {}
+      imageMemory(nullptr), depthImage(nullptr), depthImageView(nullptr),
+      depthImageMemory(nullptr), surfaceFormat(format), extent2D(extent2D),
+      depthFormat(vk::Format::eD32Sfloat) {}
 
 device::SwapChain::~SwapChain() {
 
@@ -176,6 +179,8 @@ void device::SwapChain::create_swap_chain() {
 }
 
 void device::SwapChain::clear_swap_chain() {
+  destroy_depth_resources();
+
   if (surface != nullptr) {
     swapChainImageViews.clear();
     swapChainImages.clear();
@@ -202,6 +207,75 @@ void device::SwapChain::create_swap_image_views() {
   }
 }
 
+void device::SwapChain::create_depth_resources() {
+  // depthFormat is already initialized to vk::Format::eD32Sfloat in
+  // constructors
+
+  // Create depth image
+  vk::ImageCreateInfo imageInfo{
+      .imageType = vk::ImageType::e2D,
+      .format = depthFormat,
+      .extent = vk::Extent3D(extent2D.width, extent2D.height, 1),
+      .mipLevels = 1,
+      .arrayLayers = 1,
+      .samples = vk::SampleCountFlagBits::e1,
+      .tiling = vk::ImageTiling::eOptimal,
+      .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+      .sharingMode = vk::SharingMode::eExclusive,
+      .initialLayout = vk::ImageLayout::eUndefined};
+
+  depthImage = vk::raii::Image(logicalDevice->get_device(), imageInfo);
+
+  // Allocate memory for depth image
+  auto memRequirements = depthImage.getMemoryRequirements();
+
+  // Find memory type that supports depth attachment
+  auto memProperties =
+      logicalDevice->get_physical_device()->get_device().getMemoryProperties();
+  uint32_t memoryTypeIndex = UINT32_MAX;
+  for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+    if ((memRequirements.memoryTypeBits & (1 << i)) &&
+        (memProperties.memoryTypes[i].propertyFlags &
+         vk::MemoryPropertyFlagBits::eDeviceLocal)) {
+      memoryTypeIndex = i;
+      break;
+    }
+  }
+
+  if (memoryTypeIndex == UINT32_MAX) {
+    throw std::runtime_error(
+        "Failed to find suitable memory type for depth buffer");
+  }
+
+  vk::MemoryAllocateInfo allocInfo{.allocationSize = memRequirements.size,
+                                   .memoryTypeIndex = memoryTypeIndex};
+
+  depthImageMemory =
+      vk::raii::DeviceMemory(logicalDevice->get_device(), allocInfo);
+  depthImage.bindMemory(*depthImageMemory, 0);
+
+  // Create depth image view
+  vk::ImageViewCreateInfo viewInfo{
+      .image = *depthImage,
+      .viewType = vk::ImageViewType::e2D,
+      .format = depthFormat,
+      .subresourceRange = {vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1}};
+
+  depthImageView = vk::raii::ImageView(logicalDevice->get_device(), viewInfo);
+
+  std::print(
+      "Created depth buffer ({}x{}) for device: {}\n", extent2D.width,
+      extent2D.height,
+      logicalDevice->get_physical_device()->get_properties().deviceName.data());
+}
+
+void device::SwapChain::destroy_depth_resources() {
+  // For vk::raii objects, just call clear() - they handle their own validity
+  depthImageView.clear();
+  depthImage.clear();
+  depthImageMemory.clear();
+}
+
 void device::SwapChain::recreate_swap_chain() {
   int width = 0, height = 0;
   glfwGetFramebufferSize(window, &width, &height);
@@ -215,6 +289,8 @@ void device::SwapChain::recreate_swap_chain() {
   create_swap_chain();
 
   create_swap_image_views();
+
+  create_depth_resources();
 }
 
 void device::SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
@@ -224,6 +300,7 @@ void device::SwapChain::recreate_swap_chain(vk::SurfaceFormatKHR format,
 
   clear_swap_chain();
   create_swap_chain();
+  create_depth_resources();
 }
 
 vk::ResultValue<uint32_t>
@@ -241,7 +318,7 @@ void device::SwapChain::transition_image_for_rendering(
     throw std::out_of_range("Image index out of range for swapchain images");
   }
 
-  vk::ImageMemoryBarrier barrier{
+  vk::ImageMemoryBarrier colorBarrier{
       .srcAccessMask = vk::AccessFlagBits::eNone,
       .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
       .oldLayout = vk::ImageLayout::eUndefined,
@@ -253,10 +330,25 @@ void device::SwapChain::transition_image_for_rendering(
                            .baseArrayLayer = 0,
                            .layerCount = 1}};
 
+  vk::ImageMemoryBarrier depthBarrier{
+      .srcAccessMask = vk::AccessFlagBits::eNone,
+      .dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+      .oldLayout = vk::ImageLayout::eUndefined,
+      .newLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+      .image = *depthImage,
+      .subresourceRange = {.aspectMask = vk::ImageAspectFlagBits::eDepth,
+                           .baseMipLevel = 0,
+                           .levelCount = 1,
+                           .baseArrayLayer = 0,
+                           .layerCount = 1}};
+
+  std::array<vk::ImageMemoryBarrier, 2> barriers = {colorBarrier, depthBarrier};
+
   commandBuffer.pipelineBarrier(
       vk::PipelineStageFlagBits::eTopOfPipe,
-      vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, nullptr, nullptr,
-      barrier);
+      vk::PipelineStageFlagBits::eColorAttachmentOutput |
+          vk::PipelineStageFlagBits::eEarlyFragmentTests,
+      {}, nullptr, nullptr, barriers);
 }
 
 void device::SwapChain::transition_image_for_present(
@@ -306,10 +398,18 @@ void device::SwapChain::begin_rendering(vk::raii::CommandBuffer &commandBuffer,
       .clearValue =
           vk::ClearValue(vk::ClearColorValue(0.0f, 0.0f, 0.0f, 1.0f))};
 
+  vk::RenderingAttachmentInfo depthAttachment{
+      .imageView = *depthImageView,
+      .imageLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+      .loadOp = vk::AttachmentLoadOp::eClear,
+      .storeOp = vk::AttachmentStoreOp::eDontCare,
+      .clearValue = vk::ClearValue(vk::ClearDepthStencilValue(1.0f, 0))};
+
   vk::RenderingInfo renderInfo{.renderArea = vk::Rect2D({0, 0}, extent2D),
                                .layerCount = 1,
                                .colorAttachmentCount = 1,
-                               .pColorAttachments = &colorAttachment};
+                               .pColorAttachments = &colorAttachment,
+                               .pDepthAttachment = &depthAttachment};
 
   commandBuffer.beginRendering(renderInfo);
 

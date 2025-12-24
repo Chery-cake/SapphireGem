@@ -1,4 +1,5 @@
 #include "scene3.h"
+#include "identifiers.h"
 #include <print>
 
 scene::Scene3::Scene3(render::MaterialManager *matMgr,
@@ -45,19 +46,19 @@ void scene::Scene3::setup() {
                      glm::vec3(0.3f, 0.3f, 1.0f));
 
   // Create a 3D cube with different materials on each face
-  multiMaterialCube = create_cube_3d(
-      "scene3_multi_material_cube",
-      render::MaterialId::TEXTURED_3D_CHECKERBOARD, std::nullopt,
-      {/*
-          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},
-          {18, 6, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED},
-          {24, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-          {30, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-      */},
-      glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-      glm::vec3(0.25f, 0.25f, 0.25f));
+  multiMaterialCube =
+      create_cube_3d("scene3_multi_material_cube",
+                     render::MaterialId::TEXTURED_3D_CHECKERBOARD,
+                     render::TextureId::CHECKERBOARD,
+                     {/*
+                     {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
+               {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
+               {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},
+               {18, 6, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED},
+               {24, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
+               {30, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
+               */}, glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                     glm::vec3(0.25f, 0.25f, 0.25f));
 
   if (multiMaterialCube) {
     multiMaterialCube->set_rotation_mode(

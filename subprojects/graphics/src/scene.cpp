@@ -51,7 +51,12 @@ render::Object *render::Scene::create_quad_2d(
     const glm::vec3 &rotation, const glm::vec3 &scale,
     const std::vector<uint16_t> &customIndices) {
   // Determine if we need textured vertices
-  bool useTexture = textureId.has_value() || !submeshes.empty();
+  // Use textured vertices if:
+  // 1. A texture ID is explicitly provided, OR
+  // 2. Submeshes are provided (for multi-material objects), OR
+  // 3. The material itself expects textured vertices
+  bool useTexture = textureId.has_value() || !submeshes.empty() ||
+                    material_uses_textured_vertices(materialId);
 
   std::vector<uint16_t> indices;
 
@@ -148,8 +153,20 @@ render::Object *render::Scene::create_cube_3d(
     const std::vector<uint16_t> &customIndices) {
   constexpr float s = 0.5f; // Half size
 
-  // Determine if we need textured vertices
-  bool useTexture = textureId.has_value() || !submeshes.empty();
+  // Validate that we're not using a 2D material with a 3D object
+  if (material_is_2d(materialId)) {
+    std::print("Warning: Attempting to use 2D material '{}' with 3D cube '{}'. "
+               "This will cause rendering issues. Use a 3D material instead.\n",
+               to_string(materialId), identifier);
+  }
+
+  // Use textured vertices if:
+  // 1. A texture ID is explicitly provided, OR
+  // 2. Submeshes are provided (for multi-material objects), OR
+  // 3. The material itself expects textured vertices (and is 3D)
+  bool useTexture = textureId.has_value() || !submeshes.empty() ||
+                    (material_uses_textured_vertices(materialId) &&
+                     !material_is_2d(materialId));
 
   std::vector<uint16_t> indices;
 
@@ -173,9 +190,9 @@ render::Object *render::Scene::create_cube_3d(
 
         // Left face
         {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 8
-        {{-s, -s, s}, {0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},  // 9
-        {{-s, s, s}, {0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // 10
-        {{-s, s, -s}, {0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // 11
+        {{-s, -s, s}, {1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},  // 9
+        {{-s, s, s}, {1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},   // 10
+        {{-s, s, -s}, {0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},  // 11
 
         // Right face
         {{s, -s, -s}, {0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 12
@@ -354,7 +371,12 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
                                                              vk::False,
                                                          .depthWriteEnable =
                                                              vk::False}
-               : vk::PipelineDepthStencilStateCreateInfo{},
+               : vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::True,
+                                                         .depthWriteEnable =
+                                                             vk::True,
+                                                         .depthCompareOp = vk::
+                                                             CompareOp::eLess},
       .blendState = {.logicOpEnable = vk::False,
                      .logicOp = vk::LogicOp::eCopy,
                      .attachmentCount = 1,
@@ -444,7 +466,12 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
                                                              vk::False,
                                                          .depthWriteEnable =
                                                              vk::False}
-               : vk::PipelineDepthStencilStateCreateInfo{},
+               : vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::True,
+                                                         .depthWriteEnable =
+                                                             vk::True,
+                                                         .depthCompareOp = vk::
+                                                             CompareOp::eLess},
       .blendState = {.logicOpEnable = vk::False,
                      .logicOp = vk::LogicOp::eCopy,
                      .attachmentCount = 1,
