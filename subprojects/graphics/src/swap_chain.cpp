@@ -208,8 +208,7 @@ void device::SwapChain::create_swap_image_views() {
 }
 
 void device::SwapChain::create_depth_resources() {
-  // Use D32 float format for depth buffer
-  depthFormat = vk::Format::eD32Sfloat;
+  // depthFormat is already initialized to vk::Format::eD32Sfloat in constructors
 
   // Create depth image
   vk::ImageCreateInfo imageInfo{
