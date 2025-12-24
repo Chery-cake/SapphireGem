@@ -19,6 +19,12 @@ Scene::~Scene() {
 }
 
 void Scene::cleanup() {
+  // Wait for GPU to finish using resources before destroying them
+  // This prevents validation errors about destroying resources in use
+  if (objectManager) {
+    objectManager->wait_idle();
+  }
+  
   // Remove all scene objects from the object manager
   // This frees GPU resources while keeping the Scene object in RAM
   for (Object *obj : sceneObjects) {

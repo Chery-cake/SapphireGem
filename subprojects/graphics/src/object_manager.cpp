@@ -155,3 +155,9 @@ size_t render::ObjectManager::get_object_count() const {
 size_t render::ObjectManager::get_material_count() const {
   return materialUsageCount.size();
 }
+
+void render::ObjectManager::wait_idle() {
+  if (deviceManager) {
+    deviceManager->wait_idle();
+  }
+}

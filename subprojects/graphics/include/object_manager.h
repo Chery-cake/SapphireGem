@@ -95,6 +95,9 @@ public:
   void remove_object(const std::string &identifier);
   Object *get_object(const std::string &identifier);
 
+  // Synchronization
+  void wait_idle();
+
   // Rendering
   void render_all_objects(vk::raii::CommandBuffer &commandBuffer,
                           uint32_t deviceIndex, uint32_t frameIndex);
