@@ -109,7 +109,9 @@ bool render::Material::create_pipeline(device::LogicalDevice *device,
     vk::SurfaceFormatKHR format = device->get_swap_chain().get_surface_format();
 
     vk::PipelineRenderingCreateInfo pipelineRenderingInfo{
-        .colorAttachmentCount = 1, .pColorAttachmentFormats = &format.format};
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &format.format,
+        .depthAttachmentFormat = vk::Format::eD32Sfloat};
 
     // Graphics pipeline creation
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo{
