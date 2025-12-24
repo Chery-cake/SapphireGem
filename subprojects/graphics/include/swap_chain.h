@@ -26,10 +26,18 @@ private:
   vk::raii::ImageView imageView;
   vk::raii::DeviceMemory imageMemory;
 
+  // depth buffer
+  vk::raii::Image depthImage;
+  vk::raii::ImageView depthImageView;
+  vk::raii::DeviceMemory depthImageMemory;
+  vk::Format depthFormat;
+
   vk::SurfaceFormatKHR surfaceFormat;
   vk::Extent2D extent2D;
 
   void set_surface_format(std::vector<vk::SurfaceFormatKHR> availableFormats);
+  void create_depth_resources();
+  void destroy_depth_resources();
 
 public:
   SwapChain(LogicalDevice *logicalDevice, GLFWwindow *window,
