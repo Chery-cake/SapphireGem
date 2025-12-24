@@ -34,26 +34,36 @@ void scene::Scene3::setup() {
                         true);
 
   // Create a 2D quad with two different materials (split horizontally)
-  multiMaterialQuad = create_multi_material_quad_2d(
+  multiMaterialQuad = create_quad_2d(
       "scene3_multi_material_quad",
-      {render::MaterialId::TEXTURED_CHECKERBOARD,
-       render::MaterialId::TEXTURED_GRADIENT},
-      {render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT},
+      render::MaterialId::TEXTURED_CHECKERBOARD, std::nullopt,
+      {
+          {0, 6, render::MaterialId::TEXTURED_CHECKERBOARD,
+           render::TextureId::CHECKERBOARD},
+          {6, 6, render::MaterialId::TEXTURED_GRADIENT,
+           render::TextureId::GRADIENT},
+      },
       glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.3f, 0.3f, 1.0f));
 
   // Create a 3D cube with different materials on each face
-  multiMaterialCube = create_multi_material_cube_3d(
+  multiMaterialCube = create_cube_3d(
       "scene3_multi_material_cube",
-      {render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-       render::MaterialId::TEXTURED_3D_GRADIENT,
-       render::MaterialId::TEXTURED_3D_ATLAS,
-       render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
-       render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-       render::MaterialId::TEXTURED_3D_GRADIENT},
-      {render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT,
-       render::TextureId::ATLAS, render::TextureId::CHECKERBOARD,
-       render::TextureId::CHECKERBOARD, render::TextureId::GRADIENT},
+      render::MaterialId::TEXTURED_3D_CHECKERBOARD, std::nullopt,
+      {
+          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD,
+           render::TextureId::CHECKERBOARD},
+          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT,
+           render::TextureId::GRADIENT},
+          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS,
+           render::TextureId::ATLAS},
+          {18, 6, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
+           render::TextureId::CHECKERBOARD},
+          {24, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD,
+           render::TextureId::CHECKERBOARD},
+          {30, 6, render::MaterialId::TEXTURED_3D_GRADIENT,
+           render::TextureId::GRADIENT},
+      },
       glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.25f, 0.25f, 0.25f));
 

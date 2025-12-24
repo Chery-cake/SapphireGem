@@ -25,10 +25,10 @@ void scene::Scene1::setup() {
   }
 
   // Create a cube in the center-right
-  cube =
-      create_cube_3d("scene1_cube", render::MaterialId::SIMPLE_SHADERS,
-                     glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                     glm::vec3(0.25f, 0.25f, 0.25f));
+  cube = create_cube_3d("scene1_cube", render::MaterialId::SIMPLE_SHADERS,
+                        std::nullopt, {},
+                        glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                        glm::vec3(0.25f, 0.25f, 0.25f));
   if (cube) {
     cube->set_rotation_mode(render::Object::RotationMode::TRANSFORM_3D);
   }
