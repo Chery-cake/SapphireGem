@@ -35,45 +35,35 @@ protected:
                              const glm::vec3 &scale = glm::vec3(1.0f),
                              const std::vector<uint16_t> &indices = {});
 
-  // Create a 2D quad/square with colored vertices
-  Object *create_quad_2d(const std::string &identifier, MaterialId materialId,
-                         const glm::vec3 &position = glm::vec3(0.0f),
-                         const glm::vec3 &rotation = glm::vec3(0.0f),
-                         const glm::vec3 &scale = glm::vec3(1.0f),
-                         const std::vector<uint16_t> &indices = {});
+  // Submesh definition for multi-material objects
+  struct SubmeshDef {
+    uint32_t indexStart;
+    uint32_t indexCount;
+    MaterialId materialId;
+  };
 
-  // Create a 2D textured quad/square
-  Object *create_textured_quad_2d(const std::string &identifier,
-                                  MaterialId materialId, TextureId textureId,
-                                  const glm::vec3 &position = glm::vec3(0.0f),
-                                  const glm::vec3 &rotation = glm::vec3(0.0f),
-                                  const glm::vec3 &scale = glm::vec3(1.0f),
-                                  const std::vector<uint16_t> &indices = {});
-
-  // Create a 3D cube with colored vertices (single material)
-  Object *create_cube_3d(const std::string &identifier, MaterialId materialId,
-                         const glm::vec3 &position = glm::vec3(0.0f),
-                         const glm::vec3 &rotation = glm::vec3(0.0f),
-                         const glm::vec3 &scale = glm::vec3(1.0f),
-                         const std::vector<uint16_t> &indices = {});
-
-  // Create a 3D cube with multiple materials (one per face)
+  // Create a 2D quad/square - supports single material, textured, and
+  // multi-material modes Base material is used for areas not covered by
+  // submeshes
   Object *
-  create_multi_material_cube_3d(const std::string &identifier,
-                                const std::vector<MaterialId> &faceMaterials,
-                                const std::vector<TextureId> &faceTextures = {},
-                                const glm::vec3 &position = glm::vec3(0.0f),
-                                const glm::vec3 &rotation = glm::vec3(0.0f),
-                                const glm::vec3 &scale = glm::vec3(1.0f));
+  create_quad_2d(const std::string &identifier, MaterialId materialId,
+                 const std::optional<TextureId> &textureId = std::nullopt,
+                 const std::vector<SubmeshDef> &submeshes = {},
+                 const glm::vec3 &position = glm::vec3(0.0f),
+                 const glm::vec3 &rotation = glm::vec3(0.0f),
+                 const glm::vec3 &scale = glm::vec3(1.0f),
+                 const std::vector<uint16_t> &indices = {});
 
-  // Create a 2D quad with multiple materials (e.g., split horizontally)
+  // Create a 3D cube - supports single material, textured, and multi-material
+  // modes Base material is used for areas not covered by submeshes
   Object *
-  create_multi_material_quad_2d(const std::string &identifier,
-                                const std::vector<MaterialId> &materials,
-                                const std::vector<TextureId> &textures = {},
-                                const glm::vec3 &position = glm::vec3(0.0f),
-                                const glm::vec3 &rotation = glm::vec3(0.0f),
-                                const glm::vec3 &scale = glm::vec3(1.0f));
+  create_cube_3d(const std::string &identifier, MaterialId materialId,
+                 const std::optional<TextureId> &textureId = std::nullopt,
+                 const std::vector<SubmeshDef> &submeshes = {},
+                 const glm::vec3 &position = glm::vec3(0.0f),
+                 const glm::vec3 &rotation = glm::vec3(0.0f),
+                 const glm::vec3 &scale = glm::vec3(1.0f),
+                 const std::vector<uint16_t> &indices = {});
 
   // Helper to create a basic material (non-textured)
   void create_basic_material(MaterialId materialId, bool is2D,

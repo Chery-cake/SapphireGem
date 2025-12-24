@@ -44,34 +44,94 @@ render::Object *render::Scene::create_triangle_2d(
   return obj;
 }
 
-render::Object *
-render::Scene::create_quad_2d(const std::string &identifier,
-                              MaterialId materialId, const glm::vec3 &position,
-                              const glm::vec3 &rotation, const glm::vec3 &scale,
-                              const std::vector<uint16_t> &customIndices) {
-  // Define a 2D quad with colored vertices
-  const std::vector<Object::Vertex3D> vertices = {
-      {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
-      {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
-      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
-      {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
-  };
+render::Object *render::Scene::create_quad_2d(
+    const std::string &identifier, MaterialId materialId,
+    const std::optional<TextureId> &textureId,
+    const std::vector<SubmeshDef> &submeshes, const glm::vec3 &position,
+    const glm::vec3 &rotation, const glm::vec3 &scale,
+    const std::vector<uint16_t> &customIndices) {
+  // Determine if we need textured vertices
+  bool useTexture = textureId.has_value() || !submeshes.empty();
 
-  // Use custom indices if provided, otherwise generate default quad indices
-  const std::vector<uint16_t> indices =
-      customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
-                            : customIndices;
+  std::vector<uint16_t> indices;
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          to_string(materialId),
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
+                                      .type = Object::ObjectType::OBJECT_2D};
+
+  if (useTexture) {
+    // For multi-material or textured quad, use textured vertices
+    if (!submeshes.empty()) {
+      // Multi-material quad split horizontally into sections
+      const std::vector<Object::Vertex2DTextured> vertices = {
+          // Left half
+          {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+          {{0.0f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+          {{0.0f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
+          {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
+          // Right half
+          {{0.0f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+          {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
+          {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
+          {{0.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}};
+
+      indices = customIndices.empty() ? std::vector<uint16_t>{
+                                            0, 2, 1, 0, 3, 2, // Left half
+                                            4, 6, 5, 4, 7, 6  // Right half
+                                        }
+                                      : customIndices;
+
+      createInfo.vertices = vertices;
+
+      // Convert SubmeshDef to Object::Submesh
+      std::vector<Object::Submesh> objectSubmeshes;
+      for (const auto &def : submeshes) {
+        Object::Submesh submesh;
+        submesh.indexStart = def.indexStart;
+        submesh.indexCount = def.indexCount;
+        submesh.materialIdentifier = to_string(def.materialId);
+        submesh.material = nullptr;
+        objectSubmeshes.push_back(submesh);
+      }
+      createInfo.submeshes = objectSubmeshes;
+    } else {
+      // Single textured quad
+      const std::vector<Object::Vertex2DTextured> vertices = {
+          {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
+          {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
+          {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
+          {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
+      };
+
+      indices = customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
+                                      : customIndices;
+
+      createInfo.vertices = vertices;
+    }
+
+    if (textureId.has_value()) {
+      createInfo.textureIdentifier = to_string(textureId.value());
+    }
+  } else {
+    // Non-textured quad with colored vertices
+    const std::vector<Object::Vertex3D> vertices = {
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Bottom-left (red)
+        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // Bottom-right (green)
+        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},   // Top-right (blue)
+        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.0f}}   // Top-left (yellow)
+    };
+
+    indices = customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
+                                    : customIndices;
+
+    createInfo.vertices = vertices;
+  }
+
+  createInfo.indices = indices;
+  createInfo.materialIdentifier = to_string(materialId);
+  createInfo.position = position;
+  createInfo.rotation = rotation;
+  createInfo.scale = scale;
+  createInfo.visible = true;
 
   Object *obj = objectManager->create_object(createInfo);
   if (obj) {
@@ -80,266 +140,161 @@ render::Scene::create_quad_2d(const std::string &identifier,
   return obj;
 }
 
-render::Object *render::Scene::create_textured_quad_2d(
-    const std::string &identifier, MaterialId materialId, TextureId textureId,
-    const glm::vec3 &position, const glm::vec3 &rotation,
-    const glm::vec3 &scale, const std::vector<uint16_t> &customIndices) {
-  // Define a 2D textured quad
-  const std::vector<Object::Vertex2DTextured> vertices = {
-      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
-      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
-      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
-      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
-  };
-
-  // Use custom indices if provided, otherwise generate default quad indices
-  const std::vector<uint16_t> indices =
-      customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
-                            : customIndices;
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          to_string(materialId),
-                                      .textureIdentifier = to_string(textureId),
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  Object *obj = objectManager->create_object(createInfo);
-  if (obj) {
-    sceneObjects.push_back(obj);
-  }
-  return obj;
-}
-
-render::Object *
-render::Scene::create_cube_3d(const std::string &identifier,
-                              MaterialId materialId, const glm::vec3 &position,
-                              const glm::vec3 &rotation, const glm::vec3 &scale,
-                              const std::vector<uint16_t> &customIndices) {
+render::Object *render::Scene::create_cube_3d(
+    const std::string &identifier, MaterialId materialId,
+    const std::optional<TextureId> &textureId,
+    const std::vector<SubmeshDef> &submeshes, const glm::vec3 &position,
+    const glm::vec3 &rotation, const glm::vec3 &scale,
+    const std::vector<uint16_t> &customIndices) {
   constexpr float s = 0.5f; // Half size
 
-  const std::vector<Object::Vertex3D> vertices = {
-      // Front face (red)
-      {{-s, -s, s}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {1.0f, 0.0f, 0.0f}},  // 3
+  // Determine if we need textured vertices
+  bool useTexture = textureId.has_value() || !submeshes.empty();
 
-      // Back face (green)
-      {{-s, -s, -s}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f, 0.0f}},  // 7
-
-      // Left face (blue)
-      {{-s, -s, -s}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s}, {0.0f, 0.0f, 1.0f}},  // 9
-      {{-s, s, s}, {0.0f, 0.0f, 1.0f}},   // 10
-      {{-s, s, -s}, {0.0f, 0.0f, 1.0f}},  // 11
-
-      // Right face (yellow)
-      {{s, -s, -s}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {1.0f, 1.0f, 0.0f}},  // 15
-
-      // Top face (cyan)
-      {{-s, s, -s}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f, 1.0f}},  // 19
-
-      // Bottom face (magenta)
-      {{-s, -s, -s}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
-
-  // Use custom indices if provided, otherwise generate default cube indices
-  const std::vector<uint16_t> indices =
-      customIndices.empty()
-          ? std::vector<uint16_t>{// Front face
-                                  0, 2, 1, 0, 3, 2,
-                                  // Back face
-                                  4, 5, 6, 6, 7, 4,
-                                  // Left face
-                                  8, 10, 9, 8, 11, 10,
-                                  // Right face
-                                  12, 13, 14, 14, 15, 12,
-                                  // Top face
-                                  16, 17, 18, 18, 19, 16,
-                                  // Bottom face
-                                  20, 22, 21, 20, 23, 22}
-          : customIndices;
+  std::vector<uint16_t> indices;
 
   Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          to_string(materialId),
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
+                                      .type = Object::ObjectType::OBJECT_3D};
 
-  Object *obj = objectManager->create_object(createInfo);
-  if (obj) {
-    sceneObjects.push_back(obj);
-  }
-  return obj;
-}
+  if (useTexture) {
+    // Textured vertices for cube
+    const std::vector<Object::Vertex3DTextured> vertices = {
+        // Front face
+        {{-s, -s, s}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0
+        {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // 1
+        {{s, s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},   // 2
+        {{-s, s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
 
-render::Object *render::Scene::create_multi_material_cube_3d(
-    const std::string &identifier, const std::vector<MaterialId> &faceMaterials,
-    const std::vector<TextureId> &faceTextures, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  constexpr float s = 0.5f; // Half size
+        // Back face
+        {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 4
+        {{s, -s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // 5
+        {{s, s, -s}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},   // 6
+        {{-s, s, -s}, {0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
 
-  // Create textured vertices for the cube
-  const std::vector<Object::Vertex3DTextured> vertices = {
-      // Front face
-      {{-s, -s, s}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
+        // Left face
+        {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 8
+        {{-s, -s, s}, {0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},  // 9
+        {{-s, s, s}, {0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // 10
+        {{-s, s, -s}, {0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // 11
 
-      // Back face
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
+        // Right face
+        {{s, -s, -s}, {0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 12
+        {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // 13
+        {{s, s, s}, {1.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},   // 14
+        {{s, s, -s}, {0.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},  // 15
 
-      // Left face
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s}, {0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}},  // 9
-      {{-s, s, s}, {0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},   // 10
-      {{-s, s, -s}, {0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // 11
+        // Top face
+        {{-s, s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // 16
+        {{s, s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f}},  // 17
+        {{s, s, s}, {1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},   // 18
+        {{-s, s, s}, {0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},  // 19
 
-      // Right face
-      {{s, -s, -s}, {0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {0.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},  // 15
+        // Bottom face
+        {{-s, -s, -s}, {0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}}, // 20
+        {{s, -s, -s}, {1.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // 21
+        {{s, -s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}},   // 22
+        {{-s, -s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 1.0f}}   // 23
+    };
 
-      // Top face
-      {{-s, s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},  // 19
+    indices =
+        customIndices.empty()
+            ? std::vector<uint16_t>{// Front face
+                                    0, 2, 1, 0, 3, 2,
+                                    // Back face
+                                    4, 5, 6, 6, 7, 4,
+                                    // Left face
+                                    8, 10, 9, 8, 11, 10,
+                                    // Right face
+                                    12, 13, 14, 14, 15, 12,
+                                    // Top face
+                                    16, 17, 18, 18, 19, 16,
+                                    // Bottom face
+                                    20, 22, 21, 20, 23, 22}
+            : customIndices;
 
-      // Bottom face
-      {{-s, -s, -s}, {0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
+    createInfo.vertices = vertices;
 
-  // Generate indices for all 6 faces
-  const std::vector<uint16_t> indices = {// Front face
-                                         0, 2, 1, 0, 3, 2,
-                                         // Back face
-                                         4, 5, 6, 6, 7, 4,
-                                         // Left face
-                                         8, 10, 9, 8, 11, 10,
-                                         // Right face
-                                         12, 13, 14, 14, 15, 12,
-                                         // Top face
-                                         16, 17, 18, 18, 19, 16,
-                                         // Bottom face
-                                         20, 22, 21, 20, 23, 22};
+    if (!submeshes.empty()) {
+      // Convert SubmeshDef to Object::Submesh
+      std::vector<Object::Submesh> objectSubmeshes;
+      for (const auto &def : submeshes) {
+        Object::Submesh submesh;
+        submesh.indexStart = def.indexStart;
+        submesh.indexCount = def.indexCount;
+        submesh.materialIdentifier = to_string(def.materialId);
+        submesh.material = nullptr;
+        objectSubmeshes.push_back(submesh);
+      }
+      createInfo.submeshes = objectSubmeshes;
+    }
+    if (textureId.has_value()) {
+      createInfo.textureIdentifier = to_string(textureId.value());
+    }
+  } else {
+    // Non-textured cube with colored vertices
+    const std::vector<Object::Vertex3D> vertices = {
+        // Front face (red)
+        {{-s, -s, s}, {1.0f, 0.0f, 0.0f}}, // 0
+        {{s, -s, s}, {1.0f, 0.0f, 0.0f}},  // 1
+        {{s, s, s}, {1.0f, 0.0f, 0.0f}},   // 2
+        {{-s, s, s}, {1.0f, 0.0f, 0.0f}},  // 3
 
-  // Create submeshes for each face
-  std::vector<Object::Submesh> submeshes;
-  for (size_t i = 0; i < faceMaterials.size() && i < 6; ++i) {
-    Object::Submesh submesh;
-    submesh.indexStart =
-        static_cast<uint32_t>(i * 6); // Each face uses 6 indices
-    submesh.indexCount = 6;
-    submesh.materialIdentifier = to_string(faceMaterials[i]);
-    submesh.material = nullptr; // Will be set by Object constructor
+        // Back face (green)
+        {{-s, -s, -s}, {0.0f, 1.0f, 0.0f}}, // 4
+        {{s, -s, -s}, {0.0f, 1.0f, 0.0f}},  // 5
+        {{s, s, -s}, {0.0f, 1.0f, 0.0f}},   // 6
+        {{-s, s, -s}, {0.0f, 1.0f, 0.0f}},  // 7
 
-    submeshes.push_back(submesh);
-  }
+        // Left face (blue)
+        {{-s, -s, -s}, {0.0f, 0.0f, 1.0f}}, // 8
+        {{-s, -s, s}, {0.0f, 0.0f, 1.0f}},  // 9
+        {{-s, s, s}, {0.0f, 0.0f, 1.0f}},   // 10
+        {{-s, s, -s}, {0.0f, 0.0f, 1.0f}},  // 11
 
-  // Use the first material as the default
-  std::string defaultMaterial =
-      faceMaterials.empty() ? to_string(MaterialId::SIMPLE_SHADERS_3D_TEXTURED)
-                            : to_string(faceMaterials[0]);
+        // Right face (yellow)
+        {{s, -s, -s}, {1.0f, 1.0f, 0.0f}}, // 12
+        {{s, -s, s}, {1.0f, 1.0f, 0.0f}},  // 13
+        {{s, s, s}, {1.0f, 1.0f, 0.0f}},   // 14
+        {{s, s, -s}, {1.0f, 1.0f, 0.0f}},  // 15
 
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = defaultMaterial,
-                                      .submeshes = submeshes,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
+        // Top face (cyan)
+        {{-s, s, -s}, {0.0f, 1.0f, 1.0f}}, // 16
+        {{s, s, -s}, {0.0f, 1.0f, 1.0f}},  // 17
+        {{s, s, s}, {0.0f, 1.0f, 1.0f}},   // 18
+        {{-s, s, s}, {0.0f, 1.0f, 1.0f}},  // 19
 
-  Object *obj = objectManager->create_object(createInfo);
-  if (obj) {
-    sceneObjects.push_back(obj);
-  }
-  return obj;
-}
+        // Bottom face (magenta)
+        {{-s, -s, -s}, {1.0f, 0.0f, 1.0f}}, // 20
+        {{s, -s, -s}, {1.0f, 0.0f, 1.0f}},  // 21
+        {{s, -s, s}, {1.0f, 0.0f, 1.0f}},   // 22
+        {{-s, -s, s}, {1.0f, 0.0f, 1.0f}}   // 23
+    };
 
-render::Object *render::Scene::create_multi_material_quad_2d(
-    const std::string &identifier, const std::vector<MaterialId> &materials,
-    const std::vector<TextureId> &textures, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  // Create a quad split horizontally into two halves
-  const std::vector<Object::Vertex2DTextured> vertices = {
-      // Left half
-      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-      {{0.0f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-      {{0.0f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
-      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
-      // Right half
-      {{0.0f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
-      {{0.0f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}};
+    indices =
+        customIndices.empty()
+            ? std::vector<uint16_t>{// Front face
+                                    0, 2, 1, 0, 3, 2,
+                                    // Back face
+                                    4, 5, 6, 6, 7, 4,
+                                    // Left face
+                                    8, 10, 9, 8, 11, 10,
+                                    // Right face
+                                    12, 13, 14, 14, 15, 12,
+                                    // Top face
+                                    16, 17, 18, 18, 19, 16,
+                                    // Bottom face
+                                    20, 22, 21, 20, 23, 22}
+            : customIndices;
 
-  const std::vector<uint16_t> indices = {
-      0, 2, 1, 0, 3, 2, // Left half
-      4, 6, 5, 4, 7, 6  // Right half
-  };
-
-  // Create submeshes
-  std::vector<Object::Submesh> submeshes;
-  for (size_t i = 0; i < materials.size() && i < 2; ++i) {
-    Object::Submesh submesh;
-    submesh.indexStart = static_cast<uint32_t>(i * 6);
-    submesh.indexCount = 6;
-    submesh.materialIdentifier = to_string(materials[i]);
-    submesh.material = nullptr;
-
-    submeshes.push_back(submesh);
+    createInfo.vertices = vertices;
   }
 
-  // Use the first material as default
-  std::string defaultMaterial =
-      materials.empty() ? to_string(MaterialId::TEXTURED_CHECKERBOARD)
-                        : to_string(materials[0]);
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = defaultMaterial,
-                                      .submeshes = submeshes,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
+  createInfo.indices = indices;
+  createInfo.materialIdentifier = to_string(materialId);
+  createInfo.position = position;
+  createInfo.rotation = rotation;
+  createInfo.scale = scale;
+  createInfo.visible = true;
 
   Object *obj = objectManager->create_object(createInfo);
   if (obj) {
