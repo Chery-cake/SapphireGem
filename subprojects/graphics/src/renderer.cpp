@@ -328,6 +328,19 @@ void render::Renderer::draw_frame_multi_queue_streaming() {
 void render::Renderer::reload() {
   std::print("Reloading rendering system...\n");
 
+  // Call pre-reload callback to allow cleanup of objects that reference
+  // managers. This prevents use-after-free when scenes/objects hold pointers
+  // to managers
+  if (preReloadCallback) {
+    try {
+      preReloadCallback();
+    } catch (const std::exception &e) {
+      std::print("Warning: Exception in pre-reload callback: {}\n", e.what());
+    } catch (...) {
+      std::print("Warning: Unknown exception in pre-reload callback\n");
+    }
+  }
+
   // Wait for all devices to be idle
   if (deviceManager) {
     deviceManager->wait_idle();
@@ -384,7 +397,13 @@ void render::Renderer::reload() {
 
   // Notify callback that reload is complete and objects can be recreated
   if (postReloadCallback) {
-    postReloadCallback();
+    try {
+      postReloadCallback();
+    } catch (const std::exception &e) {
+      std::print("Warning: Exception in post-reload callback: {}\n", e.what());
+    } catch (...) {
+      std::print("Warning: Unknown exception in post-reload callback\n");
+    }
   }
 }
 
@@ -445,6 +464,10 @@ void render::Renderer::set_gpu_config(
     const ObjectManager::MultiGPUConfig &config) {
   gpuConfig = config;
   objectManager->set_gpu_config(config);
+}
+
+void render::Renderer::set_pre_reload_callback(std::function<void()> callback) {
+  preReloadCallback = std::move(callback);
 }
 
 void render::Renderer::set_post_reload_callback(

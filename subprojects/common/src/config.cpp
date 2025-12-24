@@ -87,6 +87,7 @@ vk::StructureChain<PhysicalDeviceFeaturesList>
 general::Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
   if (*physicalDevice == VK_NULL_HANDLE) {
     vk::PhysicalDeviceFeatures deviceFeatures = {
+        .depthClamp = VK_TRUE,
         .samplerAnisotropy = VK_TRUE}; // Enable anisotropic filtering
 
     vk::StructureChain<PhysicalDeviceFeaturesList> featureChain = {
