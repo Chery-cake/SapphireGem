@@ -28,6 +28,10 @@ render::Window::Window(int width, int height, std::string title)
   glfwSetKeyCallback(window, key_callback);
 
   renderer = std::make_unique<Renderer>(window);
+  renderer->set_pre_reload_callback([this]() {
+    std::print("Clearing scenes before reload...\n");
+    scenes.clear();
+  });
   renderer->set_post_reload_callback([this]() {
     std::print("Recreating active scene after reload...\n");
     create_scenes();

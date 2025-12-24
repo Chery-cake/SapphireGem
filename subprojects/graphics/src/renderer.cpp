@@ -328,6 +328,11 @@ void render::Renderer::draw_frame_multi_queue_streaming() {
 void render::Renderer::reload() {
   std::print("Reloading rendering system...\n");
 
+  // Call pre-reload callback to allow cleanup of objects that reference managers
+  if (preReloadCallback) {
+    preReloadCallback();
+  }
+
   // Wait for all devices to be idle
   if (deviceManager) {
     deviceManager->wait_idle();
@@ -445,6 +450,11 @@ void render::Renderer::set_gpu_config(
     const ObjectManager::MultiGPUConfig &config) {
   gpuConfig = config;
   objectManager->set_gpu_config(config);
+}
+
+void render::Renderer::set_pre_reload_callback(
+    std::function<void()> callback) {
+  preReloadCallback = std::move(callback);
 }
 
 void render::Renderer::set_post_reload_callback(

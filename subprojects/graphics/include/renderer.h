@@ -41,6 +41,7 @@ private:
   uint32_t frameCount; // total frames rendered
   uint32_t currentSemaphoreIndex;
 
+  std::function<void()> preReloadCallback;
   std::function<void()> postReloadCallback;
 
   void init_instance();
@@ -73,6 +74,7 @@ public:
   void set_render_strategy(ObjectManager::RenderStrategy strategy);
   void set_gpu_config(const ObjectManager::MultiGPUConfig &config);
 
+  void set_pre_reload_callback(std::function<void()> callback);
   void set_post_reload_callback(std::function<void()> callback);
 
   device::DeviceManager &get_device_manager();
