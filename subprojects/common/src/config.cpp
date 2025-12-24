@@ -87,7 +87,10 @@ vk::StructureChain<PhysicalDeviceFeaturesList>
 general::Config::get_features(vk::raii::PhysicalDevice physicalDevice) {
   if (*physicalDevice == VK_NULL_HANDLE) {
     vk::PhysicalDeviceFeatures deviceFeatures = {
-        .depthClamp = VK_TRUE,         // Enable depth clamping for 3D rendering
+        // Enable depth clamping for 3D rendering
+        // Required when materials set depthClampEnable=VK_TRUE in rasterization state
+        // Without this, violates VUID-VkPipelineRasterizationStateCreateInfo-depthClampEnable-00782
+        .depthClamp = VK_TRUE,
         .samplerAnisotropy = VK_TRUE}; // Enable anisotropic filtering
 
     vk::StructureChain<PhysicalDeviceFeaturesList> featureChain = {

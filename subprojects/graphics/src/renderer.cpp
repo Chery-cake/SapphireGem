@@ -329,8 +329,15 @@ void render::Renderer::reload() {
   std::print("Reloading rendering system...\n");
 
   // Call pre-reload callback to allow cleanup of objects that reference managers
+  // This prevents use-after-free when scenes/objects hold pointers to managers
   if (preReloadCallback) {
-    preReloadCallback();
+    try {
+      preReloadCallback();
+    } catch (const std::exception &e) {
+      std::print("Warning: Exception in pre-reload callback: {}\n", e.what());
+    } catch (...) {
+      std::print("Warning: Unknown exception in pre-reload callback\n");
+    }
   }
 
   // Wait for all devices to be idle
@@ -389,7 +396,13 @@ void render::Renderer::reload() {
 
   // Notify callback that reload is complete and objects can be recreated
   if (postReloadCallback) {
-    postReloadCallback();
+    try {
+      postReloadCallback();
+    } catch (const std::exception &e) {
+      std::print("Warning: Exception in post-reload callback: {}\n", e.what());
+    } catch (...) {
+      std::print("Warning: Unknown exception in post-reload callback\n");
+    }
   }
 }
 
