@@ -225,6 +225,7 @@ void device::LogicalDevice::initialize_swap_chain(
   swapChain = std::make_unique<SwapChain>(this, window, surface);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  swapChain->create_depth_resources();
   create_swapchain_semaphores();
 }
 void device::LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
@@ -232,6 +233,7 @@ void device::LogicalDevice::initialize_swap_chain(vk::SurfaceFormatKHR format,
   swapChain = std::make_unique<SwapChain>(this, format, extent);
   swapChain->create_swap_chain();
   swapChain->create_swap_image_views();
+  swapChain->create_depth_resources();
   create_swapchain_semaphores();
 }
 
