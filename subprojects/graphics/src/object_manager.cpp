@@ -148,6 +148,12 @@ void render::ObjectManager::render_all_objects(
   }
 }
 
+void render::ObjectManager::wait_idle() {
+  if (deviceManager) {
+    deviceManager->wait_idle();
+  }
+}
+
 size_t render::ObjectManager::get_object_count() const {
   return objects.size();
 }

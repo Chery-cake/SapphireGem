@@ -98,6 +98,8 @@ public:
   // Rendering
   void render_all_objects(vk::raii::CommandBuffer &commandBuffer,
                           uint32_t deviceIndex, uint32_t frameIndex);
+  // Synchronization
+  void wait_idle();
 
   // Get statistics
   size_t get_object_count() const;

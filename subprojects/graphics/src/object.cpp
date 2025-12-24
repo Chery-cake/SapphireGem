@@ -1,6 +1,7 @@
 #include "object.h"
 #include "buffer_manager.h"
 #include "config.h"
+#include "identifiers.h"
 #include "material.h"
 #include "material_manager.h"
 #include "texture_manager.h"
@@ -159,12 +160,10 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   }
 
   // Create per-object UBO for materials that need separate transforms per
-  // object This includes Test, Test2D, Test3DTextured, and all Textured
-  // materials (both 2D and 3D)
+  // object Use centralized function to check if material needs UBO based on
+  // naming convention
   bool needsPerObjectUBO =
-      (materialIdentifier == "Test" || materialIdentifier == "Test2D" ||
-       materialIdentifier == "Test3DTextured" ||
-       materialIdentifier.find("Textured") == 0);
+      render::material_needs_per_object_ubo(materialIdentifier);
 
   if (needsPerObjectUBO) {
     device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
@@ -186,10 +185,8 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Create UBOs for submesh materials if needed
   if (useSubmeshes) {
     for (const auto &submesh : submeshes) {
-      bool submeshNeedsUBO = (submesh.materialIdentifier == "Test" ||
-                              submesh.materialIdentifier == "Test2D" ||
-                              submesh.materialIdentifier == "Test3DTextured" ||
-                              submesh.materialIdentifier.find("Textured") == 0);
+      bool submeshNeedsUBO =
+          material_needs_per_object_ubo(submesh.materialIdentifier);
 
       if (submeshNeedsUBO) {
         // Only create if different from base material
@@ -281,10 +278,8 @@ void render::Object::setup_materials_for_submeshes(
 
 std::string
 render::Object::get_ubo_buffer_name(const std::string &matIdentifier) const {
-  // All materials now use per-object UBOs to avoid sharing transforms
-  if (matIdentifier == "Test" || matIdentifier == "Test2D" ||
-      matIdentifier == "Test3DTextured" ||
-      matIdentifier.find("Textured") == 0) {
+  // Use centralized function to check if material needs UBO
+  if (material_needs_per_object_ubo(matIdentifier)) {
     return matIdentifier + "_" + identifier + "_ubo";
   }
   return "";

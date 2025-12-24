@@ -1,17 +1,13 @@
 #include "renderer.h"
-#include "buffer.h"
 #include "buffer_manager.h"
 #include "config.h"
 #include "device_manager.h"
 #include "logical_device.h"
-#include "material.h"
 #include "material_manager.h"
-#include "object.h"
 #include "object_manager.h"
 #include "texture_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <print>
 #include <stdexcept>
@@ -43,9 +39,12 @@ render::Renderer::Renderer(GLFWwindow *window)
       *deviceManager->get_primary_device()->get_device());
 
   init_swap_chain();
-  init_materials();
 
-  create_buffers();
+  materialManager = std::make_unique<MaterialManager>(deviceManager.get());
+
+  textureManager = std::make_unique<TextureManager>(deviceManager.get());
+
+  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 
   objectManager = std::make_unique<ObjectManager>(
       deviceManager.get(), materialManager.get(), bufferManager.get(),
@@ -137,240 +136,9 @@ void render::Renderer::init_swap_chain() {
   deviceManager->create_command_pool();
 }
 
-void render::Renderer::init_materials() {
-  materialManager = std::make_unique<MaterialManager>(deviceManager.get());
-  textureManager = std::make_unique<TextureManager>(deviceManager.get());
-
-  vk::DescriptorSetLayoutBinding bidingInfo = {
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
-  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-      .blendEnable = vk::False,
-      .colorWriteMask =
-          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
-  auto bindingDescription = Object::Vertex3D::getBindingDescription();
-  auto attributeDescriptions = Object::Vertex3D::getAttributeDescriptions();
-
-  Material::MaterialCreateInfo createInfo{
-      .identifier = "Test",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::True,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{.vertexBindingDescriptionCount = 1,
-                        .pVertexBindingDescriptions = &bindingDescription,
-                        .vertexAttributeDescriptionCount =
-                            static_cast<uint32_t>(attributeDescriptions.size()),
-                        .pVertexAttributeDescriptions =
-                            attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo);
-
-  // Create 2D material (no depth testing for 2D objects)
-  Material::MaterialCreateInfo createInfo2D{
-      .identifier = "Test2D",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::False,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eNone,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {.depthTestEnable = vk::False,
-                            .depthWriteEnable = vk::False},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{.vertexBindingDescriptionCount = 1,
-                        .pVertexBindingDescriptions = &bindingDescription,
-                        .vertexAttributeDescriptionCount =
-                            static_cast<uint32_t>(attributeDescriptions.size()),
-                        .pVertexAttributeDescriptions =
-                            attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo2D);
-
-  // Create 3D textured version of Test material (for multi-material cubes
-  // with textured vertices)
-  auto bindingDescription3DTextured =
-      Object::Vertex3DTextured::getBindingDescription();
-  auto attributeDescriptions3DTextured =
-      Object::Vertex3DTextured::getAttributeDescriptions();
-
-  Material::MaterialCreateInfo createInfo3DTextured{
-      .identifier = "Test3DTextured",
-      .vertexShaders = "../assets/shaders/slang.spv",
-      .fragmentShaders = "../assets/shaders/slang.spv",
-      .descriptorBindings = {bidingInfo},
-      .rasterizationState = {.depthClampEnable = vk::True,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{
-          .vertexBindingDescriptionCount = 1,
-          .pVertexBindingDescriptions = &bindingDescription3DTextured,
-          .vertexAttributeDescriptionCount =
-              static_cast<uint32_t>(attributeDescriptions3DTextured.size()),
-          .pVertexAttributeDescriptions =
-              attributeDescriptions3DTextured.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(createInfo3DTextured);
-
-  // Create textured material
-  vk::DescriptorSetLayoutBinding uboBinding = {
-      .binding = 0,
-      .descriptorType = vk::DescriptorType::eUniformBuffer,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
-  vk::DescriptorSetLayoutBinding samplerBinding = {
-      .binding = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eFragment};
-
-  auto texturedBindingDescription =
-      Object::Vertex2DTextured::getBindingDescription();
-  auto texturedAttributeDescriptions =
-      Object::Vertex2DTextured::getAttributeDescriptions();
-
-  // Textured material uses textured.spv compiled from textured.slang
-  // Compile command: slangc textured.slang -target spirv -profile spirv_1_4
-  //                  -emit-spirv-directly -fvk-use-entrypoint-name
-  //                  -entry vertMain -entry fragMain -o textured.spv
-  Material::MaterialCreateInfo texturedCreateInfo{
-      .identifier = "Textured",
-      .vertexShaders = "../assets/shaders/textured.spv",
-      .fragmentShaders = "../assets/shaders/textured.spv",
-      .descriptorBindings = {uboBinding, samplerBinding},
-      .rasterizationState = {.depthClampEnable = vk::False,
-                             .rasterizerDiscardEnable = vk::False,
-                             .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
-                             .frontFace = vk::FrontFace::eCounterClockwise,
-                             .depthBiasEnable = vk::False,
-                             .depthBiasSlopeFactor = 1.0f,
-                             .lineWidth = 1.0f},
-      .depthStencilState = {},
-      .blendState = {.logicOpEnable = vk::False,
-                     .logicOp = vk::LogicOp::eCopy,
-                     .attachmentCount = 1,
-                     .pAttachments = &colorBlendAttachment},
-      .vertexInputState{
-          .vertexBindingDescriptionCount = 1,
-          .pVertexBindingDescriptions = &texturedBindingDescription,
-          .vertexAttributeDescriptionCount =
-              static_cast<uint32_t>(texturedAttributeDescriptions.size()),
-          .pVertexAttributeDescriptions = texturedAttributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
-      .viewportState{.viewportCount = 1, .scissorCount = 1},
-      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-                        .sampleShadingEnable = vk::False},
-      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
-
-  materialManager->add_material(texturedCreateInfo);
-}
-
 void render::Renderer::init_debug() {
   debugMessanger =
       general::Config::get_instance().set_up_debug_messanger(instance);
-}
-
-void render::Renderer::create_buffers() {
-  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
-
-  const std::vector<Object::Vertex2D> vertices = {
-      {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-      {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-      {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-      {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
-
-  device::Buffer::BufferCreateInfo vertInfo = {
-      .identifier = "vertices",
-      .type = device::Buffer::BufferType::VERTEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(vertices) * sizeof(Object::Vertex2D),
-      .initialData = vertices.data()};
-
-  bufferManager->create_buffer(vertInfo);
-
-  const std::vector<uint16_t> indices = {0, 1, 2, 2, 3, 0};
-
-  device::Buffer::BufferCreateInfo indInfo = {
-      .identifier = "indices",
-      .type = device::Buffer::BufferType::INDEX,
-      .usage = device::Buffer::BufferUsage::STATIC,
-      .size = std::size(indices) * sizeof(uint16_t),
-      .initialData = indices.data()};
-
-  bufferManager->create_buffer(indInfo);
-
-  // Get the first material (or iterate through all if needed)
-  if (!materialManager->get_materials().empty()) {
-    Material *material = materialManager->get_materials()[0];
-
-    device::Buffer::TransformUBO testUboData = {
-        .model = glm::mat4(1.0f), // Identity matrix
-        .view = glm::mat4(1.0f),  // Identity matrix
-        .proj = glm::mat4(1.0f)   // Identity matrix for 2D (using NDC directly)
-    };
-
-    device::Buffer::BufferCreateInfo matInfo = {
-        .identifier = "material-test",
-        .type = device::Buffer::BufferType::UNIFORM,
-        .usage = device::Buffer::BufferUsage::DYNAMIC,
-        .size = sizeof(device::Buffer::TransformUBO),
-        .elementSize = sizeof(device::Buffer::TransformUBO),
-        .initialData = &testUboData};
-
-    bufferManager->create_buffer(matInfo);
-  }
 }
 
 bool render::Renderer::acquire_next_image(device::LogicalDevice *device,
@@ -600,8 +368,12 @@ void render::Renderer::reload() {
       *deviceManager->get_primary_device()->get_device());
 
   init_swap_chain();
-  init_materials();
-  create_buffers();
+
+  materialManager = std::make_unique<MaterialManager>(deviceManager.get());
+
+  textureManager = std::make_unique<TextureManager>(deviceManager.get());
+
+  bufferManager = std::make_unique<device::BufferManager>(deviceManager.get());
 
   objectManager = std::make_unique<ObjectManager>(
       deviceManager.get(), materialManager.get(), bufferManager.get(),
@@ -698,249 +470,4 @@ device::BufferManager &render::Renderer::get_buffer_manager() {
 
 render::ObjectManager *render::Renderer::get_object_manager() {
   return objectManager.get();
-}
-
-render::Object *render::Renderer::create_triangle_2d(
-    const std::string &identifier, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 2D triangle vertices (in NDC space, z=0)
-  const std::vector<Object::Vertex3D> vertices = {
-      {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // Top vertex (red)
-      {{-0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // Bottom left vertex (green)
-      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}   // Bottom right vertex (blue)
-  };
-
-  const std::vector<uint16_t> indices = {0, 1, 2};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = "Test2D",
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_cube_3d(const std::string &identifier,
-                                                 const glm::vec3 &position,
-                                                 const glm::vec3 &rotation,
-                                                 const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a proper 3D cube with all 6 faces
-  // 8 vertices for the cube corners
-  constexpr float s = 0.5f; // Half size
-
-  const std::vector<Object::Vertex3D> vertices = {
-      // Front face (red)
-      {{-s, -s, s}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {1.0f, 0.0f, 0.0f}},  // 3
-
-      // Back face (green)
-      {{-s, -s, -s}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f, 0.0f}},  // 7
-
-      // Left face (blue)
-      {{-s, -s, -s}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s}, {0.0f, 0.0f, 1.0f}},  // 9
-      {{-s, s, s}, {0.0f, 0.0f, 1.0f}},   // 10
-      {{-s, s, -s}, {0.0f, 0.0f, 1.0f}},  // 11
-
-      // Right face (yellow)
-      {{s, -s, -s}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {1.0f, 1.0f, 0.0f}},  // 15
-
-      // Top face (cyan)
-      {{-s, s, -s}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f, 1.0f}},  // 19
-
-      // Bottom face (magenta)
-      {{-s, -s, -s}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
-
-  // 36 indices for 12 triangles (2 per face)
-  // All faces wound counterclockwise when viewed from outside
-  const std::vector<uint16_t> indices = {// Front face (z = +s, facing +Z)
-                                         0, 2, 1, 0, 3, 2,
-                                         // Back face (z = -s, facing -Z)
-                                         4, 5, 6, 6, 7, 4,
-                                         // Left face (x = -s, facing -X)
-                                         8, 10, 9, 8, 11, 10,
-                                         // Right face (x = +s, facing +X)
-                                         12, 13, 14, 14, 15, 12,
-                                         // Top face (y = +s, facing +Y)
-                                         16, 17, 18, 18, 19, 16,
-                                         // Bottom face (y = -s, facing -Y)
-                                         20, 22, 21, 20, 23, 22};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier = "Test",
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_textured_square_2d(
-    const std::string &identifier, const std::string &textureIdentifier,
-    const glm::vec3 &position, const glm::vec3 &rotation,
-    const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 2D textured square (quad) with 4 vertices
-  const std::vector<Object::Vertex2DTextured> vertices = {
-      {{-0.5f, -0.5f}, {0.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}, // Bottom-left
-      {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},  // Bottom-right
-      {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},   // Top-right
-      {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}   // Top-left
-  };
-
-  // Two triangles to form a square with counter-clockwise winding
-  const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_2D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          "Textured_" + textureIdentifier,
-                                      .textureIdentifier = textureIdentifier,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
-}
-
-render::Object *render::Renderer::create_multi_material_cube_3d(
-    const std::string &identifier, const glm::vec3 &position,
-    const glm::vec3 &rotation, const glm::vec3 &scale) {
-  if (!objectManager) {
-    std::print("Error: ObjectManager not initialized\n");
-    return nullptr;
-  }
-
-  // Define a 3D cube with textured vertices for all 6 faces
-  constexpr float s = 0.5f; // Half size
-
-  const std::vector<Object::Vertex3DTextured> vertices = {
-      // Front face (Textured_checkerboard - red background)
-      {{-s, -s, s}, {0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}, // 0
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}},  // 1
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},   // 2
-      {{-s, s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},  // 3
-
-      // Back face (Textured_gradient - green background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, // 4
-      {{s, -s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},  // 5
-      {{s, s, -s}, {1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},   // 6
-      {{-s, s, -s}, {0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},  // 7
-
-      // Left face (Textured_atlas - blue background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, // 8
-      {{-s, -s, s},
-       {0.5f, 0.0f},
-       {0.0f, 0.0f, 1.0f}}, // 9 - using top-left atlas region
-      {{-s, s, s}, {0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},  // 10
-      {{-s, s, -s}, {0.0f, 0.5f}, {0.0f, 0.0f, 1.0f}}, // 11
-
-      // Right face (Test - animated shader - yellow background)
-      {{s, -s, -s}, {0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}}, // 12
-      {{s, -s, s}, {1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}},  // 13
-      {{s, s, s}, {1.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},   // 14
-      {{s, s, -s}, {0.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},  // 15
-
-      // Top face (Textured_checkerboard again - cyan background)
-      {{-s, s, -s}, {0.0f, 0.0f}, {0.0f, 1.0f, 1.0f}}, // 16
-      {{s, s, -s}, {1.0f, 0.0f}, {0.0f, 1.0f, 1.0f}},  // 17
-      {{s, s, s}, {1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},   // 18
-      {{-s, s, s}, {0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},  // 19
-
-      // Bottom face (Textured_gradient again - magenta background)
-      {{-s, -s, -s}, {0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}}, // 20
-      {{s, -s, -s}, {1.0f, 0.0f}, {1.0f, 0.0f, 1.0f}},  // 21
-      {{s, -s, s}, {1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}},   // 22
-      {{-s, -s, s}, {0.0f, 1.0f}, {1.0f, 0.0f, 1.0f}}   // 23
-  };
-
-  // 36 indices for 12 triangles (2 per face)
-  // All faces wound counter-clockwise when viewed from outside the cube
-  const std::vector<uint16_t> indices = {// Front face (Textured_checkerboard)
-                                         0, 1, 2, 0, 2, 3,
-                                         // Back face (Textured_gradient)
-                                         4, 6, 5, 4, 7, 6,
-                                         // Left face (Textured_atlas)
-                                         8, 9, 10, 8, 10, 11,
-                                         // Right face (Test - animated shader)
-                                         12, 14, 13, 12, 15, 14,
-                                         // Top face (Textured_checkerboard)
-                                         16, 18, 17, 16, 19, 18,
-                                         // Bottom face (Textured_gradient)
-                                         20, 21, 22, 20, 22, 23};
-
-  // Define submeshes for each face with different materials
-  // Each cube face uses 6 indices (2 triangles), starting at index =
-  // face_index
-  // * 6
-  constexpr uint32_t INDICES_PER_FACE = 6;
-  std::vector<Object::Submesh> submeshes = {
-      {0 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
-       nullptr}, // Front
-      {1 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
-       nullptr}, // Back
-      {2 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_atlas",
-       nullptr}, // Left
-      {3 * INDICES_PER_FACE, INDICES_PER_FACE, "Test3DTextured",
-       nullptr}, // Right (shader animation)
-      {4 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_checkerboard",
-       nullptr}, // Top
-      {5 * INDICES_PER_FACE, INDICES_PER_FACE, "Textured3D_gradient",
-       nullptr} // Bottom
-  };
-
-  Object::ObjectCreateInfo createInfo{.identifier = identifier,
-                                      .type = Object::ObjectType::OBJECT_3D,
-                                      .vertices = vertices,
-                                      .indices = indices,
-                                      .materialIdentifier =
-                                          "Test", // Default material
-                                      .submeshes = submeshes,
-                                      .position = position,
-                                      .rotation = rotation,
-                                      .scale = scale,
-                                      .visible = true};
-
-  return objectManager->create_object(createInfo);
 }
