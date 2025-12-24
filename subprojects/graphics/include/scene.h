@@ -41,7 +41,6 @@ protected:
     uint32_t indexStart;
     uint32_t indexCount;
     MaterialId materialId;
-    std::optional<TextureId> textureId; // Optional texture for this submesh
   };
 
   // Create a 2D quad/square - supports single material, textured, and

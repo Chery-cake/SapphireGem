@@ -41,15 +41,17 @@ void scene::Scene2::setup() {
   create_textured_material(render::MaterialId::TEXTURED_ATLAS, true);
 
   // Create textured objects
-  texturedSquare = create_textured_quad_2d(
+  texturedSquare = create_quad_2d(
       "scene2_textured_square", render::MaterialId::TEXTURED_CHECKERBOARD,
-      render::TextureId::CHECKERBOARD, glm::vec3(-0.5f, 0.4f, 0.0f),
-      glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 1.0f));
+      render::TextureId::CHECKERBOARD, {},
+      glm::vec3(-0.5f, 0.4f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+      glm::vec3(0.2f, 0.2f, 1.0f));
 
-  imageQuad = create_textured_quad_2d(
+  imageQuad = create_quad_2d(
       "scene2_image_quad", render::MaterialId::TEXTURED_GRADIENT,
-      render::TextureId::GRADIENT, glm::vec3(-0.2f, 0.4f, 0.0f),
-      glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.2f, 0.2f, 1.0f));
+      render::TextureId::GRADIENT, {},
+      glm::vec3(-0.2f, 0.4f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+      glm::vec3(0.2f, 0.2f, 1.0f));
 
   // Create atlas quads with custom UV coordinates
   constexpr float atlasHalfU = 0.5f;
