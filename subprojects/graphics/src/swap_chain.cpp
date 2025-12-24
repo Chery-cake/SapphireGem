@@ -231,13 +231,17 @@ void device::SwapChain::create_depth_resources() {
   
   // Find memory type that supports depth attachment
   auto memProperties = logicalDevice->get_physical_device()->get_device().getMemoryProperties();
-  uint32_t memoryTypeIndex = 0;
+  uint32_t memoryTypeIndex = UINT32_MAX;
   for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
     if ((memRequirements.memoryTypeBits & (1 << i)) &&
         (memProperties.memoryTypes[i].propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)) {
       memoryTypeIndex = i;
       break;
     }
+  }
+  
+  if (memoryTypeIndex == UINT32_MAX) {
+    throw std::runtime_error("Failed to find suitable memory type for depth buffer");
   }
 
   vk::MemoryAllocateInfo allocInfo{
@@ -262,15 +266,10 @@ void device::SwapChain::create_depth_resources() {
 }
 
 void device::SwapChain::destroy_depth_resources() {
-  if (*depthImageView) {
-    depthImageView.clear();
-  }
-  if (*depthImage) {
-    depthImage.clear();
-  }
-  if (*depthImageMemory) {
-    depthImageMemory.clear();
-  }
+  // For vk::raii objects, just call clear() - they handle their own validity
+  depthImageView.clear();
+  depthImage.clear();
+  depthImageMemory.clear();
 }
 
 void device::SwapChain::recreate_swap_chain() {
