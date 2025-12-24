@@ -134,4 +134,27 @@ bool material_uses_textured_vertices(MaterialId id) {
   }
 }
 
+bool material_is_2d(MaterialId id) {
+  switch (id) {
+  // 2D materials
+  case MaterialId::SIMPLE_SHADERS_2D:
+  case MaterialId::TEXTURED:
+  case MaterialId::TEXTURED_CHECKERBOARD:
+  case MaterialId::TEXTURED_GRADIENT:
+  case MaterialId::TEXTURED_ATLAS:
+    return true;
+  
+  // 3D materials
+  case MaterialId::SIMPLE_SHADERS:
+  case MaterialId::SIMPLE_SHADERS_3D_TEXTURED:
+  case MaterialId::TEXTURED_3D_CHECKERBOARD:
+  case MaterialId::TEXTURED_3D_GRADIENT:
+  case MaterialId::TEXTURED_3D_ATLAS:
+    return false;
+  
+  default:
+    return false;
+  }
+}
+
 } // namespace render

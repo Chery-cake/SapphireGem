@@ -153,13 +153,21 @@ render::Object *render::Scene::create_cube_3d(
     const std::vector<uint16_t> &customIndices) {
   constexpr float s = 0.5f; // Half size
 
+  // Validate that we're not using a 2D material with a 3D object
+  if (material_is_2d(materialId)) {
+    std::print("Warning: Attempting to use 2D material '{}' with 3D cube '{}'. "
+               "This will cause rendering issues. Use a 3D material instead.\n",
+               to_string(materialId), identifier);
+  }
+
   // Determine if we need textured vertices
   // Use textured vertices if:
   // 1. A texture ID is explicitly provided, OR
   // 2. Submeshes are provided (for multi-material objects), OR
-  // 3. The material itself expects textured vertices
+  // 3. The material itself expects textured vertices (and is 3D)
   bool useTexture = textureId.has_value() || !submeshes.empty() ||
-                    material_uses_textured_vertices(materialId);
+                    (material_uses_textured_vertices(materialId) &&
+                     !material_is_2d(materialId));
 
   std::vector<uint16_t> indices;
 
