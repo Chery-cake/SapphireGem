@@ -33,7 +33,8 @@ protected:
                              const glm::vec3 &position = glm::vec3(0.0f),
                              const glm::vec3 &rotation = glm::vec3(0.0f),
                              const glm::vec3 &scale = glm::vec3(1.0f),
-                             const std::vector<uint16_t> &indices = {});
+                             const std::vector<uint16_t> &indices = {},
+                             const std::vector<glm::vec3> &vertexColors = {});
 
   // Submesh definition for multi-material objects
   struct SubmeshDef {
@@ -52,7 +53,8 @@ protected:
                  const glm::vec3 &position = glm::vec3(0.0f),
                  const glm::vec3 &rotation = glm::vec3(0.0f),
                  const glm::vec3 &scale = glm::vec3(1.0f),
-                 const std::vector<uint16_t> &indices = {});
+                 const std::vector<uint16_t> &indices = {},
+                 const std::vector<glm::vec3> &vertexColors = {});
 
   // Create a 3D cube - supports single material, textured, and multi-material
   // modes Base material is used for areas not covered by submeshes
@@ -63,7 +65,9 @@ protected:
                  const glm::vec3 &position = glm::vec3(0.0f),
                  const glm::vec3 &rotation = glm::vec3(0.0f),
                  const glm::vec3 &scale = glm::vec3(1.0f),
-                 const std::vector<uint16_t> &indices = {});
+                 const std::vector<uint16_t> &indices = {},
+                 float cubeSize = 1.0f,
+                 const std::vector<glm::vec3> &vertexColors = {});
 
   // Helper to create a basic material (non-textured)
   void create_basic_material(MaterialId materialId, bool is2D,
