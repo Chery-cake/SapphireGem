@@ -671,10 +671,6 @@ void render::Scene::create_atlas_region_texture(TextureId textureId,
   sceneTextures.insert(texId);
 }
 
-  textureManager->create_texture_atlas(texId, path, rows, cols);
-  sceneTextures.insert(texId);
-}
-
 void render::Scene::cleanup() {
   // Wait for GPU to finish using resources before destroying them
   // This prevents validation errors about destroying resources in use
