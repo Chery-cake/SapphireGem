@@ -18,6 +18,17 @@ void scene::Scene3::setup() {
                  "../assets/textures/gradient.png");
   create_texture_atlas(render::TextureId::ATLAS, "../assets/textures/atlas.png",
                        2, 2);
+  
+  // Create separate texture objects for each atlas region
+  // These will be used by the region-specific materials
+  create_atlas_region_texture(render::TextureId::ATLAS_0_0, 
+                               render::TextureId::ATLAS, 0, 0);
+  create_atlas_region_texture(render::TextureId::ATLAS_0_1, 
+                               render::TextureId::ATLAS, 0, 1);
+  create_atlas_region_texture(render::TextureId::ATLAS_1_0, 
+                               render::TextureId::ATLAS, 1, 0);
+  create_atlas_region_texture(render::TextureId::ATLAS_1_1, 
+                               render::TextureId::ATLAS, 1, 1);
 
   // Create textured materials for 2D
   create_textured_material(render::MaterialId::TEXTURED_CHECKERBOARD, true);

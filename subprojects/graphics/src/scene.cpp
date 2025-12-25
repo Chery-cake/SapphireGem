@@ -114,6 +114,9 @@ render::Object *render::Scene::create_quad_2d(
         submesh.indexCount = def.indexCount;
         submesh.materialIdentifier = to_string(def.materialId);
         submesh.material = nullptr;
+        submesh.textureIdentifier = def.textureId.has_value() 
+                                     ? to_string(def.textureId.value()) 
+                                     : "";
         objectSubmeshes.push_back(submesh);
       }
       createInfo.submeshes = objectSubmeshes;
@@ -282,6 +285,9 @@ render::Object *render::Scene::create_cube_3d(
         submesh.indexCount = def.indexCount;
         submesh.materialIdentifier = to_string(def.materialId);
         submesh.material = nullptr;
+        submesh.textureIdentifier = def.textureId.has_value() 
+                                     ? to_string(def.textureId.value()) 
+                                     : "";
         objectSubmeshes.push_back(submesh);
       }
       createInfo.submeshes = objectSubmeshes;
@@ -582,6 +588,88 @@ void render::Scene::create_texture_atlas(TextureId textureId,
     sceneTextures.insert(texId);
     return;
   }
+
+  textureManager->create_texture_atlas(texId, path, rows, cols);
+  sceneTextures.insert(texId);
+}
+
+void render::Scene::create_atlas_region_texture(TextureId textureId,
+                                                TextureId atlasTextureId,
+                                                uint32_t row, uint32_t col) {
+  std::string texId = to_string(textureId);
+  std::string atlasId = to_string(atlasTextureId);
+
+  // Check if texture already exists
+  if (textureManager->get_texture(texId)) {
+    sceneTextures.insert(texId);
+    return;
+  }
+
+  // Get the atlas texture
+  Texture *atlasTexture = textureManager->get_texture(atlasId);
+  if (!atlasTexture) {
+    std::print(stderr, "Error: Atlas texture '{}' not found for region texture '{}'\n",
+               atlasId, texId);
+    return;
+  }
+
+  // Get the atlas region by name
+  std::string regionName = "tile_" + std::to_string(row) + "_" + std::to_string(col);
+  const Texture::AtlasRegion *region = atlasTexture->get_atlas_region(regionName);
+  
+  if (!region) {
+    std::print(stderr, "Error: Atlas region '{}' not found in atlas '{}'\n",
+               regionName, atlasId);
+    return;
+  }
+
+  // Create texture that will store just this region
+  Texture::TextureCreateInfo createInfo{
+      .identifier = texId,
+      .type = Texture::TextureType::SINGLE,
+      .imagePath = ""
+  };
+
+  textureManager->create_texture(createInfo);
+  
+  Texture *regionTexture = textureManager->get_texture(texId);
+  if (regionTexture && atlasTexture->get_image()) {
+    auto atlasImage = atlasTexture->get_image();
+    const auto &atlasPixels = atlasImage->get_pixel_data();
+    uint32_t atlasWidth = atlasImage->get_width();
+    uint32_t atlasChannels = atlasImage->get_channels();
+    
+    // Calculate pixel coordinates from UV coordinates
+    uint32_t startX = static_cast<uint32_t>(region->uvMin.x * atlasWidth);
+    uint32_t startY = static_cast<uint32_t>(region->uvMin.y * atlasImage->get_height());
+    uint32_t regionWidth = region->width;
+    uint32_t regionHeight = region->height;
+    
+    // Extract the region pixels
+    std::vector<unsigned char> regionPixels(regionWidth * regionHeight * atlasChannels);
+    for (uint32_t y = 0; y < regionHeight; ++y) {
+      for (uint32_t x = 0; x < regionWidth; ++x) {
+        uint32_t srcOffset = ((startY + y) * atlasWidth + (startX + x)) * atlasChannels;
+        uint32_t dstOffset = (y * regionWidth + x) * atlasChannels;
+        for (uint32_t c = 0; c < atlasChannels; ++c) {
+          regionPixels[dstOffset + c] = atlasPixels[srcOffset + c];
+        }
+      }
+    }
+    
+    // Load the extracted region into the new texture
+    regionTexture->get_image()->load_from_memory(
+        regionPixels.data(),
+        regionWidth,
+        regionHeight,
+        atlasChannels
+    );
+    
+    regionTexture->update_gpu();
+  }
+
+  sceneTextures.insert(texId);
+}
 
   textureManager->create_texture_atlas(texId, path, rows, cols);
   sceneTextures.insert(texId);

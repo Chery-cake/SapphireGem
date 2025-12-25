@@ -400,20 +400,12 @@ void render::Object::create_descriptor_sets_for_material(
     // Extract texture name from material identifier
     // e.g., "Textured_checkerboard" -> "checkerboard"
     // e.g., "Textured3D_gradient" -> "gradient"
-    // e.g., "Textured3D_atlas_0_0" -> "atlas" (for atlas regions)
+    // e.g., "Textured3D_atlas_0_0" -> "atlas_0_0" (atlas region texture)
     std::string textureName;
     if (matIdentifier.find("Textured3D_") == 0) {
       textureName = matIdentifier.substr(11); // Skip "Textured3D_" prefix
-      // Check if this is an atlas region material (contains underscores
-      // for coordinates)
-      if (textureName.find("atlas_") == 0) {
-        textureName = "atlas"; // Use the base atlas texture
-      }
     } else if (matIdentifier.find("Textured_") == 0) {
       textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
-      if (textureName.find("atlas_") == 0) {
-        textureName = "atlas"; // Use the base atlas texture
-      }
     }
 
     // Use object's textureIdentifier if available, otherwise use extracted

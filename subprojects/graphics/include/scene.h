@@ -43,6 +43,7 @@ protected:
     uint32_t indexStart;
     uint32_t indexCount;
     MaterialId materialId;
+    std::optional<TextureId> textureId; // Optional: submesh-specific texture
   };
 
   // Create a 2D quad/square - supports single material, textured, and
@@ -84,6 +85,10 @@ protected:
   // Helper to create a texture atlas
   void create_texture_atlas(TextureId textureId, const std::string &path,
                             uint32_t rows, uint32_t cols);
+
+  // Helper to create a texture that represents a specific region of an atlas
+  void create_atlas_region_texture(TextureId textureId, TextureId atlasTextureId,
+                                    uint32_t row, uint32_t col);
 
 public:
   Scene(MaterialManager *matMgr, TextureManager *texMgr,
