@@ -198,7 +198,15 @@ bool render::LayeredTexture::composite_layers() {
   
   // Create composited image buffer (RGBA)
   constexpr uint32_t channels = 4;
-  std::vector<unsigned char> composited(width * height * channels, 0);
+  std::vector<unsigned char> composited(width * height * channels);
+  
+  // Initialize with opaque white background for better visibility
+  for (size_t i = 0; i < composited.size(); i += 4) {
+    composited[i + 0] = 255; // R
+    composited[i + 1] = 255; // G
+    composited[i + 2] = 255; // B
+    composited[i + 3] = 255; // A (opaque)
+  }
   
   // Composite each visible layer
   for (auto &layer : layers) {
