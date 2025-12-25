@@ -33,6 +33,10 @@ private:
   std::string imagePath;
   std::shared_ptr<Image> image;
   std::vector<AtlasRegion> atlasRegions;
+  
+  // Atlas grid configuration (for reloading)
+  uint32_t atlasRows = 0;
+  uint32_t atlasCols = 0;
 
   std::vector<device::LogicalDevice *> logicalDevices;
 

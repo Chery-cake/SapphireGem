@@ -28,6 +28,10 @@ void render::Texture::generate_atlas_regions_grid(uint32_t rows,
     return;
   }
 
+  // Store atlas configuration for potential reload
+  atlasRows = rows;
+  atlasCols = cols;
+
   atlasRegions.clear();
 
   uint32_t imageWidth = image->get_width();
@@ -177,32 +181,8 @@ bool render::Texture::reload() {
   }
 
   // Regenerate atlas regions if this is an atlas texture
-  if (type == TextureType::ATLAS && !atlasRegions.empty()) {
-    // Save the atlas configuration
-    uint32_t rows = 0;
-    uint32_t cols = 0;
-
-    // Detect grid size from atlas region names
-    // Atlas regions are named "tile_<row>_<col>"
-    for (const auto &region : atlasRegions) {
-      // Parse the region name to get row and col
-      size_t firstUnderscore = region.name.find('_');
-      size_t secondUnderscore = region.name.find('_', firstUnderscore + 1);
-      if (firstUnderscore != std::string::npos &&
-          secondUnderscore != std::string::npos) {
-        uint32_t row =
-            std::stoi(region.name.substr(firstUnderscore + 1,
-                                         secondUnderscore - firstUnderscore - 1));
-        uint32_t col = std::stoi(region.name.substr(secondUnderscore + 1));
-        rows = std::max(rows, row + 1);
-        cols = std::max(cols, col + 1);
-      }
-    }
-
-    // Regenerate atlas regions with the same configuration
-    if (rows > 0 && cols > 0) {
-      generate_atlas_regions_grid(rows, cols);
-    }
+  if (type == TextureType::ATLAS && atlasRows > 0 && atlasCols > 0) {
+    generate_atlas_regions_grid(atlasRows, atlasCols);
   }
 
   // Upload to GPU
