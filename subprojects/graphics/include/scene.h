@@ -23,6 +23,7 @@ protected:
   ObjectManager *objectManager;
 
   std::vector<Object *> sceneObjects;
+  std::vector<std::string> sceneTextures; // Track textures created by this scene
 
   // Helper methods for creating objects with automatic index generation
   // These methods handle the common patterns of object creation
@@ -68,20 +69,6 @@ protected:
                  const std::vector<uint16_t> &indices = {},
                  float cubeSize = 1.0f,
                  const std::vector<glm::vec3> &vertexColors = {});
-
-  // Create a 3D cube with atlas region UV mapping
-  // Each face can map to a different region of a texture atlas (2x2 grid)
-  // atlasRegions: array of 6 pairs (row, col) for each face [front, back,
-  // left, right, top, bottom]
-  Object *create_cube_3d_with_atlas_regions(
-      const std::string &identifier, MaterialId materialId,
-      const std::optional<TextureId> &textureId = std::nullopt,
-      const std::vector<SubmeshDef> &submeshes = {},
-      const std::vector<std::pair<int, int>> &atlasRegions = {},
-      const glm::vec3 &position = glm::vec3(0.0f),
-      const glm::vec3 &rotation = glm::vec3(0.0f),
-      const glm::vec3 &scale = glm::vec3(1.0f), float cubeSize = 1.0f,
-      const std::vector<glm::vec3> &vertexColors = {});
 
   // Helper to create a basic material (non-textured)
   void create_basic_material(MaterialId materialId, bool is2D,

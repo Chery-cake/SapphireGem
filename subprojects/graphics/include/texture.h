@@ -64,6 +64,9 @@ public:
   // Apply changes to GPU
   bool update_gpu();
 
+  // Reload texture from original source file (resets all modifications)
+  bool reload();
+
   // Getters
   const std::string &get_identifier() const;
   TextureType get_type() const;

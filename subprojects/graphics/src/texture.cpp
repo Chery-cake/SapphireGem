@@ -156,6 +156,67 @@ bool render::Texture::update_gpu() {
   return false;
 }
 
+bool render::Texture::reload() {
+  if (imagePath.empty()) {
+    std::print(stderr, "Texture - {} - cannot reload: no image path\n",
+               identifier);
+    return false;
+  }
+
+  if (!image) {
+    std::print(stderr, "Texture - {} - cannot reload: no image object\n",
+               identifier);
+    return false;
+  }
+
+  // Reload the image from the original file
+  if (!image->load_from_file(imagePath)) {
+    std::print(stderr, "Texture - {} - failed to reload from {}\n", identifier,
+               imagePath);
+    return false;
+  }
+
+  // Regenerate atlas regions if this is an atlas texture
+  if (type == TextureType::ATLAS && !atlasRegions.empty()) {
+    // Save the atlas configuration
+    uint32_t rows = 0;
+    uint32_t cols = 0;
+
+    // Detect grid size from atlas region names
+    // Atlas regions are named "tile_<row>_<col>"
+    for (const auto &region : atlasRegions) {
+      // Parse the region name to get row and col
+      size_t firstUnderscore = region.name.find('_');
+      size_t secondUnderscore = region.name.find('_', firstUnderscore + 1);
+      if (firstUnderscore != std::string::npos &&
+          secondUnderscore != std::string::npos) {
+        uint32_t row =
+            std::stoi(region.name.substr(firstUnderscore + 1,
+                                         secondUnderscore - firstUnderscore - 1));
+        uint32_t col = std::stoi(region.name.substr(secondUnderscore + 1));
+        rows = std::max(rows, row + 1);
+        cols = std::max(cols, col + 1);
+      }
+    }
+
+    // Regenerate atlas regions with the same configuration
+    if (rows > 0 && cols > 0) {
+      generate_atlas_regions_grid(rows, cols);
+    }
+  }
+
+  // Upload to GPU
+  if (!image->update_gpu_data()) {
+    std::print(stderr, "Texture - {} - failed to upload reloaded data to GPU\n",
+               identifier);
+    return false;
+  }
+
+  std::print("Texture - {} - reloaded successfully from {}\n", identifier,
+             imagePath);
+  return true;
+}
+
 const std::string &render::Texture::get_identifier() const {
   return identifier;
 }

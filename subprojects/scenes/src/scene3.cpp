@@ -46,27 +46,19 @@ void scene::Scene3::setup() {
                      glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.3f, 0.3f, 1.0f));
 
-  // Create a 3D cube with different atlas regions on each face
-  // Atlas regions: (row, col) where 0,0 is top-left, 1,1 is bottom-right
-  multiMaterialCube = create_cube_3d_with_atlas_regions(
+  // Create a 3D cube with different materials on each face using submeshes
+  // Each face gets a different material/texture combination
+  multiMaterialCube = create_cube_3d(
       "scene3_multi_material_cube",
       render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-      std::nullopt, // No base texture - submeshes take precedence
+      render::TextureId::CHECKERBOARD, // Base texture
       {
-          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_0}, // Left face
-          {18, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_1}, // Right face
-          {24, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_0}, // Top face
-          {30, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_1}, // Bottom face
-      },
-      {
-          {0, 0}, // Front face: atlas region (0,0) - top-left
-          {0, 1}, // Back face: atlas region (0,1) - top-right
-          {0, 0}, // Left face: atlas region (0,0) - top-left
-          {0, 1}, // Right face: atlas region (0,1) - top-right
-          {1, 0}, // Top face: atlas region (1,0) - bottom-left
-          {1, 1}, // Bottom face: atlas region (1,1) - bottom-right
+          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},  // Front face
+          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},      // Back face
+          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Left face
+          {18, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Right face
+          {24, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Top face
+          {30, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Bottom face
       },
       glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.25f, 0.25f, 0.25f));
