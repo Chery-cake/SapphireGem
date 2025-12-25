@@ -50,3 +50,20 @@ else
     echo "Error: Failed to compile textured.slang"
     exit 1
 fi
+
+# Compile textured3d.slang to textured3d.spv
+slangc textured3d.slang \
+    -target spirv \
+    -profile spirv_1_4 \
+    -emit-spirv-directly \
+    -fvk-use-entrypoint-name \
+    -entry vertMain \
+    -entry fragMain \
+    -o textured3d.spv
+
+if [ $? -eq 0 ]; then
+    echo "Successfully compiled textured3d.slang to textured3d.spv"
+else
+    echo "Error: Failed to compile textured3d.slang"
+    exit 1
+fi

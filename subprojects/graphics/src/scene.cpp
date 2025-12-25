@@ -450,8 +450,10 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
-      .vertexShaders = "../assets/shaders/textured.spv",
-      .fragmentShaders = "../assets/shaders/textured.spv",
+      .vertexShaders = is2D ? "../assets/shaders/textured.spv" 
+                            : "../assets/shaders/textured3d.spv",
+      .fragmentShaders = is2D ? "../assets/shaders/textured.spv"
+                              : "../assets/shaders/textured3d.spv",
       .descriptorBindings = {uboBinding, samplerBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,

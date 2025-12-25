@@ -30,10 +30,6 @@ void scene::Scene3::setup() {
   create_textured_material(render::MaterialId::TEXTURED_3D_GRADIENT, false);
   create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS, false);
 
-  // Create basic 3D material for one face
-  create_basic_material(render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED, false,
-                        true);
-
   // Create a 2D quad with two different materials (split horizontally)
   multiMaterialQuad =
       create_quad_2d("scene3_multi_material_quad",
@@ -54,9 +50,9 @@ void scene::Scene3::setup() {
                          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
                          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
                          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},
-                         {18, 6, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED},
-                         {24, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-                         {30, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
+                         {18, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
+                         {24, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
+                         {30, 6, render::MaterialId::TEXTURED_3D_ATLAS},
                      },
                      glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.25f, 0.25f, 0.25f));
