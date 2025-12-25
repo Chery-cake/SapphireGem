@@ -591,6 +591,144 @@ void render::Scene::cleanup() {
   std::print("Scene cleanup: GPU resources freed\n");
 }
 
+render::Object *render::Scene::create_cube_3d_with_atlas_regions(
+    const std::string &identifier, MaterialId materialId,
+    const std::optional<TextureId> &textureId,
+    const std::vector<SubmeshDef> &submeshes,
+    const std::vector<std::pair<int, int>> &atlasRegions,
+    const glm::vec3 &position, const glm::vec3 &rotation,
+    const glm::vec3 &scale, float cubeSize,
+    const std::vector<glm::vec3> &vertexColors) {
+  
+  const float s = cubeSize * 0.5f; // Half size
+  glm::vec3 defaultColor(1.0f, 1.0f, 1.0f);
+
+  // Validate that we're not using a 2D material with a 3D object
+  if (material_is_2d(materialId)) {
+    std::print("Warning: Attempting to use 2D material '{}' with 3D cube '{}'. "
+               "This will cause rendering issues. Use a 3D material instead.\n",
+               to_string(materialId), identifier);
+  }
+
+  // Get colors for textured cube (24 vertices - 4 per face)
+  std::vector<glm::vec3> colors(24, defaultColor);
+  for (size_t i = 0; i < std::min(vertexColors.size(), colors.size()); ++i) {
+    colors[i] = vertexColors[i];
+  }
+
+  // Helper lambda to get UV coordinates for atlas region
+  auto getAtlasUV = [](int row, int col, float u, float v) -> glm::vec2 {
+    // Atlas is 2x2, each region is 0.5x0.5
+    float uOffset = col * 0.5f;
+    float vOffset = row * 0.5f;
+    return glm::vec2(uOffset + u * 0.5f, vOffset + v * 0.5f);
+  };
+
+  // Default atlas regions if not provided (all use region 0,0)
+  std::vector<std::pair<int, int>> regions = atlasRegions;
+  if (regions.empty()) {
+    regions = {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}};
+  }
+  // Ensure we have 6 regions (one per face)
+  while (regions.size() < 6) {
+    regions.push_back({0, 0});
+  }
+
+  // Create vertices with atlas-region-specific UV coordinates
+  std::vector<Object::Vertex3DTextured> vertices;
+  
+  // Front face (region index 0)
+  auto [r0, c0] = regions[0];
+  vertices.push_back({{-s, -s, s}, getAtlasUV(r0, c0, 0.0f, 0.0f), colors[0]});
+  vertices.push_back({{s, -s, s}, getAtlasUV(r0, c0, 1.0f, 0.0f), colors[1]});
+  vertices.push_back({{s, s, s}, getAtlasUV(r0, c0, 1.0f, 1.0f), colors[2]});
+  vertices.push_back({{-s, s, s}, getAtlasUV(r0, c0, 0.0f, 1.0f), colors[3]});
+
+  // Back face (region index 1)
+  auto [r1, c1] = regions[1];
+  vertices.push_back({{-s, -s, -s}, getAtlasUV(r1, c1, 0.0f, 0.0f), colors[4]});
+  vertices.push_back({{s, -s, -s}, getAtlasUV(r1, c1, 1.0f, 0.0f), colors[5]});
+  vertices.push_back({{s, s, -s}, getAtlasUV(r1, c1, 1.0f, 1.0f), colors[6]});
+  vertices.push_back({{-s, s, -s}, getAtlasUV(r1, c1, 0.0f, 1.0f), colors[7]});
+
+  // Left face (region index 2)
+  auto [r2, c2] = regions[2];
+  vertices.push_back({{-s, -s, -s}, getAtlasUV(r2, c2, 0.0f, 0.0f), colors[8]});
+  vertices.push_back({{-s, -s, s}, getAtlasUV(r2, c2, 1.0f, 0.0f), colors[9]});
+  vertices.push_back({{-s, s, s}, getAtlasUV(r2, c2, 1.0f, 1.0f), colors[10]});
+  vertices.push_back({{-s, s, -s}, getAtlasUV(r2, c2, 0.0f, 1.0f), colors[11]});
+
+  // Right face (region index 3)
+  auto [r3, c3] = regions[3];
+  vertices.push_back({{s, -s, -s}, getAtlasUV(r3, c3, 0.0f, 0.0f), colors[12]});
+  vertices.push_back({{s, -s, s}, getAtlasUV(r3, c3, 1.0f, 0.0f), colors[13]});
+  vertices.push_back({{s, s, s}, getAtlasUV(r3, c3, 1.0f, 1.0f), colors[14]});
+  vertices.push_back({{s, s, -s}, getAtlasUV(r3, c3, 0.0f, 1.0f), colors[15]});
+
+  // Top face (region index 4)
+  auto [r4, c4] = regions[4];
+  vertices.push_back({{-s, s, -s}, getAtlasUV(r4, c4, 0.0f, 0.0f), colors[16]});
+  vertices.push_back({{s, s, -s}, getAtlasUV(r4, c4, 1.0f, 0.0f), colors[17]});
+  vertices.push_back({{s, s, s}, getAtlasUV(r4, c4, 1.0f, 1.0f), colors[18]});
+  vertices.push_back({{-s, s, s}, getAtlasUV(r4, c4, 0.0f, 1.0f), colors[19]});
+
+  // Bottom face (region index 5)
+  auto [r5, c5] = regions[5];
+  vertices.push_back({{-s, -s, -s}, getAtlasUV(r5, c5, 0.0f, 0.0f), colors[20]});
+  vertices.push_back({{s, -s, -s}, getAtlasUV(r5, c5, 1.0f, 0.0f), colors[21]});
+  vertices.push_back({{s, -s, s}, getAtlasUV(r5, c5, 1.0f, 1.0f), colors[22]});
+  vertices.push_back({{-s, -s, s}, getAtlasUV(r5, c5, 0.0f, 1.0f), colors[23]});
+
+  // Indices for cube (6 faces × 2 triangles × 3 indices)
+  std::vector<uint16_t> indices = {
+      // Front face
+      0, 2, 1, 0, 3, 2,
+      // Back face
+      4, 5, 6, 6, 7, 4,
+      // Left face
+      8, 10, 9, 8, 11, 10,
+      // Right face
+      12, 13, 14, 14, 15, 12,
+      // Top face
+      16, 17, 18, 18, 19, 16,
+      // Bottom face
+      20, 22, 21, 20, 23, 22};
+
+  Object::ObjectCreateInfo createInfo{.identifier = identifier,
+                                      .type = Object::ObjectType::OBJECT_3D,
+                                      .vertices = vertices,
+                                      .indices = indices,
+                                      .materialIdentifier = to_string(materialId),
+                                      .position = position,
+                                      .rotation = rotation,
+                                      .scale = scale,
+                                      .visible = true};
+
+  if (!submeshes.empty()) {
+    // Convert SubmeshDef to Object::Submesh
+    std::vector<Object::Submesh> objectSubmeshes;
+    for (const auto &def : submeshes) {
+      Object::Submesh submesh;
+      submesh.indexStart = def.indexStart;
+      submesh.indexCount = def.indexCount;
+      submesh.materialIdentifier = to_string(def.materialId);
+      submesh.material = nullptr;
+      objectSubmeshes.push_back(submesh);
+    }
+    createInfo.submeshes = objectSubmeshes;
+  }
+
+  if (textureId.has_value()) {
+    createInfo.textureIdentifier = to_string(textureId.value());
+  }
+
+  Object *obj = objectManager->create_object(createInfo);
+  if (obj) {
+    sceneObjects.push_back(obj);
+  }
+  return obj;
+}
+
 const std::vector<render::Object *> &render::Scene::get_objects() const {
   return sceneObjects;
 }
