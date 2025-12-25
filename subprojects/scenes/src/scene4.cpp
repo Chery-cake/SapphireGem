@@ -11,58 +11,72 @@ scene::Scene4::Scene4(render::MaterialManager *matMgr,
 void scene::Scene4::setup() {
   std::print("Setting up Scene 4: Layered Textures\n");
 
-  // Create layered textures
-  // Quad with 3 layers
+  // Create layered textures with transparent images
+  // Quad with 3 layers - using transparent shapes
   create_layered_texture(
       render::TextureId::LAYERED_QUAD,
-      {"../assets/textures/checkerboard.png", "../assets/textures/gradient.png",
-       "../assets/textures/atlas.png"},
-      {glm::vec4(1.0f, 0.7f, 0.7f, 0.8f), // Red tint, 80% opacity
-       glm::vec4(0.7f, 1.0f, 0.7f, 0.6f), // Green tint, 60% opacity
-       glm::vec4(0.7f, 0.7f, 1.0f, 0.4f)}, // Blue tint, 40% opacity
-      {0.0f, 90.0f, 180.0f}); // Different rotations
+      {"../assets/textures/layer_circle.png", 
+       "../assets/textures/layer_star.png",
+       "../assets/textures/layer_triangle.png"},
+      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // No tint, full opacity
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)}, 
+      {0.0f, 0.0f, 0.0f}); // No rotation
 
   // Cube textures with incrementing layer counts (1-5 layers)
-  // Face 1: 1 layer
+  // Face 1: 1 layer - single circle
   create_layered_texture(render::TextureId::LAYERED_CUBE_1,
-                        {"../assets/textures/checkerboard.png"},
-                        {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)}, {0.0f});
+                        {"../assets/textures/layer_circle.png"},
+                        {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)}, 
+                        {0.0f});
 
-  // Face 2: 2 layers
+  // Face 2: 2 layers - circle + star
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_2,
-      {"../assets/textures/checkerboard.png", "../assets/textures/gradient.png"},
-      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.8f, 0.8f, 0.7f)},
+      {"../assets/textures/layer_circle.png", 
+       "../assets/textures/layer_star.png"},
+      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
       {0.0f, 45.0f});
 
-  // Face 3: 3 layers
+  // Face 3: 3 layers - circle + star + square
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_3,
-      {"../assets/textures/checkerboard.png", "../assets/textures/gradient.png",
-       "../assets/textures/atlas.png"},
-      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(0.9f, 1.0f, 0.9f, 0.6f),
-       glm::vec4(0.9f, 0.9f, 1.0f, 0.5f)},
-      {0.0f, 90.0f, 180.0f});
+      {"../assets/textures/layer_circle.png", 
+       "../assets/textures/layer_star.png",
+       "../assets/textures/layer_square.png"},
+      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
+      {0.0f, 0.0f, 90.0f});
 
-  // Face 4: 4 layers
+  // Face 4: 4 layers - using atlas region (reused) + individual shapes
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_4,
-      {"../assets/textures/checkerboard.png", "../assets/textures/gradient.png",
-       "../assets/textures/atlas.png", "../assets/textures/checkerboard.png"},
-      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.9f, 0.9f, 0.6f),
-       glm::vec4(0.9f, 1.0f, 0.9f, 0.5f), glm::vec4(0.9f, 0.9f, 1.0f, 0.4f)},
-      {0.0f, 45.0f, 90.0f, 135.0f});
+      {"../assets/textures/layer_circle.png", 
+       "../assets/textures/layer_star.png",
+       "../assets/textures/layer_triangle.png", 
+       "../assets/textures/layer_heart.png"},
+      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), 
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
+      {0.0f, 30.0f, 60.0f, 90.0f});
 
-  // Face 5: 5 layers (reusing same image multiple times with different mods)
+  // Face 5: 5 layers - reusing same image with different modifications
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_5,
-      {"../assets/textures/checkerboard.png", "../assets/textures/gradient.png",
-       "../assets/textures/atlas.png", "../assets/textures/gradient.png",
-       "../assets/textures/checkerboard.png"},
-      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 0.8f, 0.8f, 0.7f),
-       glm::vec4(0.8f, 1.0f, 0.8f, 0.6f), glm::vec4(0.8f, 0.8f, 1.0f, 0.5f),
-       glm::vec4(1.0f, 1.0f, 0.8f, 0.4f)},
-      {0.0f, 30.0f, 90.0f, 180.0f, 270.0f});
+      {"../assets/textures/layer_circle.png", 
+       "../assets/textures/layer_star.png",
+       "../assets/textures/layer_square.png", 
+       "../assets/textures/layer_triangle.png",
+       "../assets/textures/layer_heart.png"},
+      {glm::vec4(1.0f, 0.8f, 0.8f, 0.9f), // Slight red tint
+       glm::vec4(0.8f, 1.0f, 0.8f, 0.8f), // Slight green tint
+       glm::vec4(0.8f, 0.8f, 1.0f, 0.7f), // Slight blue tint
+       glm::vec4(1.0f, 0.8f, 1.0f, 0.6f), // Slight magenta tint
+       glm::vec4(1.0f, 1.0f, 0.8f, 0.5f)}, // Slight yellow tint
+      {0.0f, 36.0f, 72.0f, 108.0f, 144.0f});
 
   // NOTE: The layered materials should use the layered.spv shader which needs to be compiled
   // For now, using the standard textured materials as fallback
