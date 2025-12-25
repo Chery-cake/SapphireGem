@@ -1,5 +1,4 @@
 #include "scene3.h"
-#include "identifiers.h"
 #include <print>
 
 scene::Scene3::Scene3(render::MaterialManager *matMgr,
@@ -30,9 +29,11 @@ void scene::Scene3::setup() {
   create_textured_material(render::MaterialId::TEXTURED_3D_GRADIENT, false);
   create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS, false);
 
-  // Create basic 3D material for one face
-  create_basic_material(render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED, false,
-                        true);
+  // Create atlas region materials (all use the same atlas texture)
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_0_0, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_0_1, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_1_0, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_1_1, false);
 
   // Create a 2D quad with two different materials (split horizontally)
   multiMaterialQuad =
@@ -45,20 +46,30 @@ void scene::Scene3::setup() {
                      glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.3f, 0.3f, 1.0f));
 
-  // Create a 3D cube with different materials on each face
-  multiMaterialCube =
-      create_cube_3d("scene3_multi_material_cube",
-                     render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-                     render::TextureId::CHECKERBOARD,
-                     {/*
-                     {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-               {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-               {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},
-               {18, 6, render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED},
-               {24, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-               {30, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-               */}, glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                     glm::vec3(0.25f, 0.25f, 0.25f));
+  // Create a 3D cube with different atlas regions on each face
+  // Atlas regions: (row, col) where 0,0 is top-left, 1,1 is bottom-right
+  multiMaterialCube = create_cube_3d_with_atlas_regions(
+      "scene3_multi_material_cube",
+      render::MaterialId::TEXTURED_3D_CHECKERBOARD,
+      std::nullopt, // No base texture - submeshes take precedence
+      {
+          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
+          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
+          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_0}, // Left face
+          {18, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_1}, // Right face
+          {24, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_0}, // Top face
+          {30, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_1}, // Bottom face
+      },
+      {
+          {0, 0}, // Front face: atlas region (0,0) - top-left
+          {0, 1}, // Back face: atlas region (0,1) - top-right
+          {0, 0}, // Left face: atlas region (0,0) - top-left
+          {0, 1}, // Right face: atlas region (0,1) - top-right
+          {1, 0}, // Top face: atlas region (1,0) - bottom-left
+          {1, 1}, // Bottom face: atlas region (1,1) - bottom-right
+      },
+      glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+      glm::vec3(0.25f, 0.25f, 0.25f));
 
   if (multiMaterialCube) {
     multiMaterialCube->set_rotation_mode(
