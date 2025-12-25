@@ -20,21 +20,6 @@ void scene::Scene3::setup() {
   create_texture_atlas(render::TextureId::ATLAS, "../assets/textures/atlas.png",
                        2, 2);
 
-  // Apply texture modifications (same as Scene2 for consistency)
-  auto *checkerboardTex =
-      textureManager->get_texture(to_string(render::TextureId::CHECKERBOARD));
-  if (checkerboardTex) {
-    checkerboardTex->set_color_tint(glm::vec4(0.7f, 1.0f, 0.7f, 1.0f));
-    checkerboardTex->update_gpu();
-  }
-
-  auto *gradientTex =
-      textureManager->get_texture(to_string(render::TextureId::GRADIENT));
-  if (gradientTex) {
-    gradientTex->rotate_90_clockwise();
-    gradientTex->update_gpu();
-  }
-
   // Create textured materials for 2D
   create_textured_material(render::MaterialId::TEXTURED_CHECKERBOARD, true);
   create_textured_material(render::MaterialId::TEXTURED_GRADIENT, true);
