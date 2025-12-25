@@ -84,6 +84,10 @@ void scene::Scene4::setup() {
   
   create_textured_material(render::MaterialId::TEXTURED, true);
   create_textured_material(render::MaterialId::TEXTURED_3D_CHECKERBOARD, false);
+  
+  // Create material for face without texture (SIMPLE_SHADERS_3D_TEXTURED)
+  // This material works with textured vertices but doesn't require a texture
+  create_textured_material(render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED, false);
 
   // Create quad with 3-layer texture (on the left)
   quad = create_quad_2d("scene4_layered_quad", render::MaterialId::TEXTURED,
@@ -146,7 +150,7 @@ void scene::Scene4::setup() {
   });
 
   cube = create_cube_3d(
-      "scene4_layered_cube", render::MaterialId::SIMPLE_SHADERS,
+      "scene4_layered_cube", render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
       std::nullopt, cubeSubmeshes, glm::vec3(0.5f, 0.0f, 0.0f),
       glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.3f, 0.3f, 0.3f), {}, 1.0f,
       {// Front face (no texture): white

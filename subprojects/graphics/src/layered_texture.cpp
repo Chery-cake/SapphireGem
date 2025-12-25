@@ -200,12 +200,12 @@ bool render::LayeredTexture::composite_layers() {
   constexpr uint32_t channels = 4;
   std::vector<unsigned char> composited(width * height * channels);
   
-  // Initialize with semi-transparent gray background for better layer visibility
-  // This allows shapes to stand out while providing some background
+  // Initialize with dark background so colored shapes are clearly visible
+  // Using dark gray/black background allows bright colored shapes to stand out
   for (size_t i = 0; i < composited.size(); i += 4) {
-    composited[i + 0] = 200; // R - light gray
-    composited[i + 1] = 200; // G
-    composited[i + 2] = 200; // B
+    composited[i + 0] = 64;  // R - dark gray
+    composited[i + 1] = 64;  // G
+    composited[i + 2] = 64;  // B
     composited[i + 3] = 255; // A (opaque for solid rendering)
   }
   
