@@ -414,19 +414,30 @@ void render::Object::create_descriptor_sets_for_material(
         !textureIdentifier.empty() ? textureIdentifier : textureName;
 
     if (textureManager && !textureToUse.empty()) {
-      auto *texture = textureManager->get_texture(textureToUse);
-      if (!texture) {
-        std::print("    Warning: Texture '{}' not found for material '{}'\n",
-                   textureToUse, matIdentifier);
-      } else if (!texture->get_image()) {
-        std::print("    Warning: Texture '{}' has no image for "
-                   "material '{}'\n",
-                   textureToUse, matIdentifier);
-      } else {
+      // Try layered texture first
+      auto *layeredTexture = textureManager->get_layered_texture(textureToUse);
+      if (layeredTexture && layeredTexture->get_composited_image()) {
         for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
              ++deviceIdx) {
           bind_texture_to_descriptor_sets(
-              matIdentifier, texture->get_image().get(), 1, deviceIdx);
+              matIdentifier, layeredTexture->get_composited_image().get(), 1, deviceIdx);
+        }
+      } else {
+        // Fall back to regular texture
+        auto *texture = textureManager->get_texture(textureToUse);
+        if (!texture) {
+          std::print("    Warning: Texture '{}' not found for material '{}'\n",
+                     textureToUse, matIdentifier);
+        } else if (!texture->get_image()) {
+          std::print("    Warning: Texture '{}' has no image for "
+                     "material '{}'\n",
+                     textureToUse, matIdentifier);
+        } else {
+          for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
+               ++deviceIdx) {
+            bind_texture_to_descriptor_sets(
+                matIdentifier, texture->get_image().get(), 1, deviceIdx);
+          }
         }
       }
     }

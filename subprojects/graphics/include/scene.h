@@ -92,6 +92,12 @@ protected:
                                    TextureId atlasTextureId, uint32_t row,
                                    uint32_t col);
 
+  // Helper to create a layered texture
+  void create_layered_texture(TextureId textureId,
+                             const std::vector<std::string> &imagePaths,
+                             const std::vector<glm::vec4> &tints = {},
+                             const std::vector<float> &rotations = {});
+
 public:
   Scene(MaterialManager *matMgr, TextureManager *texMgr,
         device::BufferManager *bufMgr, ObjectManager *objMgr);

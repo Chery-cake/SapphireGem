@@ -1,6 +1,7 @@
 #include "scene.h"
 #include "material_manager.h"
 #include "object.h"
+#include "layered_texture.h"
 #include <print>
 #include <vector>
 
@@ -665,6 +666,40 @@ void render::Scene::create_atlas_region_texture(TextureId textureId,
     regionTexture->update_gpu();
   }
 
+  sceneTextures.insert(texId);
+}
+
+void render::Scene::create_layered_texture(
+    TextureId textureId, const std::vector<std::string> &imagePaths,
+    const std::vector<glm::vec4> &tints, const std::vector<float> &rotations) {
+  std::string texId = to_string(textureId);
+
+  // Check if layered texture already exists
+  if (textureManager->get_layered_texture(texId)) {
+    sceneTextures.insert(texId);
+    return;
+  }
+
+  // Build layers
+  std::vector<LayeredTexture::ImageLayer> layers;
+  for (size_t i = 0; i < imagePaths.size(); ++i) {
+    LayeredTexture::ImageLayer layer(imagePaths[i]);
+    
+    if (i < tints.size()) {
+      layer.tint = tints[i];
+    }
+    
+    if (i < rotations.size()) {
+      layer.rotation = rotations[i];
+    }
+    
+    layers.push_back(layer);
+  }
+
+  LayeredTexture::LayeredTextureCreateInfo createInfo{.identifier = texId,
+                                                      .layers = layers};
+
+  textureManager->create_layered_texture(createInfo);
   sceneTextures.insert(texId);
 }
 
