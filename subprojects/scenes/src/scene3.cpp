@@ -20,6 +20,21 @@ void scene::Scene3::setup() {
   create_texture_atlas(render::TextureId::ATLAS, "../assets/textures/atlas.png",
                        2, 2);
 
+  // Apply texture modifications (same as Scene2 for consistency)
+  auto *checkerboardTex =
+      textureManager->get_texture(to_string(render::TextureId::CHECKERBOARD));
+  if (checkerboardTex) {
+    checkerboardTex->set_color_tint(glm::vec4(0.7f, 1.0f, 0.7f, 1.0f));
+    checkerboardTex->update_gpu();
+  }
+
+  auto *gradientTex =
+      textureManager->get_texture(to_string(render::TextureId::GRADIENT));
+  if (gradientTex) {
+    gradientTex->rotate_90_clockwise();
+    gradientTex->update_gpu();
+  }
+
   // Create textured materials for 2D
   create_textured_material(render::MaterialId::TEXTURED_CHECKERBOARD, true);
   create_textured_material(render::MaterialId::TEXTURED_GRADIENT, true);
@@ -29,6 +44,12 @@ void scene::Scene3::setup() {
   create_textured_material(render::MaterialId::TEXTURED_3D_CHECKERBOARD, false);
   create_textured_material(render::MaterialId::TEXTURED_3D_GRADIENT, false);
   create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS, false);
+  
+  // Create atlas region materials (all use the same atlas texture)
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_0_0, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_0_1, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_1_0, false);
+  create_textured_material(render::MaterialId::TEXTURED_3D_ATLAS_1_1, false);
 
   // Create a 2D quad with two different materials (split horizontally)
   multiMaterialQuad =
@@ -41,7 +62,7 @@ void scene::Scene3::setup() {
                      glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.3f, 0.3f, 1.0f));
 
-  // Create a 3D cube with different materials on each face
+  // Create a 3D cube with different atlas regions on each face
   multiMaterialCube =
       create_cube_3d("scene3_multi_material_cube",
                      render::MaterialId::TEXTURED_3D_CHECKERBOARD,
@@ -49,10 +70,10 @@ void scene::Scene3::setup() {
                      {
                          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
                          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-                         {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},
-                         {18, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
-                         {24, 6, render::MaterialId::TEXTURED_3D_GRADIENT},
-                         {30, 6, render::MaterialId::TEXTURED_3D_ATLAS},
+                         {12, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_0},
+                         {18, 6, render::MaterialId::TEXTURED_3D_ATLAS_0_1},
+                         {24, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_0},
+                         {30, 6, render::MaterialId::TEXTURED_3D_ATLAS_1_1},
                      },
                      glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.25f, 0.25f, 0.25f));

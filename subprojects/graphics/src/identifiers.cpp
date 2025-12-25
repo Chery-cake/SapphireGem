@@ -25,6 +25,14 @@ std::string to_string(MaterialId id) {
     return "Textured3D_gradient";
   case MaterialId::TEXTURED_3D_ATLAS:
     return "Textured3D_atlas";
+  case MaterialId::TEXTURED_3D_ATLAS_0_0:
+    return "Textured3D_atlas_0_0";
+  case MaterialId::TEXTURED_3D_ATLAS_0_1:
+    return "Textured3D_atlas_0_1";
+  case MaterialId::TEXTURED_3D_ATLAS_1_0:
+    return "Textured3D_atlas_1_0";
+  case MaterialId::TEXTURED_3D_ATLAS_1_1:
+    return "Textured3D_atlas_1_1";
   default:
     throw std::runtime_error("Unknown MaterialId");
   }
@@ -121,6 +129,10 @@ bool material_uses_textured_vertices(MaterialId id) {
   case MaterialId::TEXTURED_3D_CHECKERBOARD:
   case MaterialId::TEXTURED_3D_GRADIENT:
   case MaterialId::TEXTURED_3D_ATLAS:
+  case MaterialId::TEXTURED_3D_ATLAS_0_0:
+  case MaterialId::TEXTURED_3D_ATLAS_0_1:
+  case MaterialId::TEXTURED_3D_ATLAS_1_0:
+  case MaterialId::TEXTURED_3D_ATLAS_1_1:
   case MaterialId::SIMPLE_SHADERS_3D_TEXTURED:
     return true;
 
@@ -150,6 +162,10 @@ bool material_is_2d(MaterialId id) {
   case MaterialId::TEXTURED_3D_CHECKERBOARD:
   case MaterialId::TEXTURED_3D_GRADIENT:
   case MaterialId::TEXTURED_3D_ATLAS:
+  case MaterialId::TEXTURED_3D_ATLAS_0_0:
+  case MaterialId::TEXTURED_3D_ATLAS_0_1:
+  case MaterialId::TEXTURED_3D_ATLAS_1_0:
+  case MaterialId::TEXTURED_3D_ATLAS_1_1:
     return false;
 
   default:

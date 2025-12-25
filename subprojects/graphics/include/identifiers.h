@@ -17,7 +17,11 @@ enum class MaterialId {
   TEXTURED_ATLAS,             // Atlas texture material
   TEXTURED_3D_CHECKERBOARD,   // 3D Checkerboard texture material
   TEXTURED_3D_GRADIENT,       // 3D Gradient texture material
-  TEXTURED_3D_ATLAS           // 3D Atlas texture material
+  TEXTURED_3D_ATLAS,          // 3D Atlas texture material
+  TEXTURED_3D_ATLAS_0_0,      // 3D Atlas region (0,0) - top-left
+  TEXTURED_3D_ATLAS_0_1,      // 3D Atlas region (0,1) - top-right
+  TEXTURED_3D_ATLAS_1_0,      // 3D Atlas region (1,0) - bottom-left
+  TEXTURED_3D_ATLAS_1_1       // 3D Atlas region (1,1) - bottom-right
 };
 
 // Strongly-typed enum for texture identifiers
