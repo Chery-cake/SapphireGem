@@ -200,19 +200,26 @@ bool render::LayeredTexture::composite_layers() {
   constexpr uint32_t channels = 4;
   std::vector<unsigned char> composited(width * height * channels);
   
-  // Initialize with opaque white background for better visibility
+  // Initialize with semi-transparent gray background for better layer visibility
+  // This allows shapes to stand out while providing some background
   for (size_t i = 0; i < composited.size(); i += 4) {
-    composited[i + 0] = 255; // R
-    composited[i + 1] = 255; // G
-    composited[i + 2] = 255; // B
-    composited[i + 3] = 255; // A (opaque)
+    composited[i + 0] = 200; // R - light gray
+    composited[i + 1] = 200; // G
+    composited[i + 2] = 200; // B
+    composited[i + 3] = 255; // A (opaque for solid rendering)
   }
   
   // Composite each visible layer
-  for (auto &layer : layers) {
+  for (size_t layerIdx = 0; layerIdx < layers.size(); ++layerIdx) {
+    auto &layer = layers[layerIdx];
     if (!layer.visible || !layer.image) {
+      std::print("LayeredTexture - {} - skipping layer {} (visible={}, hasImage={})\n",
+                 identifier, layerIdx, layer.visible, (layer.image != nullptr));
       continue;
     }
+    
+    std::print("LayeredTexture - {} - compositing layer {} from {}\n",
+               identifier, layerIdx, layer.imagePath);
     
     // Get layer pixel data
     std::vector<unsigned char> layerPixels = layer.image->get_pixel_data();
