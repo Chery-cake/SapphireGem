@@ -8,6 +8,7 @@
 #include "texture_manager.h"
 #include <glm/vec3.hpp>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace render {
@@ -23,7 +24,7 @@ protected:
   ObjectManager *objectManager;
 
   std::vector<Object *> sceneObjects;
-  std::vector<std::string> sceneTextures; // Track textures created by this scene
+  std::unordered_set<std::string> sceneTextures; // Track textures created by this scene
 
   // Helper methods for creating objects with automatic index generation
   // These methods handle the common patterns of object creation

@@ -563,12 +563,12 @@ void render::Scene::create_texture(TextureId textureId,
   // Check if texture already exists
   if (textureManager->get_texture(texId)) {
     // Texture exists, track it for cleanup
-    sceneTextures.push_back(texId);
+    sceneTextures.insert(texId);
     return;
   }
 
   textureManager->create_texture(texId, path);
-  sceneTextures.push_back(texId);
+  sceneTextures.insert(texId);
 }
 
 void render::Scene::create_texture_atlas(TextureId textureId,
@@ -579,12 +579,12 @@ void render::Scene::create_texture_atlas(TextureId textureId,
   // Check if texture already exists
   if (textureManager->get_texture(texId)) {
     // Texture exists, track it for cleanup
-    sceneTextures.push_back(texId);
+    sceneTextures.insert(texId);
     return;
   }
 
   textureManager->create_texture_atlas(texId, path, rows, cols);
-  sceneTextures.push_back(texId);
+  sceneTextures.insert(texId);
 }
 
 void render::Scene::cleanup() {
