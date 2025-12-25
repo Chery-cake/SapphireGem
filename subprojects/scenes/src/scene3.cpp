@@ -51,14 +51,14 @@ void scene::Scene3::setup() {
   multiMaterialCube = create_cube_3d(
       "scene3_multi_material_cube",
       render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-      render::TextureId::CHECKERBOARD, // Base texture
+      render::TextureId::ATLAS, // Use atlas texture as base
       {
-          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},  // Front face
-          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},      // Back face
-          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Left face
-          {18, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Right face
-          {24, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Top face
-          {30, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Bottom face
+          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},  // Front face - checkerboard
+          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},      // Back face - gradient
+          {12, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Left face - full atlas
+          {18, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Right face - full atlas
+          {24, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Top face - full atlas
+          {30, 6, render::MaterialId::TEXTURED_3D_ATLAS},        // Bottom face - full atlas
       },
       glm::vec3(0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
       glm::vec3(0.25f, 0.25f, 0.25f));

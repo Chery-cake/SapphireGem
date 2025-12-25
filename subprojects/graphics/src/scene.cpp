@@ -596,11 +596,12 @@ void render::Scene::cleanup() {
 
   // Reload all scene textures to reset any modifications
   // This ensures textures are in their original state for the next scene
+  size_t texturesReloaded = 0;
   for (const std::string &texId : sceneTextures) {
     if (textureManager) {
       Texture *tex = textureManager->get_texture(texId);
-      if (tex) {
-        tex->reload();
+      if (tex && tex->reload()) {
+        texturesReloaded++;
       }
     }
   }
@@ -608,6 +609,7 @@ void render::Scene::cleanup() {
 
   // Remove all scene objects from the object manager
   // This frees GPU resources while keeping the Scene object in RAM
+  size_t objectsFreed = sceneObjects.size();
   for (Object *obj : sceneObjects) {
     if (obj && objectManager) {
       objectManager->remove_object(obj->get_identifier());
@@ -615,7 +617,8 @@ void render::Scene::cleanup() {
   }
   sceneObjects.clear();
 
-  std::print("Scene cleanup: GPU resources freed and textures reset\n");
+  std::print("Scene cleanup: {} objects freed, {} textures reset\n",
+             objectsFreed, texturesReloaded);
 }
 
 const std::vector<render::Object *> &render::Scene::get_objects() const {
