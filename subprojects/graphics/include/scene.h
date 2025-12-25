@@ -8,6 +8,7 @@
 #include "texture_manager.h"
 #include <glm/vec3.hpp>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace render {
@@ -23,6 +24,8 @@ protected:
   ObjectManager *objectManager;
 
   std::vector<Object *> sceneObjects;
+  std::unordered_set<std::string>
+      sceneTextures; // Track textures created by this scene
 
   // Helper methods for creating objects with automatic index generation
   // These methods handle the common patterns of object creation
@@ -41,6 +44,7 @@ protected:
     uint32_t indexStart;
     uint32_t indexCount;
     MaterialId materialId;
+    std::optional<TextureId> textureId; // Optional: submesh-specific texture
   };
 
   // Create a 2D quad/square - supports single material, textured, and
@@ -69,20 +73,6 @@ protected:
                  float cubeSize = 1.0f,
                  const std::vector<glm::vec3> &vertexColors = {});
 
-  // Create a 3D cube with atlas region UV mapping
-  // Each face can map to a different region of a texture atlas (2x2 grid)
-  // atlasRegions: array of 6 pairs (row, col) for each face [front, back,
-  // left, right, top, bottom]
-  Object *create_cube_3d_with_atlas_regions(
-      const std::string &identifier, MaterialId materialId,
-      const std::optional<TextureId> &textureId = std::nullopt,
-      const std::vector<SubmeshDef> &submeshes = {},
-      const std::vector<std::pair<int, int>> &atlasRegions = {},
-      const glm::vec3 &position = glm::vec3(0.0f),
-      const glm::vec3 &rotation = glm::vec3(0.0f),
-      const glm::vec3 &scale = glm::vec3(1.0f), float cubeSize = 1.0f,
-      const std::vector<glm::vec3> &vertexColors = {});
-
   // Helper to create a basic material (non-textured)
   void create_basic_material(MaterialId materialId, bool is2D,
                              bool is3DTextured = false);
@@ -96,6 +86,11 @@ protected:
   // Helper to create a texture atlas
   void create_texture_atlas(TextureId textureId, const std::string &path,
                             uint32_t rows, uint32_t cols);
+
+  // Helper to create a texture that represents a specific region of an atlas
+  void create_atlas_region_texture(TextureId textureId,
+                                   TextureId atlasTextureId, uint32_t row,
+                                   uint32_t col);
 
 public:
   Scene(MaterialManager *matMgr, TextureManager *texMgr,

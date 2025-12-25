@@ -25,7 +25,15 @@ enum class MaterialId {
 };
 
 // Strongly-typed enum for texture identifiers
-enum class TextureId { CHECKERBOARD, GRADIENT, ATLAS };
+enum class TextureId {
+  CHECKERBOARD,
+  GRADIENT,
+  ATLAS,
+  ATLAS_0_0, // Atlas region (0,0) - top-left
+  ATLAS_0_1, // Atlas region (0,1) - top-right
+  ATLAS_1_0, // Atlas region (1,0) - bottom-left
+  ATLAS_1_1  // Atlas region (1,1) - bottom-right
+};
 
 // Helper functions to convert enums to strings
 std::string to_string(MaterialId id);

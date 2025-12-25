@@ -28,6 +28,10 @@ void render::Texture::generate_atlas_regions_grid(uint32_t rows,
     return;
   }
 
+  // Store atlas configuration for potential reload
+  atlasRows = rows;
+  atlasCols = cols;
+
   atlasRegions.clear();
 
   uint32_t imageWidth = image->get_width();
@@ -154,6 +158,43 @@ bool render::Texture::update_gpu() {
     return success;
   }
   return false;
+}
+
+bool render::Texture::reload() {
+  if (imagePath.empty()) {
+    std::print(stderr, "Texture - {} - cannot reload: no image path\n",
+               identifier);
+    return false;
+  }
+
+  if (!image) {
+    std::print(stderr, "Texture - {} - cannot reload: no image object\n",
+               identifier);
+    return false;
+  }
+
+  // Reload the image from the original file
+  if (!image->load_from_file(imagePath)) {
+    std::print(stderr, "Texture - {} - failed to reload from {}\n", identifier,
+               imagePath);
+    return false;
+  }
+
+  // Regenerate atlas regions if this is an atlas texture
+  if (type == TextureType::ATLAS && atlasRows > 0 && atlasCols > 0) {
+    generate_atlas_regions_grid(atlasRows, atlasCols);
+  }
+
+  // Upload to GPU
+  if (!image->update_gpu_data()) {
+    std::print(stderr, "Texture - {} - failed to upload reloaded data to GPU\n",
+               identifier);
+    return false;
+  }
+
+  std::print("Texture - {} - reloaded successfully from {}\n", identifier,
+             imagePath);
+  return true;
 }
 
 const std::string &render::Texture::get_identifier() const {

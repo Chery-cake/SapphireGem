@@ -60,6 +60,7 @@ public:
     uint32_t indexCount;
     std::string materialIdentifier;
     Material *material;
+    std::string textureIdentifier; // Optional: submesh-specific texture
   };
 
   enum class ObjectType { OBJECT_2D, OBJECT_3D };

@@ -46,6 +46,14 @@ std::string to_string(TextureId id) {
     return "gradient";
   case TextureId::ATLAS:
     return "atlas";
+  case TextureId::ATLAS_0_0:
+    return "atlas_0_0";
+  case TextureId::ATLAS_0_1:
+    return "atlas_0_1";
+  case TextureId::ATLAS_1_0:
+    return "atlas_1_0";
+  case TextureId::ATLAS_1_1:
+    return "atlas_1_1";
   default:
     throw std::runtime_error("Unknown TextureId");
   }
@@ -83,6 +91,14 @@ TextureId texture_id_from_string(const std::string &str) {
     return TextureId::GRADIENT;
   if (str == "atlas")
     return TextureId::ATLAS;
+  if (str == "atlas_0_0")
+    return TextureId::ATLAS_0_0;
+  if (str == "atlas_0_1")
+    return TextureId::ATLAS_0_1;
+  if (str == "atlas_1_0")
+    return TextureId::ATLAS_1_0;
+  if (str == "atlas_1_1")
+    return TextureId::ATLAS_1_1;
 
   throw std::runtime_error("Unknown texture identifier: " + str);
 }

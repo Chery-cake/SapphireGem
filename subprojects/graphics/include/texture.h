@@ -34,6 +34,10 @@ private:
   std::shared_ptr<Image> image;
   std::vector<AtlasRegion> atlasRegions;
 
+  // Atlas grid configuration (for reloading)
+  uint32_t atlasRows = 0;
+  uint32_t atlasCols = 0;
+
   std::vector<device::LogicalDevice *> logicalDevices;
 
   void generate_atlas_regions_grid(uint32_t rows, uint32_t cols);
@@ -63,6 +67,9 @@ public:
 
   // Apply changes to GPU
   bool update_gpu();
+
+  // Reload texture from original source file (resets all modifications)
+  bool reload();
 
   // Getters
   const std::string &get_identifier() const;
