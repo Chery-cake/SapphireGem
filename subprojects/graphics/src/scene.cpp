@@ -559,7 +559,7 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
 void render::Scene::create_texture(TextureId textureId,
                                    const std::string &path) {
   std::string texId = to_string(textureId);
-  
+
   // Check if texture already exists
   if (textureManager->get_texture(texId)) {
     // Texture exists, track it for cleanup
@@ -575,7 +575,7 @@ void render::Scene::create_texture_atlas(TextureId textureId,
                                          const std::string &path, uint32_t rows,
                                          uint32_t cols) {
   std::string texId = to_string(textureId);
-  
+
   // Check if texture already exists
   if (textureManager->get_texture(texId)) {
     // Texture exists, track it for cleanup
