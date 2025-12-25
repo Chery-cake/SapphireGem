@@ -408,10 +408,27 @@ void render::Object::create_descriptor_sets_for_material(
       textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
     }
 
-    // Use object's textureIdentifier if available, otherwise use extracted
-    // name
-    std::string textureToUse =
-        !textureIdentifier.empty() ? textureIdentifier : textureName;
+    // Check if this material belongs to a submesh and use submesh texture
+    std::string submeshTexture;
+    if (useSubmeshes) {
+      for (const auto &submesh : submeshes) {
+        if (submesh.materialIdentifier == matIdentifier &&
+            !submesh.textureIdentifier.empty()) {
+          submeshTexture = submesh.textureIdentifier;
+          break;
+        }
+      }
+    }
+
+    // Priority: submesh texture > object texture > material name
+    std::string textureToUse;
+    if (!submeshTexture.empty()) {
+      textureToUse = submeshTexture;
+    } else if (!textureIdentifier.empty()) {
+      textureToUse = textureIdentifier;
+    } else {
+      textureToUse = textureName;
+    }
 
     if (textureManager && !textureToUse.empty()) {
       // Try layered texture first
