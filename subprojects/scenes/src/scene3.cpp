@@ -45,7 +45,7 @@ void scene::Scene3::setup() {
   multiMaterialCube =
       create_cube_3d("scene3_multi_material_cube",
                      render::MaterialId::TEXTURED_3D_CHECKERBOARD,
-                     render::TextureId::CHECKERBOARD,
+                     std::nullopt, // No base texture - submeshes take precedence
                      {
                          {0, 6, render::MaterialId::TEXTURED_3D_CHECKERBOARD},
                          {6, 6, render::MaterialId::TEXTURED_3D_GRADIENT},

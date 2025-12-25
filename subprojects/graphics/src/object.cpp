@@ -7,6 +7,7 @@
 #include "texture_manager.h"
 #include <cstdint>
 #include <glm/gtc/matrix_transform.hpp>
+#include <map>
 #include <print>
 #include <set>
 #include <vector>
@@ -562,28 +563,45 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
   }
 
   if (useSubmeshes) {
-    // Multi-material mode: draw each submesh with its own material or base
-    // material
+    // Multi-material mode: draw each index range with its submesh material or base material
+    // Build a map of which index ranges are covered by submeshes
+    std::map<uint32_t, const Submesh*> submeshMap;
     for (const auto &submesh : submeshes) {
-      // Use submesh material if available, otherwise use base material
-      Material *useMaterial = submesh.material ? submesh.material : material;
-
+      submeshMap[submesh.indexStart] = &submesh;
+    }
+    
+    // Draw all faces (cube has 6 faces, each 6 indices)
+    // Total indices = 36 (6 faces * 6 indices per face)
+    const uint32_t indicesPerFace = 6;
+    const uint32_t totalFaces = indexCount / indicesPerFace;
+    
+    for (uint32_t faceIdx = 0; faceIdx < totalFaces; ++faceIdx) {
+      uint32_t faceIndexStart = faceIdx * indicesPerFace;
+      
+      // Check if this face has a submesh defined
+      Material *useMaterial = material; // Default to base material
+      std::string useMaterialId = materialIdentifier;
+      
+      auto it = submeshMap.find(faceIndexStart);
+      if (it != submeshMap.end() && it->second->material) {
+        // Use submesh material if available
+        useMaterial = it->second->material;
+        useMaterialId = it->second->materialIdentifier;
+      }
+      
       if (!useMaterial) {
-        std::print("Warning: Cannot draw submesh in object '{}' - no material "
-                   "assigned and no base material\n",
-                   identifier);
+        std::print("Warning: Cannot draw face {} in object '{}' - no material available\n",
+                   faceIdx, identifier);
         continue;
       }
 
       if (!useMaterial->is_initialized()) {
-        std::print("Warning: Cannot draw submesh in object '{}' - material "
-                   "'{}' not initialized\n",
-                   identifier, useMaterial->get_identifier());
+        std::print("Warning: Cannot draw face {} in object '{}' - material '{}' not initialized\n",
+                   faceIdx, identifier, useMaterialId);
         continue;
       }
 
       // Update UBO with object's transformation for this material
-      std::string useMaterialId = useMaterial->get_identifier();
       std::string uboBufferName = get_ubo_buffer_name(useMaterialId);
 
       if (!uboBufferName.empty()) {
@@ -600,18 +618,18 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
 
       // Get descriptor set for this material
       vk::raii::DescriptorSet *descriptorSet = nullptr;
-      auto it = materialDescriptorSets.find(useMaterialId);
-      if (it != materialDescriptorSets.end() &&
-          deviceIndex < it->second.size() &&
-          frameIndex < it->second[deviceIndex].size()) {
-        descriptorSet = &it->second[deviceIndex][frameIndex];
+      auto descIt = materialDescriptorSets.find(useMaterialId);
+      if (descIt != materialDescriptorSets.end() &&
+          deviceIndex < descIt->second.size() &&
+          frameIndex < descIt->second[deviceIndex].size()) {
+        descriptorSet = &descIt->second[deviceIndex][frameIndex];
       }
-      // Bind material for this submesh with the correct descriptor set
+      
+      // Bind material for this face with the correct descriptor set
       useMaterial->bind(commandBuffer, deviceIndex, descriptorSet);
 
-      // Draw this submesh with its specific index range
-      commandBuffer.drawIndexed(submesh.indexCount, 1, submesh.indexStart, 0,
-                                0);
+      // Draw this face with its specific index range
+      commandBuffer.drawIndexed(indicesPerFace, 1, faceIndexStart, 0, 0);
     }
   } else {
     // Single material mode (backward compatibility)
