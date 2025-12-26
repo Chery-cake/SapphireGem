@@ -15,9 +15,8 @@ void scene::Scene4::setup() {
   // Quad with 3 layers - using transparent shapes
   create_layered_texture(
       render::TextureId::LAYERED_QUAD,
-      {"../assets/textures/layer_circle.png",
-       "../assets/textures/layer_star.png",
-       "../assets/textures/layer_triangle.png"},
+      {"assets/textures/layer_circle.png", "assets/textures/layer_star.png",
+       "assets/textures/layer_triangle.png"},
       {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // No tint, full opacity
        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
       {0.0f, 0.0f, 0.0f}); // No rotation
@@ -25,34 +24,30 @@ void scene::Scene4::setup() {
   // Cube textures with incrementing layer counts (1-5 layers)
   // Face 1: 1 layer - single circle
   create_layered_texture(render::TextureId::LAYERED_CUBE_1,
-                         {"../assets/textures/layer_circle.png"},
+                         {"assets/textures/layer_circle.png"},
                          {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)}, {0.0f});
 
   // Face 2: 2 layers - circle + star
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_2,
-      {"../assets/textures/layer_circle.png",
-       "../assets/textures/layer_star.png"},
+      {"assets/textures/layer_circle.png", "assets/textures/layer_star.png"},
       {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
       {0.0f, 45.0f});
 
   // Face 3: 3 layers - circle + star + square
-  create_layered_texture(render::TextureId::LAYERED_CUBE_3,
-                         {"../assets/textures/layer_circle.png",
-                          "../assets/textures/layer_star.png",
-                          "../assets/textures/layer_square.png"},
-                         {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                          glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-                          glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
-                         {0.0f, 0.0f, 90.0f});
+  create_layered_texture(
+      render::TextureId::LAYERED_CUBE_3,
+      {"assets/textures/layer_circle.png", "assets/textures/layer_star.png",
+       "assets/textures/layer_square.png"},
+      {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+       glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
+      {0.0f, 0.0f, 90.0f});
 
   // Face 4: 4 layers - using atlas region (reused) + individual shapes
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_4,
-      {"../assets/textures/layer_circle.png",
-       "../assets/textures/layer_star.png",
-       "../assets/textures/layer_triangle.png",
-       "../assets/textures/layer_heart.png"},
+      {"assets/textures/layer_circle.png", "assets/textures/layer_star.png",
+       "assets/textures/layer_triangle.png", "assets/textures/layer_heart.png"},
       {glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)},
       {0.0f, 30.0f, 60.0f, 90.0f});
@@ -60,11 +55,9 @@ void scene::Scene4::setup() {
   // Face 5: 5 layers - reusing same image with different modifications
   create_layered_texture(
       render::TextureId::LAYERED_CUBE_5,
-      {"../assets/textures/layer_circle.png",
-       "../assets/textures/layer_star.png",
-       "../assets/textures/layer_square.png",
-       "../assets/textures/layer_triangle.png",
-       "../assets/textures/layer_heart.png"},
+      {"assets/textures/layer_circle.png", "assets/textures/layer_star.png",
+       "assets/textures/layer_square.png", "assets/textures/layer_triangle.png",
+       "assets/textures/layer_heart.png"},
       {glm::vec4(1.0f, 0.8f, 0.8f, 0.9f),  // Slight red tint
        glm::vec4(0.8f, 1.0f, 0.8f, 0.8f),  // Slight green tint
        glm::vec4(0.8f, 0.8f, 1.0f, 0.7f),  // Slight blue tint

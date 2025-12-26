@@ -103,6 +103,14 @@ endif()
 # Create the common output directory if it doesn't exist
 file(MAKE_DIRECTORY ${COMMON_OUTPUT_DIR})
 
+# Copy assets folder to output directory (including .slang source files for runtime compilation)
+add_custom_target(copy_assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        ${COMMON_OUTPUT_DIR}/assets
+    COMMENT "Copying assets folder to output directory"
+)
+
 add_subdirectory(lib)
 add_subdirectory(subprojects)
 
@@ -114,6 +122,7 @@ set(projects
     vma
     btp
     stb
+    wasmtime
 )
 
 set(inc_dirs)

@@ -1,0 +1,20 @@
+* Object
+it should store the information necessary about the object, like the material being used, the parameters to be passed to the shaders.
+
+* Material
+it should contain the shader that is going to be used, and any necessary information that the shader needs. textures, parameters, other materials, etc.
+
+* Image
+it should containg the reference to an image file and the relevant information about this image, this could be a file containing only one image or a texture atlas.
+
+* Texture
+it should contain the information necessary to use an image file or the location in a texture atlas. all of the modifications that are to be applied to the image are store in the texture, like tint, rotation, masks, etc. if the texture have layers it should have a reference to the layer above it. all layers should be able to receive modifications idependently from one another while the application is running, like rotations, change on the tint, change in the masks, etc.
+
+* Shaders
+it should contain the reference to a shaders, and store all of it's information. like all of the shader types that exist in this shader file. it should save information about vertex, fragment, geometry, tesselation, mesh, amplification, compute, ray-tracing, ect shaders, all shader options that vulkan and slang can work with, it should be able to save their information.
+
+the objects should be made with geometry/mesh shaders, and not set in code, so there's more freadon on how to work with them.
+like have a 3d object with 6 sides using a shader that puts together 6 2d faces, that each uses it's own shaders.
+
+* Cross Compiling
+the project should be able to compile to linux or windows, defaulting to the operating system running at the moment. cmake should be configured as if it was always cros compiling no matter what.
