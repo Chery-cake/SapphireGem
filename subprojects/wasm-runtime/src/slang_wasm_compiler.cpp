@@ -59,14 +59,23 @@ bool SlangWasmCompiler::compileShaderToSpirv(
     auto& tasks = device::Tasks::get_instance();
     
     auto compileFuture = tasks.add_task([=, this]() -> bool {
-        // Get absolute path to slangc compiler
+        // Get absolute path to slangc compiler and lib directory
         std::filesystem::path slangcPath = std::filesystem::current_path() / "slang-bin" / "slangc";
+        std::filesystem::path slangLibPath = std::filesystem::current_path() / "slang-bin" / "lib";
         
         // Build command line arguments
         std::ostringstream cmdStream;
+        
+        // Set LD_LIBRARY_PATH on Unix-like systems so slangc can find its shared libraries
+        #ifndef _WIN32
+        cmdStream << "LD_LIBRARY_PATH=\"" << slangLibPath.string() << ":$LD_LIBRARY_PATH\" ";
+        #endif
+        
         cmdStream << "\"" << slangcPath.string() << "\" ";
         cmdStream << "-target spirv ";
-        cmdStream << "-profile glsl_450 ";
+        cmdStream << "-profile spirv_1_4 ";
+        cmdStream << "-emit-spirv-directly ";
+        cmdStream << "-fvk-use-entrypoint-name ";
         
         // Add entry points if specified
         if (!entryPoints.empty()) {

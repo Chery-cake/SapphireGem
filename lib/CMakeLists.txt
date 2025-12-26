@@ -147,12 +147,15 @@ endif()
 
 message(STATUS "Slang compiler: ${SLANG_COMPILER}")
 
-# Copy Slang compiler to output directory for runtime access
+# Copy Slang compiler and libraries to output directory for runtime access
 add_custom_target(copy_slang_compiler ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${SLANG_DIR}/bin
         ${COMMON_OUTPUT_DIR}/slang-bin
-    COMMENT "Copying Slang compiler to output directory"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${SLANG_DIR}/lib
+        ${COMMON_OUTPUT_DIR}/slang-bin/lib
+    COMMENT "Copying Slang compiler and libraries to output directory"
     DEPENDS ${SLANG_COMPILER}
 )
 
