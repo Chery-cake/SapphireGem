@@ -8,8 +8,9 @@ set(WASMTIME_DIR ${CMAKE_BINARY_DIR}/wasmtime)
 if(WIN32)
     set(WASMTIME_PLATFORM "x86_64-windows")
     set(WASMTIME_ARCHIVE "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api.zip")
-    set(WASMTIME_LIBRARY "${WASMTIME_DIR}/lib/wasmtime.dll.lib")
-    set(WASMTIME_DLL "${WASMTIME_DIR}/bin/wasmtime.dll")
+    set(WASMTIME_EXTRACTED_DIR "${WASMTIME_DIR}/wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api")
+    set(WASMTIME_LIBRARY "${WASMTIME_EXTRACTED_DIR}/lib/wasmtime.dll.lib")
+    set(WASMTIME_DLL "${WASMTIME_EXTRACTED_DIR}/bin/wasmtime.dll")
 elseif(APPLE)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
         set(WASMTIME_PLATFORM "aarch64-macos")
@@ -17,7 +18,8 @@ elseif(APPLE)
         set(WASMTIME_PLATFORM "x86_64-macos")
     endif()
     set(WASMTIME_ARCHIVE "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api.tar.xz")
-    set(WASMTIME_LIBRARY "${WASMTIME_DIR}/lib/libwasmtime.dylib")
+    set(WASMTIME_EXTRACTED_DIR "${WASMTIME_DIR}/wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api")
+    set(WASMTIME_LIBRARY "${WASMTIME_EXTRACTED_DIR}/lib/libwasmtime.dylib")
     set(WASMTIME_DLL "${WASMTIME_LIBRARY}")
 else()
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
@@ -26,12 +28,13 @@ else()
         set(WASMTIME_PLATFORM "x86_64-linux")
     endif()
     set(WASMTIME_ARCHIVE "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api.tar.xz")
-    set(WASMTIME_LIBRARY "${WASMTIME_DIR}/lib/libwasmtime.so")
+    set(WASMTIME_EXTRACTED_DIR "${WASMTIME_DIR}/wasmtime-v${WASMTIME_VERSION}-${WASMTIME_PLATFORM}-c-api")
+    set(WASMTIME_LIBRARY "${WASMTIME_EXTRACTED_DIR}/lib/libwasmtime.so")
     set(WASMTIME_DLL "${WASMTIME_LIBRARY}")
 endif()
 
 set(WASMTIME_URL "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${WASMTIME_ARCHIVE}")
-set(WASMTIME_INCLUDE_DIR "${WASMTIME_DIR}/include")
+set(WASMTIME_INCLUDE_DIR "${WASMTIME_EXTRACTED_DIR}/include")
 
 # Download and extract Wasmtime if not already present
 if(NOT EXISTS ${WASMTIME_LIBRARY})
@@ -65,7 +68,6 @@ add_custom_target(copy_wasmtime_library ALL
         ${WASMTIME_DLL}
         ${COMMON_OUTPUT_DIR}
     COMMENT "Copying Wasmtime library to output directory"
-    DEPENDS ${WASMTIME_DLL}
 )
 
 # Download and setup Slang WASM for platform-independent shader compilation
