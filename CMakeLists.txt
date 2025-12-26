@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.30)
 project(Exemple LANGUAGES C CXX)
 
 # Cross-compilation support: Allow selecting target OS
+# Note: TARGET_OS uses lowercase names for consistency in output paths
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(DEFAULT_TARGET_OS "linux")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -10,7 +11,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(DEFAULT_TARGET_OS "macos")
 else()
-    set(DEFAULT_TARGET_OS "unknown")
+    # For unsupported platforms, use the CMAKE_SYSTEM_NAME in lowercase
+    string(TOLOWER "${CMAKE_SYSTEM_NAME}" DEFAULT_TARGET_OS)
+    message(WARNING "Unsupported platform '${CMAKE_SYSTEM_NAME}', using '${DEFAULT_TARGET_OS}' as target OS")
 endif()
 
 set(TARGET_OS "${DEFAULT_TARGET_OS}" CACHE STRING "Target operating system (linux, windows, macos)")
