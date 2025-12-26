@@ -13,7 +13,10 @@ SapphireGem now uses the Slang shader language and compiler for runtime shader c
 ### Build-Time Setup
 
 1. **Asset Copying**: The CMake build system copies the `assets/` folder to the output directory (`bin/`)
-2. **Slang Library Download**: The Slang compiler library (v2025.24.2) is automatically downloaded from GitHub releases
+2. **Slang Library Download**: The Slang compiler library is automatically downloaded from GitHub releases
+   - Attempts to fetch the latest release version from GitHub API
+   - Falls back to a known stable version (currently 2025.24.2) if API is unavailable
+   - Downloads the appropriate platform-specific binary (Windows, Linux x86_64/aarch64, macOS)
 3. **Library Integration**: The Slang library is copied to the output directory and linked with the graphics module
 
 ### Runtime Compilation

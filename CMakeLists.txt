@@ -112,12 +112,42 @@ add_custom_target(copy_assets ALL
 )
 
 # Download and setup Slang library for runtime shader compilation
-set(SLANG_VERSION "2025.24.2")
+# Attempt to fetch the latest release, fallback to known version if API unavailable
+
+set(SLANG_FALLBACK_VERSION "2025.24.2")
+set(SLANG_VERSION ${SLANG_FALLBACK_VERSION})
+
+# Try to fetch the latest release information from GitHub API
+message(STATUS "Attempting to fetch latest Slang release...")
+file(DOWNLOAD
+    "https://api.github.com/repos/shader-slang/slang/releases/latest"
+    "${CMAKE_BINARY_DIR}/slang_latest_release.json"
+    TIMEOUT 10
+    STATUS API_DOWNLOAD_STATUS
+    LOG API_DOWNLOAD_LOG
+)
+
+list(GET API_DOWNLOAD_STATUS 0 API_ERROR_CODE)
+if(API_ERROR_CODE EQUAL 0 AND EXISTS "${CMAKE_BINARY_DIR}/slang_latest_release.json")
+    file(READ "${CMAKE_BINARY_DIR}/slang_latest_release.json" SLANG_RELEASE_JSON)
+    # Try to parse the tag_name from JSON
+    string(JSON SLANG_TAG_NAME ERROR_VARIABLE JSON_ERROR GET ${SLANG_RELEASE_JSON} tag_name)
+    if(NOT JSON_ERROR AND SLANG_TAG_NAME)
+        # Remove 'v' prefix if present
+        string(REPLACE "v" "" SLANG_VERSION ${SLANG_TAG_NAME})
+        message(STATUS "Found latest Slang release: ${SLANG_VERSION}")
+    else()
+        message(STATUS "Could not parse release info, using fallback version ${SLANG_FALLBACK_VERSION}")
+    endif()
+else()
+    message(STATUS "Could not fetch latest release info (API may be blocked), using fallback version ${SLANG_FALLBACK_VERSION}")
+endif()
+
 set(SLANG_DIR ${CMAKE_BINARY_DIR}/slang)
 
+# Platform-specific library paths
 if(WIN32)
     set(SLANG_PLATFORM "windows-x86_64")
-    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
     set(SLANG_LIBRARY "${SLANG_DIR}/bin/slang.dll")
     set(SLANG_LIB_FILE "${SLANG_DIR}/lib/slang.lib")
 elseif(APPLE)
@@ -126,34 +156,33 @@ elseif(APPLE)
     else()
         set(SLANG_PLATFORM "macos-x86_64")
     endif()
-    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
     set(SLANG_LIBRARY "${SLANG_DIR}/lib/libslang.dylib")
     set(SLANG_LIB_FILE "${SLANG_LIBRARY}")
 else()
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
         set(SLANG_PLATFORM "linux-aarch64")
-        set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
     else()
         set(SLANG_PLATFORM "linux-x86_64")
-        set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
     endif()
     set(SLANG_LIBRARY "${SLANG_DIR}/lib/libslang.so")
     set(SLANG_LIB_FILE "${SLANG_LIBRARY}")
 endif()
 
+set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
 set(SLANG_URL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/${SLANG_ARCHIVE}")
 set(SLANG_INCLUDE_DIR "${SLANG_DIR}/include")
 
 # Download and extract Slang library if not already present
 if(NOT EXISTS ${SLANG_LIBRARY})
-    message(STATUS "Downloading Slang library from ${SLANG_URL}")
+    message(STATUS "Downloading Slang ${SLANG_VERSION} for ${SLANG_PLATFORM}...")
+    message(STATUS "URL: ${SLANG_URL}")
     file(DOWNLOAD ${SLANG_URL} ${CMAKE_BINARY_DIR}/${SLANG_ARCHIVE}
         SHOW_PROGRESS
         STATUS DOWNLOAD_STATUS)
     
     list(GET DOWNLOAD_STATUS 0 DOWNLOAD_ERROR)
     if(DOWNLOAD_ERROR)
-        message(FATAL_ERROR "Failed to download Slang library")
+        message(FATAL_ERROR "Failed to download Slang library from ${SLANG_URL}")
     endif()
     
     message(STATUS "Extracting Slang library to ${SLANG_DIR}")
