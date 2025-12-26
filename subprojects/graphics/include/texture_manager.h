@@ -1,6 +1,7 @@
 #pragma once
 
 #include "device_manager.h"
+#include "layered_texture.h"
 #include "texture.h"
 #include <mutex>
 
@@ -13,6 +14,8 @@ private:
   const device::DeviceManager *deviceManager;
 
   std::unordered_map<std::string, std::unique_ptr<Texture>> textures;
+  std::unordered_map<std::string, std::unique_ptr<LayeredTexture>>
+      layeredTextures;
 
 public:
   TextureManager(const device::DeviceManager *deviceManager);
@@ -21,6 +24,10 @@ public:
   // Create a texture from file
   Texture *create_texture(const std::string &identifier,
                           const std::string &filepath);
+
+  // Create a layered texture
+  LayeredTexture *create_layered_texture(
+      const LayeredTexture::LayeredTextureCreateInfo &createInfo);
 
   // Create a texture atlas from file
   Texture *create_texture_atlas(const std::string &identifier,
@@ -32,13 +39,17 @@ public:
 
   // Remove a texture
   void remove_texture(const std::string &identifier);
+  void remove_layered_texture(const std::string &identifier);
 
   // Get texture by identifier
   Texture *get_texture(const std::string &identifier) const;
+  LayeredTexture *get_layered_texture(const std::string &identifier) const;
   bool has_texture(const std::string &identifier) const;
+  bool has_layered_texture(const std::string &identifier) const;
 
   // Get all textures
   std::vector<Texture *> get_all_textures() const;
+  std::vector<LayeredTexture *> get_all_layered_textures() const;
 };
 
 } // namespace render

@@ -11,6 +11,7 @@ render::TextureManager::TextureManager(
 render::TextureManager::~TextureManager() {
   std::lock_guard lock(managerMutex);
   textures.clear();
+  layeredTextures.clear();
   std::print("TextureManager - destroyed\n");
 }
 
@@ -154,6 +155,76 @@ render::TextureManager::get_all_textures() const {
   result.reserve(textures.size());
 
   for (const auto &[id, texture] : textures) {
+    result.push_back(texture.get());
+  }
+
+  return result;
+}
+
+render::LayeredTexture *render::TextureManager::create_layered_texture(
+    const LayeredTexture::LayeredTextureCreateInfo &createInfo) {
+  std::lock_guard lock(managerMutex);
+
+  if (layeredTextures.find(createInfo.identifier) != layeredTextures.end()) {
+    std::print("LayeredTexture with identifier '{}' already exists\n",
+               createInfo.identifier);
+    return layeredTextures[createInfo.identifier].get();
+  }
+
+  auto devices = deviceManager->get_all_logical_devices();
+  auto layeredTexture = std::make_unique<LayeredTexture>(devices, createInfo);
+
+  // Load all layers
+  if (!layeredTexture->load()) {
+    std::print(stderr, "Failed to load layered texture: {}\n",
+               createInfo.identifier);
+    return nullptr;
+  }
+
+  LayeredTexture *ptr = layeredTexture.get();
+  layeredTextures[createInfo.identifier] = std::move(layeredTexture);
+
+  std::print("TextureManager - created layered texture: {} with {} layers\n",
+             createInfo.identifier, createInfo.layers.size());
+  return ptr;
+}
+
+void render::TextureManager::remove_layered_texture(
+    const std::string &identifier) {
+  std::lock_guard lock(managerMutex);
+
+  auto it = layeredTextures.find(identifier);
+  if (it != layeredTextures.end()) {
+    layeredTextures.erase(it);
+    std::print("TextureManager - removed layered texture: {}\n", identifier);
+  }
+}
+
+render::LayeredTexture *render::TextureManager::get_layered_texture(
+    const std::string &identifier) const {
+  std::lock_guard lock(managerMutex);
+
+  auto it = layeredTextures.find(identifier);
+  if (it != layeredTextures.end()) {
+    return it->second.get();
+  }
+  return nullptr;
+}
+
+bool render::TextureManager::has_layered_texture(
+    const std::string &identifier) const {
+  std::lock_guard lock(managerMutex);
+  return layeredTextures.find(identifier) != layeredTextures.end();
+}
+
+std::vector<render::LayeredTexture *>
+render::TextureManager::get_all_layered_textures() const {
+  std::lock_guard lock(managerMutex);
+
+  std::vector<LayeredTexture *> result;
+  result.reserve(layeredTextures.size());
+
+  for (const auto &[id, texture] : layeredTextures) {
     result.push_back(texture.get());
   }
 

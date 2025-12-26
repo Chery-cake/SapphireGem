@@ -32,5 +32,7 @@ VSOutput vertMain(VSInput input) {
 [shader("fragment")]
 float4 fragMain(VSOutput vertIn) : SV_TARGET {
     float4 texColor = texSampler.Sample(vertIn.texCoord);
-    return texColor * float4(vertIn.color, 1.0);
+    // Multiply RGB by vertex color, preserve alpha from texture
+    float3 finalColor = texColor.rgb * vertIn.color;
+    return float4(finalColor, texColor.a);
 }

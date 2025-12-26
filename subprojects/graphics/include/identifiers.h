@@ -21,7 +21,10 @@ enum class MaterialId {
   TEXTURED_3D_ATLAS_0_0,      // 3D Atlas region (0,0) - top-left
   TEXTURED_3D_ATLAS_0_1,      // 3D Atlas region (0,1) - top-right
   TEXTURED_3D_ATLAS_1_0,      // 3D Atlas region (1,0) - bottom-left
-  TEXTURED_3D_ATLAS_1_1       // 3D Atlas region (1,1) - bottom-right
+  TEXTURED_3D_ATLAS_1_1,      // 3D Atlas region (1,1) - bottom-right
+
+  LAYERED_2D, // 2D layered texture with animated background
+  LAYERED_3D  // 3D layered texture with animated background
 };
 
 // Strongly-typed enum for texture identifiers
@@ -32,7 +35,15 @@ enum class TextureId {
   ATLAS_0_0, // Atlas region (0,0) - top-left
   ATLAS_0_1, // Atlas region (0,1) - top-right
   ATLAS_1_0, // Atlas region (1,0) - bottom-left
-  ATLAS_1_1  // Atlas region (1,1) - bottom-right
+  ATLAS_1_1, // Atlas region (1,1) - bottom-right
+
+  LAYERED_QUAD,   // 3-layer texture for quad
+  LAYERED_CUBE_0, // No layers (should not be used)
+  LAYERED_CUBE_1, // 1 layer
+  LAYERED_CUBE_2, // 2 layers
+  LAYERED_CUBE_3, // 3 layers
+  LAYERED_CUBE_4, // 4 layers
+  LAYERED_CUBE_5  // 5 layers
 };
 
 // Helper functions to convert enums to strings

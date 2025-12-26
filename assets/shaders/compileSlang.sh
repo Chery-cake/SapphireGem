@@ -67,3 +67,20 @@ else
     echo "Error: Failed to compile textured3d.slang"
     exit 1
 fi
+
+# Compile layered.slang to layered.spv
+slangc layered.slang \
+    -target spirv \
+    -profile spirv_1_4 \
+    -emit-spirv-directly \
+    -fvk-use-entrypoint-name \
+    -entry vertMain \
+    -entry fragMain \
+    -o layered.spv
+
+if [ $? -eq 0 ]; then
+    echo "Successfully compiled layered.slang to layered.spv"
+else
+    echo "Error: Failed to compile layered.slang"
+    exit 1
+fi
