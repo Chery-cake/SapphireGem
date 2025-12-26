@@ -408,20 +408,24 @@ void render::Object::create_descriptor_sets_for_material(
       textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
     }
 
-    std::print("    Material '{}' - extracted texture name: '{}'\n",
+    std::print("=== Processing material '{}' - extracted texture name: '{}' ===\n",
                matIdentifier, textureName);
 
     // Check if this material belongs to a submesh and use submesh texture
     std::string submeshTexture;
     if (useSubmeshes) {
+      std::print("    Object has submeshes, checking for matching material...\n");
       for (const auto &submesh : submeshes) {
         if (submesh.materialIdentifier == matIdentifier &&
             !submesh.textureIdentifier.empty()) {
           submeshTexture = submesh.textureIdentifier;
-          std::print("    Found submesh with material '{}' and texture '{}'\n",
+          std::print("    FOUND submesh with material '{}' and texture '{}'\n",
                      matIdentifier, submeshTexture);
           break;
         }
+      }
+      if (submeshTexture.empty()) {
+        std::print("    No matching submesh found for material '{}'\n", matIdentifier);
       }
     }
 
@@ -429,20 +433,20 @@ void render::Object::create_descriptor_sets_for_material(
     std::string textureToUse;
     if (!submeshTexture.empty()) {
       textureToUse = submeshTexture;
+      std::print("    Using SUBMESH texture: '{}'\n", textureToUse);
     } else if (!textureIdentifier.empty()) {
       textureToUse = textureIdentifier;
+      std::print("    Using OBJECT texture: '{}'\n", textureToUse);
     } else {
       textureToUse = textureName;
+      std::print("    Using EXTRACTED texture: '{}'\n", textureToUse);
     }
-    
-    std::print("    Final texture to use for material '{}': '{}'\n",
-               matIdentifier, textureToUse);
 
     if (textureManager && !textureToUse.empty()) {
       // Try layered texture first
       auto *layeredTexture = textureManager->get_layered_texture(textureToUse);
       if (layeredTexture && layeredTexture->get_composited_image()) {
-        std::print("    Binding layered texture '{}' for material '{}'\n",
+        std::print("=== BINDING LAYERED TEXTURE '{}' for material '{}' ===\n",
                    textureToUse, matIdentifier);
         for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
              ++deviceIdx) {
@@ -451,20 +455,23 @@ void render::Object::create_descriptor_sets_for_material(
               deviceIdx);
         }
       } else {
-        std::print("    Layered texture '{}' not found, trying regular texture\n",
-                   textureToUse);
+        if (layeredTexture) {
+          std::print(stderr, "ERROR: Layered texture '{}' found but has no composited image!\n",
+                     textureToUse);
+        } else {
+          std::print("=== Layered texture '{}' not found, trying regular texture ===\n",
+                     textureToUse);
+        }
         // Fall back to regular texture
         auto *texture = textureManager->get_texture(textureToUse);
         if (!texture) {
-          std::print("    Warning: Texture '{}' not found for "
-                     "material '{}'\n",
+          std::print(stderr, "ERROR: Texture '{}' not found for material '{}'\n",
                      textureToUse, matIdentifier);
         } else if (!texture->get_image()) {
-          std::print("    Warning: Texture '{}' has no image for "
-                     "material '{}'\n",
+          std::print(stderr, "ERROR: Texture '{}' has no image for material '{}'\n",
                      textureToUse, matIdentifier);
         } else {
-          std::print("    Binding regular texture '{}' for material '{}'\n",
+          std::print("=== BINDING REGULAR TEXTURE '{}' for material '{}' ===\n",
                      textureToUse, matIdentifier);
           for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
                ++deviceIdx) {
@@ -474,8 +481,8 @@ void render::Object::create_descriptor_sets_for_material(
         }
       }
     } else {
-      std::print("    Warning: No texture to bind for material '{}' (textureToUse='{}')\n",
-                 matIdentifier, textureToUse);
+      std::print(stderr, "ERROR: No texture to bind for material '{}' (textureManager={}, textureToUse='{}')\n",
+                 matIdentifier, (void*)textureManager, textureToUse);
     }
   }
 }
