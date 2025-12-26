@@ -116,36 +116,31 @@ void scene::Scene4::setup() {
   cubeSubmeshes.push_back(
       {.indexStart = 6,
        .indexCount = 6,
-       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_1,
-       .textureId = render::TextureId::LAYERED_CUBE_1});
+       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_1});
 
   // Face 2 (left) - 2 layers
   cubeSubmeshes.push_back(
       {.indexStart = 12,
        .indexCount = 6,
-       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_2,
-       .textureId = render::TextureId::LAYERED_CUBE_2});
+       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_2});
 
   // Face 3 (right) - 3 layers
   cubeSubmeshes.push_back(
       {.indexStart = 18,
        .indexCount = 6,
-       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_3,
-       .textureId = render::TextureId::LAYERED_CUBE_3});
+       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_3});
 
   // Face 4 (top) - 4 layers
   cubeSubmeshes.push_back(
       {.indexStart = 24,
        .indexCount = 6,
-       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_4,
-       .textureId = render::TextureId::LAYERED_CUBE_4});
+       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_4});
 
   // Face 5 (bottom) - 5 layers
   cubeSubmeshes.push_back(
       {.indexStart = 30,
        .indexCount = 6,
-       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_5,
-       .textureId = render::TextureId::LAYERED_CUBE_5});
+       .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_5});
 
   cube = create_cube_3d(
       "scene4_layered_cube", render::MaterialId::SIMPLE_SHADERS_3D_TEXTURED,
