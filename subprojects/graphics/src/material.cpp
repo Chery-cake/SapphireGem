@@ -155,6 +155,9 @@ bool render::Material::initialize() {
 
   // Helper function to ensure shader is compiled
   auto ensureShaderCompiled = [](const std::string& shaderPath) -> std::string {
+    // Thread-safe shader compiler - one instance per thread
+    thread_local ShaderCompiler compiler;
+    
     std::filesystem::path path(shaderPath);
     
     // If it's already a .spv file, just return it
@@ -177,7 +180,6 @@ bool render::Material::initialize() {
       
       if (needsCompilation) {
         std::print("Compiling shader: {} -> {}\n", path.string(), outputPath.string());
-        static ShaderCompiler compiler; // Shared compiler instance
         
         if (!compiler.compileShaderToSpirv(path, outputPath)) {
           std::print(stderr, "Failed to compile shader {}: {}\n", 

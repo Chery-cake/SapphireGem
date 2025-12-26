@@ -1,6 +1,7 @@
 #include "shader_compiler.h"
 #include <print>
 #include <fstream>
+#include <unordered_map>
 
 namespace render {
 
@@ -70,10 +71,21 @@ bool ShaderCompiler::compileShaderToSpirv(
     int translationUnitIndex = spAddTranslationUnit(request, SLANG_SOURCE_LANGUAGE_SLANG, nullptr);
     spAddTranslationUnitSourceFile(request, translationUnitIndex, slangFilePath.string().c_str());
 
-    // Add entry points
+    // Entry point name to stage mapping
+    static const std::unordered_map<std::string, SlangStage> stageMap = {
+        {"vertMain", SLANG_STAGE_VERTEX},
+        {"fragMain", SLANG_STAGE_FRAGMENT},
+        {"computeMain", SLANG_STAGE_COMPUTE},
+        {"geomMain", SLANG_STAGE_GEOMETRY},
+        {"hullMain", SLANG_STAGE_HULL},
+        {"domainMain", SLANG_STAGE_DOMAIN},
+    };
+
+    // Add entry points with appropriate stages
     for (const auto& entryPoint : entryPoints) {
-        spAddEntryPoint(request, translationUnitIndex, entryPoint.c_str(), 
-                       entryPoint == "vertMain" ? SLANG_STAGE_VERTEX : SLANG_STAGE_FRAGMENT);
+        auto it = stageMap.find(entryPoint);
+        SlangStage stage = (it != stageMap.end()) ? it->second : SLANG_STAGE_FRAGMENT;
+        spAddEntryPoint(request, translationUnitIndex, entryPoint.c_str(), stage);
     }
 
     // Compile the shader
@@ -90,6 +102,8 @@ bool ShaderCompiler::compileShaderToSpirv(
     }
 
     // Get the compiled SPIR-V code
+    // Note: For multi-entry-point shaders, Slang combines them into a single SPIR-V module
+    // We use the target code output which includes all entry points
     size_t codeSize = 0;
     const void* code = spGetEntryPointCode(request, 0, &codeSize);
     
