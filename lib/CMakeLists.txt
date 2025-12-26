@@ -70,7 +70,7 @@ add_custom_target(copy_wasmtime_library ALL
     COMMENT "Copying Wasmtime library to output directory"
 )
 
-# Download and setup Slang WASM for platform-independent shader compilation
+# Download and setup Slang compiler for shader compilation
 set(SLANG_FALLBACK_VERSION "2025.24.2")
 set(SLANG_VERSION ${SLANG_FALLBACK_VERSION})
 
@@ -100,38 +100,60 @@ else()
     message(STATUS "Could not fetch latest release info (API may be blocked), using fallback version ${SLANG_FALLBACK_VERSION}")
 endif()
 
-# Download Slang WASM package
-set(SLANG_WASM_DIR ${CMAKE_BINARY_DIR}/slang-wasm)
-set(SLANG_WASM_ARCHIVE "slang-${SLANG_VERSION}-wasm.zip")
-set(SLANG_WASM_URL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/${SLANG_WASM_ARCHIVE}")
+# Download platform-specific Slang compiler package
+set(SLANG_DIR ${CMAKE_BINARY_DIR}/slang)
 
-if(NOT EXISTS ${SLANG_WASM_DIR}/slang-wasm.js)
-    message(STATUS "Downloading Slang WASM ${SLANG_VERSION}...")
-    message(STATUS "URL: ${SLANG_WASM_URL}")
-    file(DOWNLOAD ${SLANG_WASM_URL} ${CMAKE_BINARY_DIR}/${SLANG_WASM_ARCHIVE}
-        SHOW_PROGRESS
-        STATUS SLANG_WASM_DOWNLOAD_STATUS)
-    
-    list(GET SLANG_WASM_DOWNLOAD_STATUS 0 SLANG_WASM_ERROR)
-    if(SLANG_WASM_ERROR)
-        message(FATAL_ERROR "Failed to download Slang WASM from ${SLANG_WASM_URL}")
+if(WIN32)
+    set(SLANG_PLATFORM "windows-x86_64")
+    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    set(SLANG_COMPILER "${SLANG_DIR}/bin/slangc.exe")
+elseif(APPLE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        set(SLANG_PLATFORM "macos-aarch64")
+    else()
+        set(SLANG_PLATFORM "macos-x86_64")
     endif()
-    
-    message(STATUS "Extracting Slang WASM to ${SLANG_WASM_DIR}")
-    file(ARCHIVE_EXTRACT
-        INPUT ${CMAKE_BINARY_DIR}/${SLANG_WASM_ARCHIVE}
-        DESTINATION ${SLANG_WASM_DIR})
+    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    set(SLANG_COMPILER "${SLANG_DIR}/bin/slangc")
+else()
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+        set(SLANG_PLATFORM "linux-aarch64")
+    else()
+        set(SLANG_PLATFORM "linux-x86_64")
+    endif()
+    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.tar.gz")
+    set(SLANG_COMPILER "${SLANG_DIR}/bin/slangc")
 endif()
 
-message(STATUS "Slang WASM directory: ${SLANG_WASM_DIR}")
+set(SLANG_URL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/${SLANG_ARCHIVE}")
 
-# Copy Slang WASM files to output directory for runtime access
-add_custom_target(copy_slang_wasm ALL
+if(NOT EXISTS ${SLANG_COMPILER})
+    message(STATUS "Downloading Slang ${SLANG_VERSION} for ${SLANG_PLATFORM}...")
+    message(STATUS "URL: ${SLANG_URL}")
+    file(DOWNLOAD ${SLANG_URL} ${CMAKE_BINARY_DIR}/${SLANG_ARCHIVE}
+        SHOW_PROGRESS
+        STATUS SLANG_DOWNLOAD_STATUS)
+    
+    list(GET SLANG_DOWNLOAD_STATUS 0 SLANG_ERROR)
+    if(SLANG_ERROR)
+        message(FATAL_ERROR "Failed to download Slang from ${SLANG_URL}")
+    endif()
+    
+    message(STATUS "Extracting Slang to ${SLANG_DIR}")
+    file(ARCHIVE_EXTRACT
+        INPUT ${CMAKE_BINARY_DIR}/${SLANG_ARCHIVE}
+        DESTINATION ${SLANG_DIR})
+endif()
+
+message(STATUS "Slang compiler: ${SLANG_COMPILER}")
+
+# Copy Slang compiler to output directory for runtime access
+add_custom_target(copy_slang_compiler ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${SLANG_WASM_DIR}
-        ${COMMON_OUTPUT_DIR}/slang-wasm
-    COMMENT "Copying Slang WASM files to output directory"
-    DEPENDS ${SLANG_WASM_DIR}/slang-wasm.js
+        ${SLANG_DIR}/bin
+        ${COMMON_OUTPUT_DIR}/slang-bin
+    COMMENT "Copying Slang compiler to output directory"
+    DEPENDS ${SLANG_COMPILER}
 )
 
 find_package(glfw3 REQUIRED)

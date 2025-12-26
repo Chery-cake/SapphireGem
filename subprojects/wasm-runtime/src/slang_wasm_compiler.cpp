@@ -5,6 +5,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <filesystem>
+#include <array>
 
 namespace wasm {
 
@@ -20,28 +21,31 @@ bool SlangWasmCompiler::initialize() {
     if (initialized) {
         return true;
     }
-
-    // For Slang WASM, we'll use a Node.js based approach since the WASM
-    // version is designed to run in JavaScript environments
-    // This is simpler than trying to execute JS from C++ via WASM runtime
+    
+    // Check if slangc compiler is available
+    std::filesystem::path slangcPath = std::filesystem::current_path() / "slang-bin" / "slangc";
+    
+    if (!std::filesystem::exists(slangcPath)) {
+        lastError = "slangc compiler not found at: " + slangcPath.string();
+        std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
+        return false;
+    }
     
     initialized = true;
-    std::print("SlangWasmCompiler: Initialized (using Node.js bridge)\n");
+    std::print("SlangWasmCompiler: Initialized (using slangc at {})\n", slangcPath.string());
     return true;
 }
 
 bool SlangWasmCompiler::compileShaderToSpirv(
     const std::filesystem::path& slangFilePath,
     const std::filesystem::path& outputSpvPath,
-    const std::vector<std::string>& entryPoints
-) {
-    if (!initialized) {
-        lastError = "Compiler not initialized";
-        std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
+    const std::vector<std::string>& entryPoints) {
+    
+    if (!initialized && !initialize()) {
+        lastError = "SlangWasmCompiler not initialized";
         return false;
     }
-
-    // Check if input file exists
+    
     if (!std::filesystem::exists(slangFilePath)) {
         lastError = "Shader file does not exist: " + slangFilePath.string();
         std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
@@ -55,88 +59,67 @@ bool SlangWasmCompiler::compileShaderToSpirv(
     auto& tasks = device::Tasks::get_instance();
     
     auto compileFuture = tasks.add_task([=, this]() -> bool {
-        // Create a temporary JavaScript file to run the compilation
-        // Get absolute path to slang-wasm module (in bin/slang-wasm relative to cwd)
-        std::filesystem::path slangWasmPath = std::filesystem::current_path() / "slang-wasm" / "slang-wasm.js";
+        // Get absolute path to slangc compiler
+        std::filesystem::path slangcPath = std::filesystem::current_path() / "slang-bin" / "slangc";
         
-        std::string jsCode = R"(
-const fs = require('fs');
-const path = require('path');
-
-// Load Slang WASM module
-const slangWasm = require(')" + slangWasmPath.string() + R"(');
-
-async function compileShader() {
-    try {
-        const sourceCode = fs.readFileSync(')" + slangFilePath.string() + R"(', 'utf8');
+        // Build command line arguments
+        std::ostringstream cmdStream;
+        cmdStream << "\"" << slangcPath.string() << "\" ";
+        cmdStream << "-target spirv ";
+        cmdStream << "-profile glsl_450 ";
         
-        const result = await slangWasm.compileToSpirv({
-            source: sourceCode,
-            entryPoints: )" + generateEntryPointsJson(entryPoints) + R"(,
-            target: 'spirv_1_4'
-        });
-        
-        if (result.diagnostics) {
-            console.error('Compilation diagnostics:', result.diagnostics);
+        // Add entry points if specified
+        if (!entryPoints.empty()) {
+            for (const auto& entry : entryPoints) {
+                cmdStream << "-entry " << entry << " ";
+            }
         }
         
-        if (result.spirv) {
-            fs.writeFileSync(')" + outputSpvPath.string() + R"(', Buffer.from(result.spirv));
-            console.log('Compilation successful');
-            process.exit(0);
-        } else {
-            console.error('Compilation failed');
-            process.exit(1);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        process.exit(1);
-    }
-}
-
-compileShader();
-)";
+        cmdStream << "-o \"" << outputSpvPath.string() << "\" ";
+        cmdStream << "\"" << slangFilePath.string() << "\" ";
+        cmdStream << "2>&1";  // Capture stderr
         
-        // Write temporary JS file
-        std::filesystem::path tempJs = std::filesystem::temp_directory_path() / "slang_compile.js";
-        std::ofstream jsFile(tempJs);
-        if (!jsFile) {
-            return false;
-        }
-        jsFile << jsCode;
-        jsFile.close();
+        std::string command = cmdStream.str();
         
-        // Execute Node.js with the temporary script
-        std::string command = "node " + tempJs.string() + " 2>&1";
+        std::print("SlangWasmCompiler: Running: {}\n", command);
+        
+        // Execute slangc and capture output
         FILE* pipe = popen(command.c_str(), "r");
         if (!pipe) {
-            std::filesystem::remove(tempJs);
+            lastError = "Failed to execute slangc";
+            std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
             return false;
         }
         
+        std::array<char, 256> buffer;
         std::string output;
-        char buffer[128];
-        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-            output += buffer;
+        while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+            output += buffer.data();
         }
         
         int exitCode = pclose(pipe);
-        std::filesystem::remove(tempJs);
         
         if (exitCode != 0) {
-            std::print(stderr, "SlangWasmCompiler: Node.js compilation failed:\n{}\n", output);
+            lastError = "slangc compilation failed with exit code " + std::to_string(exitCode) + ":\n" + output;
+            std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
             return false;
         }
         
-        std::print("SlangWasmCompiler: Successfully compiled {}\n", outputSpvPath.string());
+        // Verify output file was created
+        if (!std::filesystem::exists(outputSpvPath)) {
+            lastError = "Output SPIR-V file was not created: " + outputSpvPath.string();
+            std::print(stderr, "SlangWasmCompiler: {}\n", lastError);
+            return false;
+        }
+        
+        std::print("SlangWasmCompiler: Compilation successful\n");
         return true;
     });
-
+    
     // Wait for compilation to complete
     try {
         bool success = compileFuture.get();
         if (!success) {
-            lastError = "Shader compilation failed";
             return false;
         }
         return true;
