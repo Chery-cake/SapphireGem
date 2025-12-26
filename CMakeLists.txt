@@ -40,12 +40,12 @@ set(CMAKE_COLOR_MAKEFILE ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # CMAKE_CXX_SCAN_FOR_MODULES: Only set if CMake version supports it (3.28+)
-# and if the compiler supports C++20 modules
+# Currently disabled for compatibility as C++20 module support is still experimental in most compilers
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
-    # Check if compiler supports modules scanning
-    # For now, disable it as module support is still experimental in most compilers
     set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
     message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (CMake ${CMAKE_VERSION} supports it, but disabled for compatibility)")
+else()
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: Not available (requires CMake 3.28+, current version is ${CMAKE_VERSION})")
 endif()
 
 # Set common output directory for all targets with OS-specific subdirectory
