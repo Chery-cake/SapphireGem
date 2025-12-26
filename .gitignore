@@ -111,3 +111,6 @@ build/
 
 bin/
 *.clangd
+
+# Compiled shaders (generated at runtime from .slang sources)
+*.spv
