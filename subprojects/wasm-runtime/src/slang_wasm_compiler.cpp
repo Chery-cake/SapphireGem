@@ -53,7 +53,7 @@ bool SlangWasmCompiler::compileShaderToSpirv(
     // Submit compilation task to thread pool for asynchronous execution
     auto& tasks = device::Tasks::get_instance();
     
-    auto compileFuture = tasks.add_task([=]() -> bool {
+    auto compileFuture = tasks.add_task([=, this]() -> bool {
         // Create a temporary JavaScript file to run the compilation
         std::string jsCode = R"(
 const fs = require('fs');
