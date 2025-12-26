@@ -24,7 +24,14 @@ enum class MaterialId {
   TEXTURED_3D_ATLAS_1_1,      // 3D Atlas region (1,1) - bottom-right
 
   LAYERED_2D, // 2D layered texture with animated background
-  LAYERED_3D  // 3D layered texture with animated background
+  LAYERED_3D, // 3D layered texture with animated background
+  
+  // Layered texture materials for Scene 4
+  TEXTURED_3D_LAYERED_CUBE_1, // 3D Layered texture material (1 layer)
+  TEXTURED_3D_LAYERED_CUBE_2, // 3D Layered texture material (2 layers)
+  TEXTURED_3D_LAYERED_CUBE_3, // 3D Layered texture material (3 layers)
+  TEXTURED_3D_LAYERED_CUBE_4, // 3D Layered texture material (4 layers)
+  TEXTURED_3D_LAYERED_CUBE_5  // 3D Layered texture material (5 layers)
 };
 
 // Strongly-typed enum for texture identifiers
