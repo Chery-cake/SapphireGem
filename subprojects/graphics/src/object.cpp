@@ -408,6 +408,9 @@ void render::Object::create_descriptor_sets_for_material(
       textureName = matIdentifier.substr(9); // Skip "Textured_" prefix
     }
 
+    std::print("    Material '{}' - extracted texture name: '{}'\n",
+               matIdentifier, textureName);
+
     // Check if this material belongs to a submesh and use submesh texture
     std::string submeshTexture;
     if (useSubmeshes) {
@@ -415,6 +418,8 @@ void render::Object::create_descriptor_sets_for_material(
         if (submesh.materialIdentifier == matIdentifier &&
             !submesh.textureIdentifier.empty()) {
           submeshTexture = submesh.textureIdentifier;
+          std::print("    Found submesh with material '{}' and texture '{}'\n",
+                     matIdentifier, submeshTexture);
           break;
         }
       }
@@ -429,11 +434,16 @@ void render::Object::create_descriptor_sets_for_material(
     } else {
       textureToUse = textureName;
     }
+    
+    std::print("    Final texture to use for material '{}': '{}'\n",
+               matIdentifier, textureToUse);
 
     if (textureManager && !textureToUse.empty()) {
       // Try layered texture first
       auto *layeredTexture = textureManager->get_layered_texture(textureToUse);
       if (layeredTexture && layeredTexture->get_composited_image()) {
+        std::print("    Binding layered texture '{}' for material '{}'\n",
+                   textureToUse, matIdentifier);
         for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
              ++deviceIdx) {
           bind_texture_to_descriptor_sets(
@@ -441,6 +451,8 @@ void render::Object::create_descriptor_sets_for_material(
               deviceIdx);
         }
       } else {
+        std::print("    Layered texture '{}' not found, trying regular texture\n",
+                   textureToUse);
         // Fall back to regular texture
         auto *texture = textureManager->get_texture(textureToUse);
         if (!texture) {
@@ -452,6 +464,8 @@ void render::Object::create_descriptor_sets_for_material(
                      "material '{}'\n",
                      textureToUse, matIdentifier);
         } else {
+          std::print("    Binding regular texture '{}' for material '{}'\n",
+                     textureToUse, matIdentifier);
           for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size();
                ++deviceIdx) {
             bind_texture_to_descriptor_sets(
@@ -459,6 +473,9 @@ void render::Object::create_descriptor_sets_for_material(
           }
         }
       }
+    } else {
+      std::print("    Warning: No texture to bind for material '{}' (textureToUse='{}')\n",
+                 matIdentifier, textureToUse);
     }
   }
 }
