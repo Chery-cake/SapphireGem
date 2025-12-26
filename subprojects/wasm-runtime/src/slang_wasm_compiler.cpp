@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <filesystem>
 
 namespace wasm {
 
@@ -55,12 +56,15 @@ bool SlangWasmCompiler::compileShaderToSpirv(
     
     auto compileFuture = tasks.add_task([=, this]() -> bool {
         // Create a temporary JavaScript file to run the compilation
+        // Get absolute path to slang-wasm module (in bin/slang-wasm relative to cwd)
+        std::filesystem::path slangWasmPath = std::filesystem::current_path() / "slang-wasm" / "slang-wasm.js";
+        
         std::string jsCode = R"(
 const fs = require('fs');
 const path = require('path');
 
 // Load Slang WASM module
-const slangWasm = require('./slang-wasm/slang-wasm.js');
+const slangWasm = require(')" + slangWasmPath.string() + R"(');
 
 async function compileShader() {
     try {
