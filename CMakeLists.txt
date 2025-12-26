@@ -1,9 +1,22 @@
-set(CMAKE_C_COMPILER "/usr/bin/clang" CACHE PATH "C compiler" FORCE)
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++" CACHE PATH "C++ compiler" FORCE)
-
 cmake_minimum_required(VERSION 3.30)
 
 project(Exemple LANGUAGES C CXX)
+
+# Cross-compilation support: Allow selecting target OS
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(DEFAULT_TARGET_OS "linux")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(DEFAULT_TARGET_OS "windows")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(DEFAULT_TARGET_OS "macos")
+else()
+    set(DEFAULT_TARGET_OS "unknown")
+endif()
+
+set(TARGET_OS "${DEFAULT_TARGET_OS}" CACHE STRING "Target operating system (linux, windows, macos)")
+set_property(CACHE TARGET_OS PROPERTY STRINGS linux windows macos)
+
+message(STATUS "Target OS: ${TARGET_OS}")
 
 # Set default build type to Debug if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -25,10 +38,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 set(CMAKE_COLOR_MAKEFILE ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
-# Set common output directory for all targets
-set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin)
+# CMAKE_CXX_SCAN_FOR_MODULES: Only set if CMake version supports it (3.28+)
+# and if the compiler supports C++20 modules
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
+    # Check if compiler supports modules scanning
+    # For now, disable it as module support is still experimental in most compilers
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (CMake ${CMAKE_VERSION} supports it, but disabled for compatibility)")
+endif()
+
+# Set common output directory for all targets with OS-specific subdirectory
+set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin/${TARGET_OS})
 set(COMMON_OUTPUT_DIR ${COMMON_OUTPUT_DIR} CACHE INTERNAL "Common output directory for all targets")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${COMMON_OUTPUT_DIR})
