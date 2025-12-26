@@ -14,10 +14,10 @@ void scene::Scene2::setup() {
 
   // Create textures
   create_texture(render::TextureId::CHECKERBOARD,
-                 "../assets/textures/checkerboard.png");
+                 "assets/textures/checkerboard.png");
   create_texture(render::TextureId::GRADIENT,
-                 "../assets/textures/gradient.png");
-  create_texture_atlas(render::TextureId::ATLAS, "../assets/textures/atlas.png",
+                 "assets/textures/gradient.png");
+  create_texture_atlas(render::TextureId::ATLAS, "assets/textures/atlas.png",
                        2, 2);
 
   // Apply texture modifications

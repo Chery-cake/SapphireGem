@@ -103,6 +103,82 @@ endif()
 # Create the common output directory if it doesn't exist
 file(MAKE_DIRECTORY ${COMMON_OUTPUT_DIR})
 
+# Copy assets folder to output directory (including .slang source files for runtime compilation)
+add_custom_target(copy_assets ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/assets
+        ${COMMON_OUTPUT_DIR}/assets
+    COMMENT "Copying assets folder to output directory"
+)
+
+# Download and setup Slang library for runtime shader compilation
+set(SLANG_VERSION "2025.24.2")
+set(SLANG_DIR ${CMAKE_BINARY_DIR}/slang)
+
+if(WIN32)
+    set(SLANG_PLATFORM "windows-x86_64")
+    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    set(SLANG_LIBRARY "${SLANG_DIR}/bin/slang.dll")
+    set(SLANG_LIB_FILE "${SLANG_DIR}/lib/slang.lib")
+elseif(APPLE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        set(SLANG_PLATFORM "macos-aarch64")
+    else()
+        set(SLANG_PLATFORM "macos-x86_64")
+    endif()
+    set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    set(SLANG_LIBRARY "${SLANG_DIR}/lib/libslang.dylib")
+    set(SLANG_LIB_FILE "${SLANG_LIBRARY}")
+else()
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+        set(SLANG_PLATFORM "linux-aarch64")
+        set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    else()
+        set(SLANG_PLATFORM "linux-x86_64")
+        set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
+    endif()
+    set(SLANG_LIBRARY "${SLANG_DIR}/lib/libslang.so")
+    set(SLANG_LIB_FILE "${SLANG_LIBRARY}")
+endif()
+
+set(SLANG_URL "https://github.com/shader-slang/slang/releases/download/v${SLANG_VERSION}/${SLANG_ARCHIVE}")
+set(SLANG_INCLUDE_DIR "${SLANG_DIR}/include")
+
+# Download and extract Slang library if not already present
+if(NOT EXISTS ${SLANG_LIBRARY})
+    message(STATUS "Downloading Slang library from ${SLANG_URL}")
+    file(DOWNLOAD ${SLANG_URL} ${CMAKE_BINARY_DIR}/${SLANG_ARCHIVE}
+        SHOW_PROGRESS
+        STATUS DOWNLOAD_STATUS)
+    
+    list(GET DOWNLOAD_STATUS 0 DOWNLOAD_ERROR)
+    if(DOWNLOAD_ERROR)
+        message(FATAL_ERROR "Failed to download Slang library")
+    endif()
+    
+    message(STATUS "Extracting Slang library to ${SLANG_DIR}")
+    file(ARCHIVE_EXTRACT
+        INPUT ${CMAKE_BINARY_DIR}/${SLANG_ARCHIVE}
+        DESTINATION ${SLANG_DIR})
+endif()
+
+message(STATUS "Slang library: ${SLANG_LIBRARY}")
+message(STATUS "Slang include dir: ${SLANG_INCLUDE_DIR}")
+
+# Create Slang interface library target
+add_library(slang INTERFACE)
+target_include_directories(slang INTERFACE ${SLANG_INCLUDE_DIR})
+target_link_libraries(slang INTERFACE ${SLANG_LIB_FILE})
+
+# Copy Slang shared library to output directory for runtime access
+add_custom_target(copy_slang_library ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${SLANG_LIBRARY}
+        ${COMMON_OUTPUT_DIR}
+    COMMENT "Copying Slang library to output directory"
+    DEPENDS ${SLANG_LIBRARY}
+)
+
 add_subdirectory(lib)
 add_subdirectory(subprojects)
 

@@ -14,6 +14,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     glfw
     glm
     stb
+    slang
 )
 
 target_include_directories(${PROJECT_NAME}

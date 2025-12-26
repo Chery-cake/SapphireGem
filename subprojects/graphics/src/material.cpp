@@ -4,9 +4,11 @@
 #include "config.h"
 #include "image.h"
 #include "logical_device.h"
+#include "shader_compiler.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -151,11 +153,60 @@ bool render::Material::initialize() {
     return true;
   }
 
+  // Helper function to ensure shader is compiled
+  auto ensureShaderCompiled = [](const std::string& shaderPath) -> std::string {
+    std::filesystem::path path(shaderPath);
+    
+    // If it's already a .spv file, just return it
+    if (path.extension() == ".spv") {
+      return shaderPath;
+    }
+    
+    // If it's a .slang file, compile it to .spv
+    if (path.extension() == ".slang") {
+      std::filesystem::path outputPath = path;
+      outputPath.replace_extension(".spv");
+      
+      // Check if .spv exists and is newer than .slang
+      bool needsCompilation = !std::filesystem::exists(outputPath);
+      if (!needsCompilation) {
+        auto slangTime = std::filesystem::last_write_time(path);
+        auto spvTime = std::filesystem::last_write_time(outputPath);
+        needsCompilation = (slangTime > spvTime);
+      }
+      
+      if (needsCompilation) {
+        std::print("Compiling shader: {} -> {}\n", path.string(), outputPath.string());
+        static ShaderCompiler compiler; // Shared compiler instance
+        
+        if (!compiler.compileShaderToSpirv(path, outputPath)) {
+          std::print(stderr, "Failed to compile shader {}: {}\n", 
+                    path.string(), compiler.getLastError());
+          return ""; // Return empty string on failure
+        }
+      }
+      
+      return outputPath.string();
+    }
+    
+    // Unknown shader type, return as-is
+    return shaderPath;
+  };
+
+  // Compile shaders if needed
+  std::string vertexSpvPath = ensureShaderCompiled(createInfo.vertexShaders);
+  std::string fragmentSpvPath = ensureShaderCompiled(createInfo.fragmentShaders);
+  
+  if (vertexSpvPath.empty() || fragmentSpvPath.empty()) {
+    std::print(stderr, "Failed to prepare shaders for material: {}\n", identifier);
+    return false;
+  }
+
   std::vector<char> vertexCode;
   std::vector<char> fragmentCode;
 
-  if (!general::Common::readFile(createInfo.vertexShaders, vertexCode) ||
-      !general::Common::readFile(createInfo.fragmentShaders, fragmentCode)) {
+  if (!general::Common::readFile(vertexSpvPath, vertexCode) ||
+      !general::Common::readFile(fragmentSpvPath, fragmentCode)) {
     std::print("Failed to load shader files for material: {}\n", identifier);
     return false;
   }
