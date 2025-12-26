@@ -9,6 +9,7 @@ target_compile_definitions(glfw INTERFACE
 
 if(NOT TARGET glm)
   add_library(glm INTERFACE)
+  target_include_directories(glm INTERFACE /usr/include)
 endif()
 
 find_package(Vulkan REQUIRED)
