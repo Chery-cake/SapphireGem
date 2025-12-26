@@ -1,5 +1,6 @@
 
 add_subdirectory(common)
+add_subdirectory(wasm-runtime)
 add_subdirectory(graphics)
 add_subdirectory(scenes)
 add_subdirectory(app)

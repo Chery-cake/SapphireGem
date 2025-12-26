@@ -4,7 +4,7 @@
 #include "config.h"
 #include "image.h"
 #include "logical_device.h"
-#include "shader_compiler.h"
+#include "slang_wasm_compiler.h"
 #include "vulkan/vulkan.hpp"
 #include <array>
 #include <cstdint>
@@ -155,8 +155,8 @@ bool render::Material::initialize() {
 
   // Helper function to ensure shader is compiled
   auto ensureShaderCompiled = [](const std::string& shaderPath) -> std::string {
-    // Thread-safe shader compiler - one instance per thread
-    thread_local ShaderCompiler compiler;
+    // Use WASM-based shader compiler with thread pool
+    thread_local wasm::SlangWasmCompiler compiler;
     
     std::filesystem::path path(shaderPath);
     
