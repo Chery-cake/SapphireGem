@@ -1,23 +1,28 @@
 cmake_minimum_required(VERSION 3.30)
 
-project(Exemple LANGUAGES C CXX)
-
-# Cross-compilation support: Allow selecting target OS
+# Detect default target OS before project() is called
 # Note: TARGET_OS uses lowercase names for consistency in output paths
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     set(DEFAULT_TARGET_OS "linux")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(DEFAULT_TARGET_OS "windows")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
     set(DEFAULT_TARGET_OS "macos")
 else()
-    # For unsupported platforms, use the CMAKE_SYSTEM_NAME in lowercase
-    string(TOLOWER "${CMAKE_SYSTEM_NAME}" DEFAULT_TARGET_OS)
-    message(WARNING "Unsupported platform '${CMAKE_SYSTEM_NAME}', using '${DEFAULT_TARGET_OS}' as target OS")
+    # For unsupported platforms, use the CMAKE_HOST_SYSTEM_NAME in lowercase
+    string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" DEFAULT_TARGET_OS)
 endif()
 
 set(TARGET_OS "${DEFAULT_TARGET_OS}" CACHE STRING "Target operating system (linux, windows, macos)")
 set_property(CACHE TARGET_OS PROPERTY STRINGS linux windows macos)
+
+# Add cmake module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Setup cross-compilation if needed (must be before project())
+include(SetupCrossCompilation)
+
+project(Exemple LANGUAGES C CXX)
 
 message(STATUS "Target OS: ${TARGET_OS}")
 
@@ -139,58 +144,6 @@ add_custom_target(copy_assets ALL
 add_subdirectory(lib)
 add_subdirectory(subprojects)
 
-# generate .clangd file
+# Generate .clangd configuration file for IDE support
+include(GenerateClangdConfig)
 
-set(projects
-    steamworks
-    vulkan
-    vma
-    btp
-    stb
-    wasmtime
-)
-
-set(inc_dirs)
-foreach(proj ${projects})
-    get_target_property(dirs ${proj} INTERFACE_INCLUDE_DIRECTORIES)
-    if(dirs)
-        list(APPEND inc_dirs ${dirs})
-    endif()
-endforeach()
-
-set(clangd_includes)
-foreach(dir ${inc_dirs})
-    if(IS_ABSOLUTE "${dir}" AND EXISTS "${dir}")
-        file(TO_NATIVE_PATH "${dir}" native_dir)
-        string(REPLACE "\\" "\\\\" native_dir "${native_dir}")
-        list(APPEND clangd_includes "- \"-I${native_dir}\"\n")
-    endif()
-endforeach()
-
-list(REMOVE_DUPLICATES clangd_includes)
-string(REPLACE ";" "        " clangd_includes "${clangd_includes}")
-
-set(clangd_content "
-CompileFlags:
-    Add:
-        ${clangd_includes}
-        - \"-std=c${CMAKE_C_STANDARD}\"
-        - \"-std=c++${CMAKE_CXX_STANDARD}\"
-        - \"-std=gnu++${CMAKE_CXX_STANDARD}\"
-        - \"-Wall\"
-        - \"-Wextra\"
-        - \"-Wpedantic\"
-    CompilationDatabase: ${CMAKE_BINARY_DIR}
-
-Diagnostics:
-    ClangTidy:
-        Add: ['bugprone-*', 'performance-*', 'readability-*', 'portability-*', 'concurrency-*', 'cppcoreguidelines-*']
-    UnusedIncludes: Strict
-    MissingIncludes: Strict
-
-Index:
-    Background: Build
-")
-
-file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "${clangd_content}")
-message(STATUS "Generated .clangd configuration file")
