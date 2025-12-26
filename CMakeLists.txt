@@ -44,11 +44,12 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # CMAKE_CXX_SCAN_FOR_MODULES: Only set if CMake version supports it (3.28+)
 # Currently disabled for compatibility as C++20 module support is still experimental in most compilers
+# Note: Project requires CMake 3.30, so this check is always true, but kept for clarity and future-proofing
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
     set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
-    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (CMake ${CMAKE_VERSION} supports it, but disabled for compatibility)")
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (disabled for compatibility)")
 else()
-    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: Not available (requires CMake 3.28+, current version is ${CMAKE_VERSION})")
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: Not available (requires CMake 3.28+)")
 endif()
 
 # Set common output directory for all targets with OS-specific subdirectory
