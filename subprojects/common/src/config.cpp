@@ -14,16 +14,21 @@
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
-    vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-    vk::DebugUtilsMessageTypeFlagsEXT type,
-    const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
-  if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+// Define storage for the Vulkan dynamic dispatcher
+// This is required when using VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, 
+    void *) {
+  if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
     std::fprintf(stderr, "validation layer: type %u msg: %s\n",
                  static_cast<uint32_t>(type), pCallbackData->pMessage);
   }
 
-  return vk::False;
+  return VK_FALSE;
 }
 
 general::Config &general::Config::get_instance() {

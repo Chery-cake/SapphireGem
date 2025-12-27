@@ -12,7 +12,16 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     btp
     vulkan
     vma
+    glfw
 )
+
+# For Windows builds with MinGW, we need to link against additional standard library components
+# to support std::print functionality (requires __open_terminal and __write_to_terminal symbols)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        -lstdc++exp  # Experimental C++ features library for std::print support
+    )
+endif()
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
