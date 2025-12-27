@@ -1,5 +1,4 @@
 #include "scene.h"
-#include "layered_texture.h"
 #include "material_manager.h"
 #include "object.h"
 #include <print>
@@ -379,6 +378,31 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
     return;
   }
 
+  // Create shader for this material
+  std::vector<Shader::ShaderStageInfo> stages = {
+    {.type = Shader::ShaderType::VERTEX,
+     .filePath = "assets/shaders/shader.slang",
+     .entryPoint = "vertMain"},
+    {.type = Shader::ShaderType::FRAGMENT,
+     .filePath = "assets/shaders/shader.slang",
+     .entryPoint = "fragMain"}
+  };
+
+  Shader::ShaderCreateInfo shaderInfo{
+    .identifier = to_string(materialId) + "_shader",
+    .stages = stages
+  };
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -406,8 +430,7 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
 
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
-      .vertexShaders = "assets/shaders/shader.slang",
-      .fragmentShaders = "assets/shaders/shader.slang",
+      .shader = shader.get(),
       .descriptorBindings = {uboBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
@@ -469,6 +492,34 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
     return;
   }
 
+  // Create shader for this material
+  std::string shaderPath = is2D ? "assets/shaders/textured.slang"
+                                : "assets/shaders/textured3d.slang";
+
+  std::vector<Shader::ShaderStageInfo> stages = {
+    {.type = Shader::ShaderType::VERTEX,
+     .filePath = shaderPath,
+     .entryPoint = "vertMain"},
+    {.type = Shader::ShaderType::FRAGMENT,
+     .filePath = shaderPath,
+     .entryPoint = "fragMain"}
+  };
+
+  Shader::ShaderCreateInfo shaderInfo{
+    .identifier = to_string(materialId) + "_shader",
+    .stages = stages
+  };
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -502,10 +553,7 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
-      .vertexShaders = is2D ? "assets/shaders/textured.slang"
-                            : "assets/shaders/textured3d.slang",
-      .fragmentShaders = is2D ? "assets/shaders/textured.slang"
-                              : "assets/shaders/textured3d.slang",
+      .shader = shader.get(),
       .descriptorBindings = {uboBinding, samplerBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
@@ -541,6 +589,9 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
       .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
                         .sampleShadingEnable = vk::False},
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  // Store shader for lifecycle management
+  sceneShaders.push_back(std::move(shader));
 
   materialManager->add_material(createInfo);
 
@@ -674,16 +725,16 @@ void render::Scene::create_layered_texture(
     const std::vector<glm::vec4> &tints, const std::vector<float> &rotations) {
   std::string texId = to_string(textureId);
 
-  // Check if layered texture already exists
-  if (textureManager->get_layered_texture(texId)) {
+  // Check if texture already exists
+  if (textureManager->get_texture(texId)) {
     sceneTextures.insert(texId);
     return;
   }
 
   // Build layers
-  std::vector<LayeredTexture::ImageLayer> layers;
+  std::vector<Texture::Layer> layers;
   for (size_t i = 0; i < imagePaths.size(); ++i) {
-    LayeredTexture::ImageLayer layer(imagePaths[i]);
+    Texture::Layer layer(imagePaths[i]);
 
     if (i < tints.size()) {
       layer.tint = tints[i];
@@ -696,10 +747,7 @@ void render::Scene::create_layered_texture(
     layers.push_back(layer);
   }
 
-  LayeredTexture::LayeredTextureCreateInfo createInfo{.identifier = texId,
-                                                      .layers = layers};
-
-  textureManager->create_layered_texture(createInfo);
+  textureManager->create_layered_texture(texId, layers);
   sceneTextures.insert(texId);
 }
 

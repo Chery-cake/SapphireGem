@@ -5,6 +5,7 @@
 #include "scene2.h"
 #include "scene3.h"
 #include "scene4.h"
+#include "scene5.h"
 #include <GLFW/glfw3.h>
 #include <memory>
 #include <print>
@@ -100,7 +101,7 @@ void render::Window::create_scenes() {
   auto &bufferMgr = renderer->get_buffer_manager();
   auto *objectMgr = renderer->get_object_manager();
 
-  // Create the four scenes (but don't setup yet - lazy loading)
+  // Create the five scenes (but don't setup yet - lazy loading)
   std::print("Creating scene instances...\n");
 
   scenes.push_back(std::make_unique<scene::Scene1>(&materialMgr, &textureMgr,
@@ -110,6 +111,8 @@ void render::Window::create_scenes() {
   scenes.push_back(std::make_unique<scene::Scene3>(&materialMgr, &textureMgr,
                                                    &bufferMgr, objectMgr));
   scenes.push_back(std::make_unique<scene::Scene4>(&materialMgr, &textureMgr,
+                                                   &bufferMgr, objectMgr));
+  scenes.push_back(std::make_unique<scene::Scene5>(&materialMgr, &textureMgr,
                                                    &bufferMgr, objectMgr));
 
   // Setup only the first scene (active scene)
