@@ -189,6 +189,16 @@ if(CMAKE_CROSSCOMPILING AND NOT Vulkan_FOUND)
             set(Vulkan_LIBRARY ${VULKAN_LIBRARY})
             set(Vulkan_LIBRARY ${VULKAN_LIBRARY} PARENT_SCOPE)
             
+            # Create Vulkan::Vulkan imported target if it doesn't exist
+            # This mimics what find_package(Vulkan) does
+            if(NOT TARGET Vulkan::Vulkan)
+                add_library(Vulkan::Vulkan UNKNOWN IMPORTED)
+                set_target_properties(Vulkan::Vulkan PROPERTIES
+                    IMPORTED_LOCATION "${VULKAN_LIBRARY}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${VULKAN_INCLUDE_DIR}"
+                )
+            endif()
+            
             message(STATUS "Vulkan SDK configured:")
             message(STATUS "  Include: ${VULKAN_INCLUDE_DIR}")
             message(STATUS "  Library: ${VULKAN_LIBRARY}")
