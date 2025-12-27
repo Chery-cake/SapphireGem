@@ -19,27 +19,21 @@ if(CMAKE_CROSSCOMPILING AND NOT Vulkan_FOUND)
         
         # Check common manual installation paths
         set(VULKAN_MANUAL_PATHS
-            "${VULKAN_DIR}/Include"
-            "$ENV{VULKAN_SDK}/Include"
-            "/usr/x86_64-w64-mingw32/include/vulkan"
+            "${VULKAN_DIR}"
+            "$ENV{VULKAN_SDK}"
+            "/usr/x86_64-w64-mingw32"
         )
         
-        foreach(MANUAL_PATH ${VULKAN_MANUAL_PATHS})
-            if(EXISTS "${MANUAL_PATH}/vulkan/vulkan.h")
-                get_filename_component(VULKAN_INCLUDE_DIR "${MANUAL_PATH}" ABSOLUTE)
-                message(STATUS "Found Vulkan headers at: ${VULKAN_INCLUDE_DIR}")
-                break()
-            endif()
-        endforeach()
-        
-        # Check for library
-        set(VULKAN_LIB_PATHS
+        # First check for library in common locations
+        set(VULKAN_LIB_SEARCH_PATHS
             "${VULKAN_DIR}/Lib"
+            "${VULKAN_DIR}/lib"
             "$ENV{VULKAN_SDK}/Lib"
+            "$ENV{VULKAN_SDK}/lib"
             "/usr/x86_64-w64-mingw32/lib"
         )
         
-        foreach(LIB_PATH ${VULKAN_LIB_PATHS})
+        foreach(LIB_PATH ${VULKAN_LIB_SEARCH_PATHS})
             if(EXISTS "${LIB_PATH}/vulkan-1.lib" OR EXISTS "${LIB_PATH}/libvulkan-1.a")
                 if(EXISTS "${LIB_PATH}/vulkan-1.lib")
                     set(VULKAN_LIBRARY "${LIB_PATH}/vulkan-1.lib")
@@ -47,9 +41,57 @@ if(CMAKE_CROSSCOMPILING AND NOT Vulkan_FOUND)
                     set(VULKAN_LIBRARY "${LIB_PATH}/libvulkan-1.a")
                 endif()
                 message(STATUS "Found Vulkan library at: ${VULKAN_LIBRARY}")
+                
+                # Try to find corresponding include directory
+                get_filename_component(VULKAN_SDK_ROOT "${LIB_PATH}" DIRECTORY)
+                if(EXISTS "${VULKAN_SDK_ROOT}/Include/vulkan/vulkan.h")
+                    set(VULKAN_INCLUDE_DIR "${VULKAN_SDK_ROOT}/Include")
+                elseif(EXISTS "${VULKAN_SDK_ROOT}/include/vulkan/vulkan.h")
+                    set(VULKAN_INCLUDE_DIR "${VULKAN_SDK_ROOT}/include")
+                endif()
                 break()
             endif()
         endforeach()
+        
+        # If library found but not headers, search for headers separately
+        if(DEFINED VULKAN_LIBRARY AND NOT DEFINED VULKAN_INCLUDE_DIR)
+            set(VULKAN_INCLUDE_SEARCH_PATHS
+                "${VULKAN_DIR}/Include"
+                "${VULKAN_DIR}/include"
+                "$ENV{VULKAN_SDK}/Include"
+                "$ENV{VULKAN_SDK}/include"
+                "/usr/x86_64-w64-mingw32/include"
+            )
+            
+            foreach(INC_PATH ${VULKAN_INCLUDE_SEARCH_PATHS})
+                if(EXISTS "${INC_PATH}/vulkan/vulkan.h")
+                    set(VULKAN_INCLUDE_DIR "${INC_PATH}")
+                    message(STATUS "Found Vulkan headers at: ${VULKAN_INCLUDE_DIR}")
+                    break()
+                endif()
+            endforeach()
+        endif()
+        
+        # If still not found, search more broadly
+        if(NOT DEFINED VULKAN_LIBRARY)
+            foreach(MANUAL_PATH ${VULKAN_MANUAL_PATHS})
+                if(EXISTS "${MANUAL_PATH}/Include/vulkan/vulkan.h")
+                    set(VULKAN_INCLUDE_DIR "${MANUAL_PATH}/Include")
+                    message(STATUS "Found Vulkan headers at: ${VULKAN_INCLUDE_DIR}")
+                    
+                    # Try to find library in same root
+                    if(EXISTS "${MANUAL_PATH}/Lib/vulkan-1.lib")
+                        set(VULKAN_LIBRARY "${MANUAL_PATH}/Lib/vulkan-1.lib")
+                        message(STATUS "Found Vulkan library at: ${VULKAN_LIBRARY}")
+                        break()
+                    elseif(EXISTS "${MANUAL_PATH}/lib/libvulkan-1.a")
+                        set(VULKAN_LIBRARY "${MANUAL_PATH}/lib/libvulkan-1.a")
+                        message(STATUS "Found Vulkan library at: ${VULKAN_LIBRARY}")
+                        break()
+                    endif()
+                endif()
+            endforeach()
+        endif()
         
         # If not found, provide helpful message
         if(NOT DEFINED VULKAN_INCLUDE_DIR OR NOT DEFINED VULKAN_LIBRARY)
