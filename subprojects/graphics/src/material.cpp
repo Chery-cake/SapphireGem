@@ -105,13 +105,16 @@ bool render::Material::create_pipeline(device::LogicalDevice *device,
         .pColorAttachmentFormats = &format.format,
         .depthAttachmentFormat = vk::Format::eD32Sfloat};
 
+    // Check if this is a mesh shader pipeline
+    bool isMeshShaderPipeline = shader->has_stage(Shader::ShaderType::MESH);
+    
     // Graphics pipeline creation
     vk::GraphicsPipelineCreateInfo pipelineCreateInfo{
         .pNext = &pipelineRenderingInfo,
         .stageCount = static_cast<uint32_t>(shaderStages.size()),
         .pStages = shaderStages.data(),
-        .pVertexInputState = &createInfo.vertexInputState,
-        .pInputAssemblyState = &createInfo.inputAssemblyState,
+        .pVertexInputState = isMeshShaderPipeline ? nullptr : &createInfo.vertexInputState,
+        .pInputAssemblyState = isMeshShaderPipeline ? nullptr : &createInfo.inputAssemblyState,
         .pViewportState = &createInfo.viewportState,
         .pRasterizationState = &createInfo.rasterizationState,
         .pMultisampleState = &createInfo.multisampleState,
