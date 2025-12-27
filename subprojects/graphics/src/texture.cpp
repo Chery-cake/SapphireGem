@@ -77,12 +77,12 @@ void render::Texture::generate_atlas_regions_grid(uint32_t rows,
 bool render::Texture::load() {
   if (type == TextureType::LAYERED) {
     // Load all layer images in parallel using the thread pool
-    std::vector<std::future<std::shared_ptr<Image>>> imageFutures;
+    std::vector<std::future<Image*>> imageFutures;
 
     for (size_t i = 0; i < layers.size(); ++i) {
       if (!layers[i].imagePath.empty()) {
         auto future = device::Tasks::get_instance().add_task(
-            [this, i]() -> std::shared_ptr<Image> {
+            [this, i]() -> Image* {
               return load_or_get_cached_image(layers[i].imagePath);
             });
         imageFutures.push_back(std::move(future));
