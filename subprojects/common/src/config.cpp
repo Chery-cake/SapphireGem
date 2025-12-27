@@ -96,8 +96,12 @@ void general::Config::initialize_vma_functions() {
   // Get the function pointers directly from the Vulkan loader
   // instead of using the dispatcher, to avoid cross-DLL issues
   vmaVulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
-  // VMA will automatically retrieve vkGetDeviceProcAddr using vkGetInstanceProcAddr when needed
-  vmaVulkanFunctions.vkGetDeviceProcAddr = nullptr;
+  
+  // vkGetDeviceProcAddr must also be provided for VMA
+  // We obtain it via vkGetInstanceProcAddr from a null instance (gets the global function)
+  vmaVulkanFunctions.vkGetDeviceProcAddr = 
+      reinterpret_cast<PFN_vkGetDeviceProcAddr>(
+          vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkGetDeviceProcAddr"));
 
   vmaVulkanFunctionsInitialized = true;
 
