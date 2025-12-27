@@ -14,16 +14,30 @@
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(
-    vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
-    vk::DebugUtilsMessageTypeFlagsEXT type,
-    const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
-  if (severity >= vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning) {
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *) {
+  if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
     std::fprintf(stderr, "validation layer: type %u msg: %s\n",
                  static_cast<uint32_t>(type), pCallbackData->pMessage);
   }
+  return VK_FALSE;
+}
 
-  return vk::False;
+// Wrapper to convert C callback to C++ callback signature
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL
+debugCallbackCpp(vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+                 vk::DebugUtilsMessageTypeFlagsEXT type,
+                 const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
+                 void *pUserData) {
+  // Call the C version with casted parameters
+  return debugCallback(
+      static_cast<VkDebugUtilsMessageSeverityFlagBitsEXT>(severity),
+      static_cast<VkDebugUtilsMessageTypeFlagsEXT>(type),
+      reinterpret_cast<const VkDebugUtilsMessengerCallbackDataEXT *>(
+          pCallbackData),
+      pUserData);
 }
 
 general::Config &general::Config::get_instance() {
@@ -67,8 +81,7 @@ general::Config::set_up_debug_messanger(vk::raii::Instance &instance) {
   vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
       .messageSeverity = severityFlags,
       .messageType = messageTypeFlags,
-      .pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(
-          &debugCallback)};
+      .pfnUserCallback = &debugCallbackCpp};
   return instance.createDebugUtilsMessengerEXT(
       debugUtilsMessengerCreateInfoEXT);
 }
