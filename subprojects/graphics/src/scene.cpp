@@ -376,7 +376,7 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
                                           bool is3DTextured) {
   // Use geometry shaders for all 2D and 3D rendering
   // Geometry shaders provide modular pipeline where 3D objects are composed from 2D primitives
-  create_geometry_material(materialId, is2D, false);
+  create_geometry_material(materialId, is2D, is3DTextured);
 }
 
 void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
