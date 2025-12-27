@@ -3,6 +3,7 @@
 #include "buffer.h"
 #include "image.h"
 #include "logical_device.h"
+#include "shader.h"
 #include "vulkan/vulkan.hpp"
 #include <atomic>
 #include <glm/ext/vector_float4.hpp>
@@ -22,9 +23,10 @@ public:
   struct MaterialCreateInfo {
     std::string identifier;
 
-    // shaders path
-    std::string vertexShaders;
-    std::string fragmentShaders;
+    // Shader reference or paths
+    std::shared_ptr<Shader> shader; // Use existing Shader object
+    std::string vertexShaders;      // Or path to vertex shader (legacy)
+    std::string fragmentShaders;    // Or path to fragment shader (legacy)
 
     // Layout info
     std::vector<vk::DescriptorSetLayoutBinding> descriptorBindings;
@@ -38,6 +40,10 @@ public:
     vk::PipelineViewportStateCreateInfo viewportState;
     vk::PipelineMultisampleStateCreateInfo multisampleState;
     std::vector<vk::DynamicState> dynamicStates;
+
+    // Additional shader parameters
+    std::unordered_map<std::string, float> floatParams;
+    std::unordered_map<std::string, glm::vec4> vec4Params;
   };
 
   struct DeviceMaterialResources {
@@ -56,10 +62,15 @@ private:
   MaterialCreateInfo createInfo;
   std::vector<std::unique_ptr<DeviceMaterialResources>> deviceResources;
 
-  // shared properties
+  // Shader reference
+  std::shared_ptr<Shader> shader;
+
+  // Material properties
   glm::vec4 color;
-  float rougthness;
-  float metalic;
+  float roughness;
+  float metallic;
+  std::unordered_map<std::string, float> floatParams;
+  std::unordered_map<std::string, glm::vec4> vec4Params;
 
   std::vector<device::LogicalDevice *> logicalDevices;
 
@@ -84,8 +95,10 @@ public:
             vk::raii::DescriptorSet *descriptorSet = nullptr);
 
   void set_color(const glm::vec4 &newColor);
-  void set_roughness(const float &newRougthness);
+  void set_roughness(const float &newRoughness);
   void set_metallic(const float &newMetallic);
+  void set_float_param(const std::string &name, float value);
+  void set_vec4_param(const std::string &name, const glm::vec4 &value);
 
   bool is_initialized() const;
 
@@ -95,6 +108,7 @@ public:
   get_descriptor_set_layout(uint32_t deviceIndex = 0);
 
   const std::string &get_identifier() const;
+  std::shared_ptr<Shader> get_shader() const;
 };
 
 } // namespace render

@@ -21,8 +21,9 @@
 render::Material::Material(const std::vector<device::LogicalDevice *> &devices,
                            const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier),
-      createInfo(createInfo), color(1.0f), rougthness(0.5f), metalic(0),
-      logicalDevices(devices) {
+      createInfo(createInfo), shader(createInfo.shader), color(1.0f),
+      roughness(0.5f), metallic(0), floatParams(createInfo.floatParams),
+      vec4Params(createInfo.vec4Params), logicalDevices(devices) {
 
   deviceResources.reserve(logicalDevices.size());
   for (size_t i = 0; i < logicalDevices.size(); ++i) {
@@ -318,14 +319,25 @@ void render::Material::set_color(const glm::vec4 &newColor) {
   color = newColor;
 }
 
-void render::Material::set_roughness(const float &newRougthness) {
+void render::Material::set_roughness(const float &newRoughness) {
   std::lock_guard lock(materialMutex);
-  rougthness = newRougthness;
+  roughness = newRoughness;
 }
 
 void render::Material::set_metallic(const float &newMetallic) {
   std::lock_guard lock(materialMutex);
-  metalic = newMetallic;
+  metallic = newMetallic;
+}
+
+void render::Material::set_float_param(const std::string &name, float value) {
+  std::lock_guard lock(materialMutex);
+  floatParams[name] = value;
+}
+
+void render::Material::set_vec4_param(const std::string &name,
+                                      const glm::vec4 &value) {
+  std::lock_guard lock(materialMutex);
+  vec4Params[name] = value;
 }
 
 bool render::Material::is_initialized() const { return initialized; }
@@ -346,4 +358,8 @@ render::Material::get_descriptor_set_layout(uint32_t deviceIndex) {
 
 const std::string &render::Material::get_identifier() const {
   return identifier;
+}
+
+std::shared_ptr<render::Shader> render::Material::get_shader() const {
+  return shader;
 }

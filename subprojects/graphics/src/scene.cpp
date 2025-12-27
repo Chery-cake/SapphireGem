@@ -1,5 +1,4 @@
 #include "scene.h"
-#include "layered_texture.h"
 #include "material_manager.h"
 #include "object.h"
 #include <print>
@@ -674,16 +673,16 @@ void render::Scene::create_layered_texture(
     const std::vector<glm::vec4> &tints, const std::vector<float> &rotations) {
   std::string texId = to_string(textureId);
 
-  // Check if layered texture already exists
-  if (textureManager->get_layered_texture(texId)) {
+  // Check if texture already exists
+  if (textureManager->get_texture(texId)) {
     sceneTextures.insert(texId);
     return;
   }
 
   // Build layers
-  std::vector<LayeredTexture::ImageLayer> layers;
+  std::vector<Texture::Layer> layers;
   for (size_t i = 0; i < imagePaths.size(); ++i) {
-    LayeredTexture::ImageLayer layer(imagePaths[i]);
+    Texture::Layer layer(imagePaths[i]);
 
     if (i < tints.size()) {
       layer.tint = tints[i];
@@ -696,10 +695,7 @@ void render::Scene::create_layered_texture(
     layers.push_back(layer);
   }
 
-  LayeredTexture::LayeredTextureCreateInfo createInfo{.identifier = texId,
-                                                      .layers = layers};
-
-  textureManager->create_layered_texture(createInfo);
+  textureManager->create_layered_texture(texId, layers);
   sceneTextures.insert(texId);
 }
 
