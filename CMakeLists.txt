@@ -110,22 +110,25 @@ else()
     add_compile_definitions(ENABLE_ASSERTIONS)
 
     if(TEST_MEMORY_LEAKS)
+        # Sanitizers are not available for MinGW cross-compilation
+        if(NOT (CMAKE_CROSSCOMPILING AND WIN32))
+            add_compile_options(
+                -fsanitize=address
+                -fsanitize=undefined
+                -fno-sanitize-recover=all
+                -fno-omit-frame-pointer
+            )
+            add_link_options(
+                -fsanitize=address
+                -fsanitize=undefined
+            )
 
-        add_compile_options(
-            -fsanitize=address
-            -fsanitize=undefined
-            -fno-sanitize-recover=all
-            -fno-omit-frame-pointer
-        )
-        add_link_options(
-            -fsanitize=address
-            -fsanitize=undefined
-        )
-
-        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-            add_compile_options(-fno-var-tracking)
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+                add_compile_options(-fno-var-tracking)
+            endif()
+        else()
+            message(WARNING "Memory leak testing (sanitizers) not available for MinGW cross-compilation")
         endif()
-
     endif()
 
 endif()
