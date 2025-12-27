@@ -1,7 +1,26 @@
-set(CMAKE_C_COMPILER "/usr/bin/clang" CACHE PATH "C compiler" FORCE)
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++" CACHE PATH "C++ compiler" FORCE)
-
 cmake_minimum_required(VERSION 3.30)
+
+# Detect default target OS before project() is called
+# Note: TARGET_OS uses lowercase names for consistency in output paths
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    set(DEFAULT_TARGET_OS "linux")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    set(DEFAULT_TARGET_OS "windows")
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(DEFAULT_TARGET_OS "macos")
+else()
+    # For unsupported platforms, use the CMAKE_HOST_SYSTEM_NAME in lowercase
+    string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" DEFAULT_TARGET_OS)
+endif()
+
+set(TARGET_OS "${DEFAULT_TARGET_OS}" CACHE STRING "Target operating system (linux, windows, macos)")
+set_property(CACHE TARGET_OS PROPERTY STRINGS linux windows macos)
+
+# Add cmake module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Setup cross-compilation if needed (must be before project())
+include(SetupCrossCompilation)
 
 project(Exemple LANGUAGES C CXX)
 
@@ -25,10 +44,19 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 set(CMAKE_COLOR_MAKEFILE ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
-# Set common output directory for all targets
-set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin)
+# CMAKE_CXX_SCAN_FOR_MODULES: Only set if CMake version supports it (3.28+)
+# Currently disabled for compatibility as C++20 module support is still experimental in most compilers
+# Note: Project requires CMake 3.30, so this check is always true, but kept for clarity and future-proofing
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (disabled for compatibility)")
+else()
+    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: Not available (requires CMake 3.28+)")
+endif()
+
+# Set common output directory for all targets with OS-specific subdirectory
+set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin/${TARGET_OS})
 set(COMMON_OUTPUT_DIR ${COMMON_OUTPUT_DIR} CACHE INTERNAL "Common output directory for all targets")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${COMMON_OUTPUT_DIR})
@@ -81,19 +109,24 @@ else()
 
     if(TEST_MEMORY_LEAKS)
 
-        add_compile_options(
-            -fsanitize=address
-            -fsanitize=undefined
-            -fno-sanitize-recover=all
-            -fno-omit-frame-pointer
-        )
-        add_link_options(
-            -fsanitize=address
-            -fsanitize=undefined
-        )
+        # Sanitizers are not available for MinGW cross-compilation
+        if(NOT (CMAKE_CROSSCOMPILING AND WIN32))
+            add_compile_options(
+                -fsanitize=address
+                -fsanitize=undefined
+                -fno-sanitize-recover=all
+                -fno-omit-frame-pointer
+            )
+            add_link_options(
+                -fsanitize=address
+                -fsanitize=undefined
+            )
 
-        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-            add_compile_options(-fno-var-tracking)
+            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+                add_compile_options(-fno-var-tracking)
+            endif()
+        else()
+            message(WARNING "Memory leak testing (sanitizers) not available for MinGW cross-compilation")
         endif()
 
     endif()
@@ -113,59 +146,3 @@ add_custom_target(copy_assets ALL
 
 add_subdirectory(lib)
 add_subdirectory(subprojects)
-
-# generate .clangd file
-
-set(projects
-    steamworks
-    vulkan
-    vma
-    btp
-    stb
-    wasmtime
-)
-
-set(inc_dirs)
-foreach(proj ${projects})
-    get_target_property(dirs ${proj} INTERFACE_INCLUDE_DIRECTORIES)
-    if(dirs)
-        list(APPEND inc_dirs ${dirs})
-    endif()
-endforeach()
-
-set(clangd_includes)
-foreach(dir ${inc_dirs})
-    if(IS_ABSOLUTE "${dir}" AND EXISTS "${dir}")
-        file(TO_NATIVE_PATH "${dir}" native_dir)
-        string(REPLACE "\\" "\\\\" native_dir "${native_dir}")
-        list(APPEND clangd_includes "- \"-I${native_dir}\"\n")
-    endif()
-endforeach()
-
-list(REMOVE_DUPLICATES clangd_includes)
-string(REPLACE ";" "        " clangd_includes "${clangd_includes}")
-
-set(clangd_content "
-CompileFlags:
-    Add:
-        ${clangd_includes}
-        - \"-std=c${CMAKE_C_STANDARD}\"
-        - \"-std=c++${CMAKE_CXX_STANDARD}\"
-        - \"-std=gnu++${CMAKE_CXX_STANDARD}\"
-        - \"-Wall\"
-        - \"-Wextra\"
-        - \"-Wpedantic\"
-    CompilationDatabase: ${CMAKE_BINARY_DIR}
-
-Diagnostics:
-    ClangTidy:
-        Add: ['bugprone-*', 'performance-*', 'readability-*', 'portability-*', 'concurrency-*', 'cppcoreguidelines-*']
-    UnusedIncludes: Strict
-    MissingIncludes: Strict
-
-Index:
-    Background: Build
-")
-
-file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "${clangd_content}")
-message(STATUS "Generated .clangd configuration file")

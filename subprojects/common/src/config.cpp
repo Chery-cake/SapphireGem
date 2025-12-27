@@ -67,7 +67,8 @@ general::Config::set_up_debug_messanger(vk::raii::Instance &instance) {
   vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
       .messageSeverity = severityFlags,
       .messageType = messageTypeFlags,
-      .pfnUserCallback = &debugCallback};
+      .pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(
+          &debugCallback)};
   return instance.createDebugUtilsMessengerEXT(
       debugUtilsMessengerCreateInfoEXT);
 }
