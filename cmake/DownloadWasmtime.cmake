@@ -21,7 +21,7 @@ elseif(TARGET_OS STREQUAL "macos")
     set(WASMTIME_LIBRARY "${WASMTIME_EXTRACTED_DIR}/lib/libwasmtime.dylib")
     set(WASMTIME_DLL "${WASMTIME_LIBRARY}")
 else() # linux
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
         set(WASMTIME_PLATFORM "aarch64-linux")
     else()
         set(WASMTIME_PLATFORM "x86_64-linux")

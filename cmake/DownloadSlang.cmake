@@ -46,7 +46,7 @@ elseif(TARGET_OS STREQUAL "macos")
     set(SLANG_ARCHIVE "slang-${SLANG_VERSION}-${SLANG_PLATFORM}.zip")
     set(SLANG_COMPILER "${SLANG_DIR}/bin/slangc")
 else() # linux
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
         set(SLANG_PLATFORM "linux-aarch64")
     else()
         set(SLANG_PLATFORM "linux-x86_64")
