@@ -1,10 +1,6 @@
-// Geometry shader for 3D objects - demonstrates composing 3D from 2D primitives
-// Takes a single POINT (0D primitive) and generates a QUAD (2D primitive) in 3D space
-// This shows how geometry shaders can build complex geometry from minimal input
-// Benefits:
-// - Reduced vertex data transfer (only send points, not full quads)
-// - Dynamic geometry generation on GPU
-// - More modular and flexible rendering pipeline
+// Geometry shader for 3D objects - pass-through with transformation
+// Takes triangles and applies model-view-projection transformations
+// The geometry shader stage is kept for consistency but doesn't modify geometry
 
 struct VSInput {
     float3 inPosition;  // Just a point position

@@ -1,9 +1,6 @@
-// Geometry shader for 2D objects - demonstrates modular rendering
-// Takes a single POINT and generates a QUAD (2D primitive)
-// Benefits of geometry shaders:
-// - Reduced CPU-to-GPU data transfer (send points instead of quads)
-// - Dynamic geometry generation on GPU
-// - More flexible and modular pipeline
+// Geometry shader for 2D objects - pass-through with transformation
+// Takes triangles and applies model-view-projection transformations
+// The geometry shader stage is kept for consistency but doesn't modify geometry
 
 struct VSInput {
     float2 inPosition;  // Just a 2D point

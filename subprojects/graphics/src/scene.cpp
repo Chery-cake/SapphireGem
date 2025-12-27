@@ -262,7 +262,7 @@ render::Object *render::Scene::create_cube_3d(
             ? std::vector<uint16_t>{// Front face
                                     0, 2, 1, 0, 3, 2,
                                     // Back face
-                                    4, 5, 6, 6, 7, 4,
+                                    4, 6, 5, 4, 7, 6,
                                     // Left face
                                     8, 10, 9, 8, 11, 10,
                                     // Right face
@@ -344,7 +344,7 @@ render::Object *render::Scene::create_cube_3d(
             ? std::vector<uint16_t>{// Front face
                                     0, 2, 1, 0, 3, 2,
                                     // Back face
-                                    4, 5, 6, 6, 7, 4,
+                                    4, 6, 5, 4, 7, 6,
                                     // Left face
                                     8, 10, 9, 8, 11, 10,
                                     // Right face
