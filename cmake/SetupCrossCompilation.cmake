@@ -30,6 +30,15 @@ if(CROSS_COMPILING)
             find_program(MINGW_CC x86_64-w64-mingw32-gcc)
             if(MINGW_CC)
                 set(CMAKE_C_COMPILER ${MINGW_CC})
+            else()
+                message(FATAL_ERROR 
+                    "Cross-compiling to Windows requires MinGW-w64 toolchain.\n"
+                    "Please install it:\n"
+                    "  Ubuntu/Debian: sudo apt-get install mingw-w64\n"
+                    "  Fedora: sudo dnf install mingw64-gcc mingw64-gcc-c++\n"
+                    "  Arch: sudo pacman -S mingw-w64-gcc\n"
+                    "Or provide a toolchain file with: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake\n"
+                    "Or set compilers manually: cmake -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++")
             endif()
         endif()
         
@@ -37,6 +46,15 @@ if(CROSS_COMPILING)
             find_program(MINGW_CXX x86_64-w64-mingw32-g++)
             if(MINGW_CXX)
                 set(CMAKE_CXX_COMPILER ${MINGW_CXX})
+            else()
+                message(FATAL_ERROR 
+                    "Cross-compiling to Windows requires MinGW-w64 toolchain.\n"
+                    "Please install it:\n"
+                    "  Ubuntu/Debian: sudo apt-get install mingw-w64\n"
+                    "  Fedora: sudo dnf install mingw64-gcc mingw64-gcc-c++\n"
+                    "  Arch: sudo pacman -S mingw-w64-gcc\n"
+                    "Or provide a toolchain file with: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake\n"
+                    "Or set compilers manually: cmake -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++")
             endif()
         endif()
         
@@ -55,7 +73,10 @@ if(CROSS_COMPILING)
         set(CMAKE_SYSTEM_PROCESSOR x86_64)
         
         # macOS cross-compilation requires OSXCross or similar toolchain
-        # User should provide appropriate toolchain file
+        message(FATAL_ERROR 
+            "Cross-compiling to macOS requires OSXCross toolchain.\n"
+            "See: https://github.com/tpoechtrager/osxcross\n"
+            "Or provide a toolchain file with: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake")
     endif()
     
     message(STATUS "Cross-compilation enabled: ${CMAKE_HOST_SYSTEM_NAME} -> ${TARGET_OS}")
