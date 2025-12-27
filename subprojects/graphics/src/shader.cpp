@@ -56,6 +56,12 @@ bool render::Shader::compile_shader_from_file(ShaderStageInfo &stageInfo) {
   case ShaderType::TESSELLATION_EVALUATION:
     entryPoint = "tessEvalMain";
     break;
+  case ShaderType::MESH:
+    entryPoint = "meshMain";
+    break;
+  case ShaderType::TASK:
+    entryPoint = "taskMain";
+    break;
   default:
     entryPoint = stageInfo.entryPoint;
     break;

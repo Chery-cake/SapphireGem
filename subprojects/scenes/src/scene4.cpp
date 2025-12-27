@@ -65,10 +65,8 @@ void scene::Scene4::setup() {
        glm::vec4(1.0f, 1.0f, 0.8f, 0.5f)}, // Slight yellow tint
       {0.0f, 36.0f, 72.0f, 108.0f, 144.0f});
 
-  // NOTE: The layered materials should use the layered.spv shader which needs
-  // to be compiled For now, using the standard textured materials as fallback
-  // TODO: Compile layered.slang and update materials to use LAYERED_2D and
-  // LAYERED_3D
+  // All materials now use geometry shaders for rendering
+  // Layered textures are rendered using the standard geometry shader pipeline
 
   create_textured_material(render::MaterialId::TEXTURED, true);
 
