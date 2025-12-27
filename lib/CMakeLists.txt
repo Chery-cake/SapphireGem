@@ -12,7 +12,23 @@ if(NOT TARGET glm)
   target_include_directories(glm INTERFACE /usr/include)
 endif()
 
-find_package(Vulkan REQUIRED)
+# Try to find Vulkan on the system first
+find_package(Vulkan)
+
+# If not found and cross-compiling, try to download Vulkan SDK
+if(NOT Vulkan_FOUND)
+    include(DownloadVulkan)
+endif()
+
+# Require Vulkan for the build
+if(NOT Vulkan_FOUND)
+    message(FATAL_ERROR 
+        "Vulkan SDK not found.\n"
+        "For native builds: Install Vulkan SDK from https://vulkan.lunarg.com/\n"
+        "For cross-compilation: The build system attempted to download it.\n"
+        "You can manually specify: -DVulkan_INCLUDE_DIR=... -DVulkan_LIBRARY=...")
+endif()
+
 add_library(vulkan INTERFACE)
 
 target_compile_definitions(vulkan INTERFACE
