@@ -21,8 +21,9 @@
 render::Material::Material(const std::vector<device::LogicalDevice *> &devices,
                            const MaterialCreateInfo &createInfo)
     : initialized(false), identifier(createInfo.identifier),
-      createInfo(createInfo), color(1.0f), rougthness(0.5f), metalic(0),
-      logicalDevices(devices) {
+      createInfo(createInfo), shader(createInfo.shader), color(1.0f),
+      roughness(0.5f), metallic(0), floatParams(createInfo.floatParams),
+      vec4Params(createInfo.vec4Params), logicalDevices(devices) {
 
   deviceResources.reserve(logicalDevices.size());
   for (size_t i = 0; i < logicalDevices.size(); ++i) {
@@ -44,37 +45,27 @@ render::Material::~Material() {
   std::print("Material - {} - destructor executed\n", identifier);
 }
 
-bool render::Material::create_shader_module(
-    device::LogicalDevice *device, const std::vector<char> &code,
-    vk::raii::ShaderModule &shaderModule) {
-  try {
-    vk::ShaderModuleCreateInfo shaderInfo{
-        .codeSize = code.size(),
-        .pCode = reinterpret_cast<const uint32_t *>(code.data())};
-    shaderModule = device->get_device().createShaderModule(shaderInfo);
-    return true;
-  } catch (const std::exception &e) {
-    std::print("Failed to create shader module: {}\n", e.what());
-    return false;
-  }
-}
-
 bool render::Material::create_pipeline(device::LogicalDevice *device,
                                        DeviceMaterialResources &resources,
                                        const MaterialCreateInfo &createInfo) {
   try {
-    vk::PipelineShaderStageCreateInfo vertShaderStageInfo{
-        .stage = vk::ShaderStageFlagBits::eVertex,
-        .module = *resources.vertexShader,
-        .pName = "vertMain"};
+    // Get shader stage infos from the Shader object
+    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
 
-    vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
-        .stage = vk::ShaderStageFlagBits::eFragment,
-        .module = *resources.fragmentShader,
-        .pName = "fragMain"};
-
-    std::vector<vk::PipelineShaderStageCreateInfo> shaderStages = {
-        vertShaderStageInfo, fragShaderStageInfo};
+    if (shader) {
+      // Find device index
+      uint32_t deviceIndex = 0;
+      for (size_t i = 0; i < logicalDevices.size(); ++i) {
+        if (logicalDevices[i] == device) {
+          deviceIndex = static_cast<uint32_t>(i);
+          break;
+        }
+      }
+      shaderStages = shader->get_pipeline_stage_infos(deviceIndex);
+    } else {
+      std::print(stderr, "Material - {} - no shader provided\n", identifier);
+      return false;
+    }
 
     // Create descriptor set layout if needed
     if (!createInfo.descriptorBindings.empty()) {
@@ -152,66 +143,9 @@ bool render::Material::initialize() {
     return true;
   }
 
-  // Helper function to ensure shader is compiled
-  auto ensureShaderCompiled = [](const std::string &shaderPath) -> std::string {
-    // Use WASM-based shader compiler with thread pool
-    thread_local wasm::SlangWasmCompiler compiler;
-
-    std::filesystem::path path(shaderPath);
-
-    // If it's already a .spv file, just return it
-    if (path.extension() == ".spv") {
-      return shaderPath;
-    }
-
-    // If it's a .slang file, compile it to .spv
-    if (path.extension() == ".slang") {
-      std::filesystem::path outputPath = path;
-      outputPath.replace_extension(".spv");
-
-      // Check if .spv exists and is newer than .slang
-      bool needsCompilation = !std::filesystem::exists(outputPath);
-      if (!needsCompilation) {
-        auto slangTime = std::filesystem::last_write_time(path);
-        auto spvTime = std::filesystem::last_write_time(outputPath);
-        needsCompilation = (slangTime > spvTime);
-      }
-
-      if (needsCompilation) {
-        std::print("Compiling shader: {} -> {}\n", path.string(),
-                   outputPath.string());
-
-        if (!compiler.compileShaderToSpirv(path, outputPath)) {
-          std::print(stderr, "Failed to compile shader {}: {}\n", path.string(),
-                     compiler.getLastError());
-          return ""; // Return empty string on failure
-        }
-      }
-
-      return outputPath.string();
-    }
-
-    // Unknown shader type, return as-is
-    return shaderPath;
-  };
-
-  // Compile shaders if needed
-  std::string vertexSpvPath = ensureShaderCompiled(createInfo.vertexShaders);
-  std::string fragmentSpvPath =
-      ensureShaderCompiled(createInfo.fragmentShaders);
-
-  if (vertexSpvPath.empty() || fragmentSpvPath.empty()) {
-    std::print(stderr, "Failed to prepare shaders for material: {}\n",
-               identifier);
-    return false;
-  }
-
-  std::vector<char> vertexCode;
-  std::vector<char> fragmentCode;
-
-  if (!general::Common::readFile(vertexSpvPath, vertexCode) ||
-      !general::Common::readFile(fragmentSpvPath, fragmentCode)) {
-    std::print("Failed to load shader files for material: {}\n", identifier);
+  // Shader must be provided and initialized
+  if (!shader) {
+    std::print(stderr, "Material - {} - no shader provided\n", identifier);
     return false;
   }
 
@@ -223,52 +157,36 @@ bool render::Material::initialize() {
     auto &resources = *deviceResources[i];
 
     // Submit pipeline creation as a task to the device's thread
-
     auto promise = std::make_shared<std::promise<bool>>();
     futures.push_back(promise->get_future());
 
-    device->submit_task([this, device, &resources, vertexCode, fragmentCode,
-                         promise]() {
+    device->submit_task([this, device, &resources, promise]() {
       try {
-        // Create shader modules
-        if (!create_shader_module(device, vertexCode, resources.vertexShader) ||
-            !create_shader_module(device, fragmentCode,
-                                  resources.fragmentShader)) {
-          promise->set_value(false);
-          return;
-        }
-
         // Create pipeline for this device
         promise->set_value(create_pipeline(device, resources, createInfo));
       } catch (const std::exception &e) {
-        std::print(
-            "Failed to create pipeline for device {}: {}\n",
-            device->get_physical_device()->get_properties().deviceName.data(),
-            e.what());
+        std::print(stderr, "Material - {} - pipeline creation failed: {}\n",
+                   identifier, e.what());
         promise->set_value(false);
       }
     });
   }
-  // Wait for all pipelines to be created
+  // Wait for all pipeline creations to complete
   bool allSuccess = true;
-  for (size_t i = 0; i < futures.size(); ++i) {
-    if (!futures[i].get()) {
-      std::print("Failed to initialize material {} on device {}\n", identifier,
-                 logicalDevices[i]
-                     ->get_physical_device()
-                     ->get_properties()
-                     .deviceName.data());
+  for (auto &future : futures) {
+    if (!future.get()) {
       allSuccess = false;
     }
   }
 
-  if (allSuccess) {
-    initialized = true;
-    std::print("Material - {} - initialized successfully on {} devices\n",
-               identifier, logicalDevices.size());
+  if (!allSuccess) {
+    std::print(stderr, "Material - {} - failed to initialize\n", identifier);
+    return false;
   }
 
-  return allSuccess;
+  initialized = true;
+  std::print("Material - {} - initialized successfully\n", identifier);
+  return true;
 }
 
 bool render::Material::reinitialize() {
@@ -318,14 +236,25 @@ void render::Material::set_color(const glm::vec4 &newColor) {
   color = newColor;
 }
 
-void render::Material::set_roughness(const float &newRougthness) {
+void render::Material::set_roughness(const float &newRoughness) {
   std::lock_guard lock(materialMutex);
-  rougthness = newRougthness;
+  roughness = newRoughness;
 }
 
 void render::Material::set_metallic(const float &newMetallic) {
   std::lock_guard lock(materialMutex);
-  metalic = newMetallic;
+  metallic = newMetallic;
+}
+
+void render::Material::set_float_param(const std::string &name, float value) {
+  std::lock_guard lock(materialMutex);
+  floatParams[name] = value;
+}
+
+void render::Material::set_vec4_param(const std::string &name,
+                                      const glm::vec4 &value) {
+  std::lock_guard lock(materialMutex);
+  vec4Params[name] = value;
 }
 
 bool render::Material::is_initialized() const { return initialized; }
@@ -347,3 +276,5 @@ render::Material::get_descriptor_set_layout(uint32_t deviceIndex) {
 const std::string &render::Material::get_identifier() const {
   return identifier;
 }
+
+render::Shader *render::Material::get_shader() const { return shader; }

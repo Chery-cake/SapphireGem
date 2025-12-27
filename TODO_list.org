@@ -14,7 +14,7 @@ it should contain the information necessary to use an image file or the location
 it should contain the reference to a shaders, and store all of it's information. like all of the shader types that exist in this shader file. it should save information about vertex, fragment, geometry, tesselation, mesh, amplification, compute, ray-tracing, ect shaders, all shader options that vulkan and slang can work with, it should be able to save their information.
 
 the objects should be made with geometry/mesh shaders, and not set in code, so there's more freadon on how to work with them.
-like have a 3d object with 6 sides using a shader that puts together 6 2d faces, that each uses it's own shaders.
+like have a 3d object with 6 sides using a shader that puts together 6 2d faces with different shapes, that each uses it's own shaders.
 
 * Cross Compiling
 the project should be able to compile to linux or windows, defaulting to the operating system running at the moment. cmake should be configured as if it was always cros compiling no matter what.

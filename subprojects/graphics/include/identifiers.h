@@ -29,7 +29,14 @@ enum class MaterialId {
   TEXTURED_3D_LAYERED_CUBE_2, // 3D Layered texture material (2 layers)
   TEXTURED_3D_LAYERED_CUBE_3, // 3D Layered texture material (3 layers)
   TEXTURED_3D_LAYERED_CUBE_4, // 3D Layered texture material (4 layers)
-  TEXTURED_3D_LAYERED_CUBE_5  // 3D Layered texture material (5 layers)
+  TEXTURED_3D_LAYERED_CUBE_5, // 3D Layered texture material (5 layers)
+
+  SCENE5_FACE_0, // Front face shader
+  SCENE5_FACE_1, // Back face shader
+  SCENE5_FACE_2, // Left face shader
+  SCENE5_FACE_3, // Right face shader
+  SCENE5_FACE_4, // Top face shader
+  SCENE5_FACE_5  // Bottom face shader
 };
 
 // Strongly-typed enum for texture identifiers
@@ -48,7 +55,14 @@ enum class TextureId {
   LAYERED_CUBE_2, // 2 layers
   LAYERED_CUBE_3, // 3 layers
   LAYERED_CUBE_4, // 4 layers
-  LAYERED_CUBE_5  // 5 layers
+  LAYERED_CUBE_5, // 5 layers
+
+  SCENE5_CIRCLE,
+  SCENE5_STAR,
+  SCENE5_SQUARE,
+  SCENE5_TRIANGLE,
+  SCENE5_HEART,
+  SCENE5_DIAMOND,
 };
 
 // Helper functions to convert enums to strings

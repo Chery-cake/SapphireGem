@@ -47,6 +47,18 @@ std::string to_string(MaterialId id) {
     return "Textured3D_layered_cube_4";
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_5:
     return "Textured3D_layered_cube_5";
+  case MaterialId::SCENE5_FACE_0:
+    return "scene5_face_0";
+  case MaterialId::SCENE5_FACE_1:
+    return "scene5_face_1";
+  case MaterialId::SCENE5_FACE_2:
+    return "scene5_face_2";
+  case MaterialId::SCENE5_FACE_3:
+    return "scene5_face_3";
+  case MaterialId::SCENE5_FACE_4:
+    return "scene5_face_4";
+  case MaterialId::SCENE5_FACE_5:
+    return "scene5_face_5";
   default:
     throw std::runtime_error("Unknown MaterialId");
   }
@@ -82,6 +94,18 @@ std::string to_string(TextureId id) {
     return "layered_cube_4";
   case TextureId::LAYERED_CUBE_5:
     return "layered_cube_5";
+  case TextureId::SCENE5_CIRCLE:
+    return "scene5_circle";
+  case TextureId::SCENE5_STAR:
+    return "scene5_star";
+  case TextureId::SCENE5_SQUARE:
+    return "scene5_square";
+  case TextureId::SCENE5_TRIANGLE:
+    return "scene5_triangle";
+  case TextureId::SCENE5_HEART:
+    return "scene5_heart";
+  case TextureId::SCENE5_DIAMOND:
+    return "scene5_diamond";
   default:
     throw std::runtime_error("Unknown TextureId");
   }
@@ -185,6 +209,12 @@ bool material_uses_textured_vertices(MaterialId id) {
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_3:
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_4:
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_5:
+  case MaterialId::SCENE5_FACE_0:
+  case MaterialId::SCENE5_FACE_1:
+  case MaterialId::SCENE5_FACE_2:
+  case MaterialId::SCENE5_FACE_3:
+  case MaterialId::SCENE5_FACE_4:
+  case MaterialId::SCENE5_FACE_5:
     return true;
 
   // Materials that use non-textured vertices
@@ -224,6 +254,12 @@ bool material_is_2d(MaterialId id) {
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_3:
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_4:
   case MaterialId::TEXTURED_3D_LAYERED_CUBE_5:
+  case MaterialId::SCENE5_FACE_0:
+  case MaterialId::SCENE5_FACE_1:
+  case MaterialId::SCENE5_FACE_2:
+  case MaterialId::SCENE5_FACE_3:
+  case MaterialId::SCENE5_FACE_4:
+  case MaterialId::SCENE5_FACE_5:
     return false;
 
   default:
