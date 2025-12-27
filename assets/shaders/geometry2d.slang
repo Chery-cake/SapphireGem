@@ -29,53 +29,29 @@ struct GSOutput
     float3 color;
 };
 
-// Vertex shader - minimal processing
+// Vertex shader - defer transformation to geometry shader
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
-    output.pos = float4(input.inPosition, 0.0, 1.0);  // 2D point, defer transformation
+    output.pos = float4(input.inPosition, 0.0, 1.0);  // 2D point, no transformation yet
     output.color = input.inColor;
     return output;
 }
 
-// Geometry shader - generates quad from point
-// This is the modular part: one point becomes multiple primitives
+// Geometry shader - pass through triangles with transformation
+// Takes a triangle and applies model-view-projection transformation
 [shader("geometry")]
-[maxvertexcount(6)]
+[maxvertexcount(3)]
 void geomMain(
-    point VSOutput input[1],
+    triangle VSOutput input[3],
     inout TriangleStream<GSOutput> outputStream
 ) {
     GSOutput output;
 
-    // Get base position and color from input point
-    float2 center = input[0].pos.xy;
-    float3 color = input[0].color;
-
-    // Define quad size
-    float size = 0.05;
-
-    // Create a quad centered at the point in 2D space
-    float2 corners[4];
-    corners[0] = center + float2(-size, -size);
-    corners[1] = center + float2( size, -size);
-    corners[2] = center + float2( size,  size);
-    corners[3] = center + float2(-size,  size);
-
-    // First triangle (0, 1, 2)
+    // Pass through the triangle vertices, applying transformations
     for (int i = 0; i < 3; i++) {
-        int idx = (i == 0) ? 0 : (i == 1) ? 1 : 2;
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[idx], 0.0, 1.0))));
-        output.color = color;
-        outputStream.Append(output);
-    }
-    outputStream.RestartStrip();
-
-    // Second triangle (0, 2, 3)
-    int indices[3] = {0, 2, 3};
-    for (int i = 0; i < 3; i++) {
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[indices[i]], 0.0, 1.0))));
-        output.color = color;
+        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, input[i].pos)));
+        output.color = input[i].color;
         outputStream.Append(output);
     }
     outputStream.RestartStrip();

@@ -505,8 +505,8 @@ void render::Scene::create_geometry_material(MaterialId materialId, bool is2D,
                         .pVertexAttributeDescriptions =
                             attributeDescriptions.data()},
       .inputAssemblyState{
-          .topology = vk::PrimitiveTopology::ePointList}, // Points for
-                                                          // geometry shader
+          .topology = vk::PrimitiveTopology::eTriangleList}, // Triangles for
+                                                              // geometry shader
       .viewportState{.viewportCount = 1, .scissorCount = 1},
       .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
                         .sampleShadingEnable = vk::False},

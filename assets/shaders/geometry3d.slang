@@ -30,7 +30,7 @@ struct GSOutput
     float3 color;
 };
 
-// Vertex shader - minimal work, just pass through data
+// Vertex shader - defer transformation to geometry shader
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
@@ -39,47 +39,20 @@ VSOutput vertMain(VSInput input) {
     return output;
 }
 
-// Geometry shader - the magic happens here!
-// Takes a POINT and generates a QUAD (2D surface in 3D space)
-// This is where we compose 3D objects from 2D primitives
+// Geometry shader - pass through triangles with transformation
+// Takes a triangle and applies model-view-projection transformation
 [shader("geometry")]
-[maxvertexcount(6)]  // 2 triangles = 6 vertices
+[maxvertexcount(3)]
 void geomMain(
-    point VSOutput input[1],  // Input: single point
-    inout TriangleStream<GSOutput> outputStream  // Output: triangle stream
+    triangle VSOutput input[3],
+    inout TriangleStream<GSOutput> outputStream
 ) {
     GSOutput output;
 
-    // Get base position and color from input point
-    float3 center = input[0].pos.xyz;
-    float3 color = input[0].color;
-
-    // Define quad size - this could be dynamic based on point attributes
-    float size = 0.1;
-
-    // Generate 4 corners of a 2D quad in 3D space
-    // This demonstrates composing 3D geometry from 2D primitive (quad)
-    float3 corners[4];
-    corners[0] = center + float3(-size, -size, 0.0);  // Bottom-left
-    corners[1] = center + float3( size, -size, 0.0);  // Bottom-right
-    corners[2] = center + float3( size,  size, 0.0);  // Top-right
-    corners[3] = center + float3(-size,  size, 0.0);  // Top-left
-
-    // Emit first triangle (0, 1, 2)
+    // Pass through the triangle vertices, applying transformations
     for (int i = 0; i < 3; i++) {
-        int idx = (i == 0) ? 0 : (i == 1) ? 1 : 2;
-        // Apply transformations here, after geometry generation
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[idx], 1.0))));
-        output.color = color;
-        outputStream.Append(output);
-    }
-    outputStream.RestartStrip();
-
-    // Emit second triangle (0, 2, 3)
-    int indices[3] = {0, 2, 3};
-    for (int i = 0; i < 3; i++) {
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[indices[i]], 1.0))));
-        output.color = color;
+        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, input[i].pos)));
+        output.color = input[i].color;
         outputStream.Append(output);
     }
     outputStream.RestartStrip();
