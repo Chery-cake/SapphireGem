@@ -26,8 +26,8 @@ public:
 
   // Layer structure for layered textures
   struct Layer {
-    std::string imagePath;        // Path to the source image file
-    std::shared_ptr<Image> image; // The actual image resource (may be shared)
+    std::string imagePath;    // Path to the source image file
+    Image *image = nullptr;   // The actual image resource (raw pointer, managed by cache)
     glm::vec4 tint = glm::vec4(1.0f); // Color tint (default: no tint)
     float rotation = 0.0f;            // Rotation in degrees (0, 90, 180, 270)
     bool visible = true;              // Layer visibility
@@ -51,7 +51,7 @@ private:
   std::string identifier;
   TextureType type;
   std::string imagePath;
-  std::shared_ptr<Image> image;
+  std::unique_ptr<Image> image;
   std::vector<AtlasRegion> atlasRegions;
 
   // Atlas grid configuration (for reloading)
@@ -60,8 +60,8 @@ private:
 
   // Layered texture support
   std::vector<Layer> layers;
-  std::unordered_map<std::string, std::shared_ptr<Image>> imageCache;
-  std::shared_ptr<Image> compositedImage;
+  std::unordered_map<std::string, std::unique_ptr<Image>> imageCache;
+  std::unique_ptr<Image> compositedImage;
 
   std::vector<device::LogicalDevice *> logicalDevices;
 
@@ -69,7 +69,7 @@ private:
   void generate_atlas_regions_grid(uint32_t rows, uint32_t cols);
   
   // Layered texture helpers
-  std::shared_ptr<Image> load_or_get_cached_image(const std::string &imagePath);
+  Image *load_or_get_cached_image(const std::string &imagePath);
   bool composite_layers();
   std::vector<unsigned char> apply_rotation(const std::vector<unsigned char> &pixels,
                                            uint32_t width, uint32_t height,
@@ -121,7 +121,7 @@ public:
   // Getters
   const std::string &get_identifier() const;
   TextureType get_type() const;
-  std::shared_ptr<Image> get_image() const;
+  Image *get_image() const;
   uint32_t get_width() const;
   uint32_t get_height() const;
 };

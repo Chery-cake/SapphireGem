@@ -19,7 +19,7 @@ render::Texture::Texture(const std::vector<device::LogicalDevice *> &devices,
                                             vk::ImageUsageFlagBits::eTransferDst |
                                             vk::ImageUsageFlagBits::eSampled};
 
-    image = std::make_shared<Image>(devices, imageInfo);
+    image = std::make_unique<Image>(devices, imageInfo);
   }
 
   if (type == TextureType::LAYERED) {
@@ -274,11 +274,11 @@ const std::string &render::Texture::get_identifier() const {
 
 render::Texture::TextureType render::Texture::get_type() const { return type; }
 
-std::shared_ptr<render::Image> render::Texture::get_image() const {
+render::Image *render::Texture::get_image() const {
   if (type == TextureType::LAYERED) {
-    return compositedImage;
+    return compositedImage.get();
   }
-  return image;
+  return image.get();
 }
 
 uint32_t render::Texture::get_width() const {
@@ -296,7 +296,7 @@ uint32_t render::Texture::get_height() const {
 }
 
 // Layered texture helper methods
-std::shared_ptr<render::Image>
+render::Image *
 render::Texture::load_or_get_cached_image(const std::string &imagePath) {
   // Check cache first (with lock)
   {
@@ -305,7 +305,7 @@ render::Texture::load_or_get_cached_image(const std::string &imagePath) {
     if (it != imageCache.end()) {
       std::print("Texture - {} - using cached image for {}\n",
                  identifier, imagePath);
-      return it->second;
+      return it->second.get();
     }
   }
 
@@ -316,7 +316,7 @@ render::Texture::load_or_get_cached_image(const std::string &imagePath) {
       .usage = vk::ImageUsageFlagBits::eTransferDst |
                vk::ImageUsageFlagBits::eSampled};
 
-  auto img = std::make_shared<Image>(logicalDevices, imageInfo);
+  auto img = std::make_unique<Image>(logicalDevices, imageInfo);
 
   if (!img->load_from_file(imagePath)) {
     std::print(stderr, "Texture - {} - failed to load image from {}\n",
@@ -325,14 +325,15 @@ render::Texture::load_or_get_cached_image(const std::string &imagePath) {
   }
 
   // Cache it (with lock)
+  Image *imgPtr = img.get();
   {
     std::lock_guard lock(textureMutex);
-    imageCache[imagePath] = img;
+    imageCache[imagePath] = std::move(img);
   }
   std::print("Texture - {} - loaded and cached image from {}\n",
              identifier, imagePath);
 
-  return img;
+  return imgPtr;
 }
 
 std::vector<unsigned char>
@@ -567,7 +568,7 @@ bool render::Texture::composite_layers() {
         .format = vk::Format::eR8G8B8A8Srgb,
         .usage = vk::ImageUsageFlagBits::eTransferDst |
                  vk::ImageUsageFlagBits::eSampled};
-    compositedImage = std::make_shared<Image>(logicalDevices, imageInfo);
+    compositedImage = std::make_unique<Image>(logicalDevices, imageInfo);
   }
 
   // Load composited data into image

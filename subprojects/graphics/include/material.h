@@ -23,10 +23,8 @@ public:
   struct MaterialCreateInfo {
     std::string identifier;
 
-    // Shader reference or paths
-    std::shared_ptr<Shader> shader; // Use existing Shader object
-    std::string vertexShaders;      // Or path to vertex shader (legacy)
-    std::string fragmentShaders;    // Or path to fragment shader (legacy)
+    // Shader reference
+    Shader *shader = nullptr;       // Use existing Shader object (raw pointer, not owned)
 
     // Layout info
     std::vector<vk::DescriptorSetLayoutBinding> descriptorBindings;
@@ -50,8 +48,6 @@ public:
     vk::raii::Pipeline pipeline{nullptr};
     vk::raii::PipelineLayout pipelineLayout{nullptr};
     vk::raii::DescriptorSetLayout descriptorLayout{nullptr};
-    vk::raii::ShaderModule vertexShader{nullptr};
-    vk::raii::ShaderModule fragmentShader{nullptr};
   };
 
 private:
@@ -62,8 +58,8 @@ private:
   MaterialCreateInfo createInfo;
   std::vector<std::unique_ptr<DeviceMaterialResources>> deviceResources;
 
-  // Shader reference
-  std::shared_ptr<Shader> shader;
+  // Shader reference (not owned by material)
+  Shader *shader;
 
   // Material properties
   glm::vec4 color;
@@ -74,9 +70,6 @@ private:
 
   std::vector<device::LogicalDevice *> logicalDevices;
 
-  bool create_shader_module(device::LogicalDevice *device,
-                            const std::vector<char> &code,
-                            vk::raii::ShaderModule &shaderModule);
   bool create_pipeline(device::LogicalDevice *device,
                        DeviceMaterialResources &resources,
                        const MaterialCreateInfo &createInfo);
@@ -108,7 +101,7 @@ public:
   get_descriptor_set_layout(uint32_t deviceIndex = 0);
 
   const std::string &get_identifier() const;
-  std::shared_ptr<Shader> get_shader() const;
+  Shader *get_shader() const;
 };
 
 } // namespace render
