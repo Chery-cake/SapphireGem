@@ -78,6 +78,7 @@ bool render::Texture::load() {
   if (type == TextureType::LAYERED) {
     // Load all layer images in parallel using the thread pool
     std::vector<std::future<Image*>> imageFutures;
+    imageFutures.reserve(layers.size());
 
     for (size_t i = 0; i < layers.size(); ++i) {
       if (!layers[i].imagePath.empty()) {
@@ -87,7 +88,8 @@ bool render::Texture::load() {
             });
         imageFutures.push_back(std::move(future));
       } else {
-        imageFutures.push_back({});
+        // Push a default-constructed future for empty paths
+        imageFutures.push_back(std::future<Image*>());
       }
     }
 
