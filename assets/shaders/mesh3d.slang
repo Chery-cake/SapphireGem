@@ -5,7 +5,7 @@ struct UniformBuffer {
     float4x4 model;
     float4x4 view;
     float4x4 proj;
-    float time;
+    // Note: time field reserved for future animation support
 };
 ConstantBuffer<UniformBuffer> ubo;
 

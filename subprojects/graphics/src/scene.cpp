@@ -660,7 +660,7 @@ void render::Scene::create_geometry_material(MaterialId materialId, bool is2D, b
       .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry};
 
   std::vector<vk::DescriptorSetLayoutBinding> bindings = {uboBinding};
-  
+
   if (isTextured) {
     vk::DescriptorSetLayoutBinding samplerBinding = {
         .binding = 1,
