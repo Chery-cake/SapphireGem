@@ -142,6 +142,7 @@ target_link_libraries(wasmtime INTERFACE ${WASMTIME_LIBRARY})
 
 # Copy Wasmtime shared library to output directory
 add_custom_target(copy_wasmtime_library ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${COMMON_OUTPUT_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${WASMTIME_DLL}
         ${COMMON_OUTPUT_DIR}
