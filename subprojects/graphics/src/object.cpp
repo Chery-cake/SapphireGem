@@ -615,9 +615,9 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       submeshMap[submesh.indexStart] = &submesh;
     }
 
-    // Draw all faces (cube has 6 faces, each 6 indices)
-    // Total indices = 36 (6 faces * 6 indices per face)
-    const uint32_t indicesPerFace = 6;
+    // Draw all faces (cube has 6 faces, each 4 points)
+    // Total indices = 24 (6 faces * 4 points per face)
+    const uint32_t indicesPerFace = 4;
     const uint32_t totalFaces = indexCount / indicesPerFace;
 
     for (uint32_t faceIdx = 0; faceIdx < totalFaces; ++faceIdx) {

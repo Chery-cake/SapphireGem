@@ -61,7 +61,7 @@ void scene::Scene2::setup() {
         {{0.5f, -0.5f}, {atlasHalfU, 0.0f}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, 0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
         {{-0.5f, 0.5f}, {0.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}}};
-    const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
+    const std::vector<uint16_t> indices = {0, 1, 2, 3};
 
     render::Object::ObjectCreateInfo createInfo{
         .identifier = "scene2_atlas_quad1",
@@ -86,7 +86,7 @@ void scene::Scene2::setup() {
         {{0.5f, -0.5f}, {1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, 0.5f}, {1.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
         {{-0.5f, 0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}}};
-    const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
+    const std::vector<uint16_t> indices = {0, 1, 2, 3};
 
     render::Object::ObjectCreateInfo createInfo{
         .identifier = "scene2_atlas_quad2",
@@ -111,7 +111,7 @@ void scene::Scene2::setup() {
         {{0.5f, -0.5f}, {atlasHalfU, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, 0.5f}, {atlasHalfU, 1.0f}, {1.0f, 1.0f, 1.0f}},
         {{-0.5f, 0.5f}, {0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}};
-    const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
+    const std::vector<uint16_t> indices = {0, 1, 2, 3};
 
     render::Object::ObjectCreateInfo createInfo{
         .identifier = "scene2_atlas_quad3",
@@ -136,7 +136,7 @@ void scene::Scene2::setup() {
         {{0.5f, -0.5f}, {1.0f, atlasHalfV}, {1.0f, 1.0f, 1.0f}},
         {{0.5f, 0.5f}, {1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}},
         {{-0.5f, 0.5f}, {atlasHalfU, 1.0f}, {1.0f, 1.0f, 1.0f}}};
-    const std::vector<uint16_t> indices = {0, 2, 1, 0, 3, 2};
+    const std::vector<uint16_t> indices = {0, 1, 2, 3};
 
     render::Object::ObjectCreateInfo createInfo{
         .identifier = "scene2_atlas_quad4",

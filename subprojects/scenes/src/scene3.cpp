@@ -51,8 +51,8 @@ void scene::Scene3::setup() {
       create_quad_2d("scene3_multi_material_quad",
                      render::MaterialId::TEXTURED_CHECKERBOARD, std::nullopt,
                      {
-                         {0, 6, render::MaterialId::TEXTURED_CHECKERBOARD},
-                         {6, 6, render::MaterialId::TEXTURED_GRADIENT},
+                         {0, 4, render::MaterialId::TEXTURED_CHECKERBOARD},
+                         {4, 4, render::MaterialId::TEXTURED_GRADIENT},
                      },
                      glm::vec3(-0.3f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f),
                      glm::vec3(0.3f, 0.3f, 1.0f));
@@ -66,18 +66,18 @@ void scene::Scene3::setup() {
       std::nullopt, // No base texture - overwrites material and submashes
       {
           // Front face - checkerboard - from base material
-          {6, 6,
+          {4, 4,
            render::MaterialId::TEXTURED_3D_GRADIENT}, // Back face - gradient
-          {12, 6,
+          {8, 4,
            render::MaterialId::TEXTURED_3D_ATLAS_0_0}, // Left face - atlas
                                                        // region (0,0)
-          {18, 6,
+          {12, 4,
            render::MaterialId::TEXTURED_3D_ATLAS_0_1}, // Right face - atlas
                                                        // region (0,1)
-          {24, 6,
+          {16, 4,
            render::MaterialId::TEXTURED_3D_ATLAS_1_0}, // Top face - atlas
                                                        // region (1,0)
-          {30, 6,
+          {20, 4,
            render::MaterialId::TEXTURED_3D_ATLAS_1_1}, // Bottom face - atlas
                                                        // region (1,1)
       },

@@ -99,8 +99,8 @@ render::Object *render::Scene::create_quad_2d(
           {{0.0f, 0.5f}, {0.0f, 1.0f}, colors[7]}};
 
       indices = customIndices.empty() ? std::vector<uint16_t>{
-                                            0, 2, 1, 0, 3, 2, // Left half
-                                            4, 6, 5, 4, 7, 6  // Right half
+                                            0, 1, 2, 3, // Left half
+                                            4, 5, 6, 7  // Right half
                                         }
                                       : customIndices;
 
@@ -135,7 +135,7 @@ render::Object *render::Scene::create_quad_2d(
           {{-0.5f, 0.5f}, {0.0f, 1.0f}, colors[3]}   // Top-left
       };
 
-      indices = customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
+      indices = customIndices.empty() ? std::vector<uint16_t>{0, 1, 2, 3}
                                       : customIndices;
 
       createInfo.vertices = vertices;
@@ -159,7 +159,7 @@ render::Object *render::Scene::create_quad_2d(
         {{-0.5f, 0.5f, 0.0f}, colors[3]}   // Top-left
     };
 
-    indices = customIndices.empty() ? std::vector<uint16_t>{0, 2, 1, 0, 3, 2}
+    indices = customIndices.empty() ? std::vector<uint16_t>{0, 1, 2, 3}
                                     : customIndices;
 
     createInfo.vertices = vertices;
@@ -260,17 +260,17 @@ render::Object *render::Scene::create_cube_3d(
     indices =
         customIndices.empty()
             ? std::vector<uint16_t>{// Front face
-                                    0, 2, 1, 0, 3, 2,
+                                    0, 1, 2, 3,
                                     // Back face
-                                    4, 5, 6, 6, 7, 4,
+                                    4, 5, 6, 7,
                                     // Left face
-                                    8, 10, 9, 8, 11, 10,
+                                    8, 9, 10, 11,
                                     // Right face
-                                    12, 13, 14, 14, 15, 12,
+                                    12, 13, 14, 15,
                                     // Top face
-                                    16, 17, 18, 18, 19, 16,
+                                    16, 17, 18, 19,
                                     // Bottom face
-                                    20, 22, 21, 20, 23, 22}
+                                    20, 21, 22, 23}
             : customIndices;
 
     createInfo.vertices = vertices;
@@ -342,17 +342,17 @@ render::Object *render::Scene::create_cube_3d(
     indices =
         customIndices.empty()
             ? std::vector<uint16_t>{// Front face
-                                    0, 2, 1, 0, 3, 2,
+                                    0, 1, 2, 3,
                                     // Back face
-                                    4, 5, 6, 6, 7, 4,
+                                    4, 5, 6, 7,
                                     // Left face
-                                    8, 10, 9, 8, 11, 10,
+                                    8, 9, 10, 11,
                                     // Right face
-                                    12, 13, 14, 14, 15, 12,
+                                    12, 13, 14, 15,
                                     // Top face
-                                    16, 17, 18, 18, 19, 16,
+                                    16, 17, 18, 19,
                                     // Bottom face
-                                    20, 22, 21, 20, 23, 22}
+                                    20, 21, 22, 23}
             : customIndices;
 
     createInfo.vertices = vertices;

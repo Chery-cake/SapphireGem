@@ -40,37 +40,37 @@ void scene::Scene5::setup() {
 
   // Face 0 (front) - Circle
   cubeSubmeshes.push_back({.indexStart = 0,
-                           .indexCount = 6,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_0,
                            .textureId = render::TextureId::SCENE5_CIRCLE});
 
   // Face 1 (back) - Star
-  cubeSubmeshes.push_back({.indexStart = 6,
-                           .indexCount = 6,
+  cubeSubmeshes.push_back({.indexStart = 4,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_1,
                            .textureId = render::TextureId::SCENE5_STAR});
 
   // Face 2 (left) - Square
-  cubeSubmeshes.push_back({.indexStart = 12,
-                           .indexCount = 6,
+  cubeSubmeshes.push_back({.indexStart = 8,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_2,
                            .textureId = render::TextureId::SCENE5_SQUARE});
 
   // Face 3 (right) - Triangle
-  cubeSubmeshes.push_back({.indexStart = 18,
-                           .indexCount = 6,
+  cubeSubmeshes.push_back({.indexStart = 12,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_3,
                            .textureId = render::TextureId::SCENE5_TRIANGLE});
 
   // Face 4 (top) - Heart
-  cubeSubmeshes.push_back({.indexStart = 24,
-                           .indexCount = 6,
+  cubeSubmeshes.push_back({.indexStart = 16,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_4,
                            .textureId = render::TextureId::SCENE5_HEART});
 
   // Face 5 (bottom) - Diamond
-  cubeSubmeshes.push_back({.indexStart = 30,
-                           .indexCount = 6,
+  cubeSubmeshes.push_back({.indexStart = 20,
+                           .indexCount = 4,
                            .materialId = render::MaterialId::SCENE5_FACE_5,
                            .textureId = render::TextureId::SCENE5_DIAMOND});
 

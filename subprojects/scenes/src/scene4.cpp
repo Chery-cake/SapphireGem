@@ -105,36 +105,36 @@ void scene::Scene4::setup() {
   std::vector<render::Scene::SubmeshDef> cubeSubmeshes;
 
   // Face 0 (front) - no texture, will use base material
-  // Indices 0-5 (first 6 indices of the cube)
+  // Indices 0-3 (first 4 points of the cube)
 
   // Face 1 (back) - 1 layer
   cubeSubmeshes.push_back(
-      {.indexStart = 6,
-       .indexCount = 6,
+      {.indexStart = 4,
+       .indexCount = 4,
        .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_1});
 
   // Face 2 (left) - 2 layers
   cubeSubmeshes.push_back(
-      {.indexStart = 12,
-       .indexCount = 6,
+      {.indexStart = 8,
+       .indexCount = 4,
        .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_2});
 
   // Face 3 (right) - 3 layers
   cubeSubmeshes.push_back(
-      {.indexStart = 18,
-       .indexCount = 6,
+      {.indexStart = 12,
+       .indexCount = 4,
        .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_3});
 
   // Face 4 (top) - 4 layers
   cubeSubmeshes.push_back(
-      {.indexStart = 24,
-       .indexCount = 6,
+      {.indexStart = 16,
+       .indexCount = 4,
        .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_4});
 
   // Face 5 (bottom) - 5 layers
   cubeSubmeshes.push_back(
-      {.indexStart = 30,
-       .indexCount = 6,
+      {.indexStart = 20,
+       .indexCount = 4,
        .materialId = render::MaterialId::TEXTURED_3D_LAYERED_CUBE_5});
 
   cube = create_cube_3d(
