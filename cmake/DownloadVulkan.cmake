@@ -181,8 +181,12 @@ if(CMAKE_CROSSCOMPILING AND NOT Vulkan_FOUND)
     # Set Vulkan variables if found
     if(NOT VULKAN_DOWNLOAD_FAILED AND DEFINED VULKAN_INCLUDE_DIR AND DEFINED VULKAN_LIBRARY)
         if(EXISTS ${VULKAN_LIBRARY})
+            # Set in both current scope and parent scope
+            set(Vulkan_FOUND TRUE)
             set(Vulkan_FOUND TRUE PARENT_SCOPE)
+            set(Vulkan_INCLUDE_DIR ${VULKAN_INCLUDE_DIR})
             set(Vulkan_INCLUDE_DIR ${VULKAN_INCLUDE_DIR} PARENT_SCOPE)
+            set(Vulkan_LIBRARY ${VULKAN_LIBRARY})
             set(Vulkan_LIBRARY ${VULKAN_LIBRARY} PARENT_SCOPE)
             
             message(STATUS "Vulkan SDK configured:")
