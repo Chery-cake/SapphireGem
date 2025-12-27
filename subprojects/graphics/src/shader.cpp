@@ -206,7 +206,7 @@ bool render::Shader::initialize() {
             identifier, shader_type_to_string(stage.type));
         return false;
       }
-      resources->shaderModules[stage.type] = std::move(shaderModule);
+      resources->shaderModules[stage.type] = std::make_unique<vk::raii::ShaderModule>(std::move(shaderModule));
     }
   }
 
@@ -226,7 +226,7 @@ vk::raii::ShaderModule *render::Shader::get_shader_module(ShaderType type,
   auto &resources = deviceResources[deviceIndex];
   auto it = resources->shaderModules.find(type);
   if (it != resources->shaderModules.end()) {
-    return &it->second;
+    return it->second.get();
   }
 
   return nullptr;
@@ -249,7 +249,7 @@ render::Shader::get_pipeline_stage_infos(uint32_t deviceIndex) const {
     if (it != resources->shaderModules.end()) {
       vk::PipelineShaderStageCreateInfo stageInfo{
           .stage = get_vulkan_shader_stage(stage.type),
-          .module = *it->second,
+          .module = **it->second,
           .pName = stage.entryPoint.c_str()};
       stageInfos.push_back(stageInfo);
     }

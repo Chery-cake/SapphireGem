@@ -49,7 +49,7 @@ public:
 
   // Per-device shader resources
   struct DeviceShaderResources {
-    std::unordered_map<ShaderType, vk::raii::ShaderModule> shaderModules;
+    std::unordered_map<ShaderType, std::unique_ptr<vk::raii::ShaderModule>> shaderModules;
   };
 
 private:
