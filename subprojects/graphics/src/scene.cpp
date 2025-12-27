@@ -609,6 +609,252 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
   bufferManager->create_buffer(uboInfo);
 }
 
+void render::Scene::create_geometry_material(MaterialId materialId, bool is2D, bool isTextured) {
+  // Check if material already exists
+  if (materialManager->get_material(to_string(materialId))) {
+    return;
+  }
+
+  // Select shader path based on type
+  std::string shaderPath;
+  if (is2D && isTextured) {
+    shaderPath = "assets/shaders/geometry2d_textured.slang";
+  } else if (is2D && !isTextured) {
+    shaderPath = "assets/shaders/geometry2d.slang";
+  } else if (!is2D && isTextured) {
+    shaderPath = "assets/shaders/geometry3d_textured.slang";
+  } else {
+    shaderPath = "assets/shaders/geometry3d.slang";
+  }
+
+  // Geometry shader pipeline: vertex, geometry, and fragment shaders
+  std::vector<Shader::ShaderStageInfo> stages = {
+      {.type = Shader::ShaderType::VERTEX,
+       .filePath = shaderPath,
+       .entryPoint = "vertMain"},
+      {.type = Shader::ShaderType::GEOMETRY,
+       .filePath = shaderPath,
+       .entryPoint = "geomMain"},
+      {.type = Shader::ShaderType::FRAGMENT,
+       .filePath = shaderPath,
+       .entryPoint = "fragMain"}};
+
+  Shader::ShaderCreateInfo shaderInfo{
+      .identifier = to_string(materialId) + "_shader", .stages = stages};
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create geometry shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
+  // Setup descriptor bindings
+  vk::DescriptorSetLayoutBinding uboBinding = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry};
+
+  std::vector<vk::DescriptorSetLayoutBinding> bindings = {uboBinding};
+  
+  if (isTextured) {
+    vk::DescriptorSetLayoutBinding samplerBinding = {
+        .binding = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment};
+    bindings.push_back(samplerBinding);
+  }
+
+  // Vertex input - just points with position and color (minimal data)
+  vk::VertexInputBindingDescription bindingDescription;
+  std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
+
+  if (is2D) {
+    bindingDescription = Object::Vertex2D::getBindingDescription();
+    auto attrs = Object::Vertex2D::getAttributeDescriptions();
+    attributeDescriptions.assign(attrs.begin(), attrs.end());
+  } else {
+    bindingDescription = Object::Vertex3D::getBindingDescription();
+    auto attrs = Object::Vertex3D::getAttributeDescriptions();
+    attributeDescriptions.assign(attrs.begin(), attrs.end());
+  }
+
+  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+      .blendEnable = vk::False,
+      .colorWriteMask =
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+  Material::MaterialCreateInfo createInfo{
+      .identifier = to_string(materialId),
+      .shader = shader.get(),
+      .descriptorBindings = bindings,
+      .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = is2D ? vk::CullModeFlagBits::eNone
+                                              : vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState =
+          is2D ? vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::False,
+                                                         .depthWriteEnable =
+                                                             vk::False}
+               : vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::True,
+                                                         .depthWriteEnable =
+                                                             vk::True,
+                                                         .depthCompareOp = vk::
+                                                             CompareOp::eLess},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{.vertexBindingDescriptionCount = 1,
+                        .pVertexBindingDescriptions = &bindingDescription,
+                        .vertexAttributeDescriptionCount =
+                            static_cast<uint32_t>(attributeDescriptions.size()),
+                        .pVertexAttributeDescriptions =
+                            attributeDescriptions.data()},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::ePointList},  // Points for geometry shader
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  // Store shader for lifecycle management
+  sceneShaders.push_back(std::move(shader));
+
+  materialManager->add_material(createInfo);
+
+  // Create associated UBO buffer
+  device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                          .view = glm::mat4(1.0f),
+                                          .proj = glm::mat4(1.0f)};
+
+  device::Buffer::BufferCreateInfo uboInfo = {
+      .identifier = to_string(materialId) + "_ubo",
+      .type = device::Buffer::BufferType::UNIFORM,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
+      .size = sizeof(device::Buffer::TransformUBO),
+      .elementSize = sizeof(device::Buffer::TransformUBO),
+      .initialData = &uboData};
+
+  bufferManager->create_buffer(uboInfo);
+}
+
+void render::Scene::create_mesh_material(MaterialId materialId, bool is2D) {
+  // Check if material already exists
+  if (materialManager->get_material(to_string(materialId))) {
+    return;
+  }
+
+  // Select shader path
+  std::string shaderPath = is2D ? "assets/shaders/mesh2d.slang"
+                                : "assets/shaders/mesh3d.slang";
+
+  // Mesh shader pipeline: task, mesh, and fragment shaders
+  std::vector<Shader::ShaderStageInfo> stages = {
+      {.type = Shader::ShaderType::TASK,
+       .filePath = shaderPath,
+       .entryPoint = "taskMain"},
+      {.type = Shader::ShaderType::MESH,
+       .filePath = shaderPath,
+       .entryPoint = "meshMain"},
+      {.type = Shader::ShaderType::FRAGMENT,
+       .filePath = shaderPath,
+       .entryPoint = "fragMain"}};
+
+  Shader::ShaderCreateInfo shaderInfo{
+      .identifier = to_string(materialId) + "_shader", .stages = stages};
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create mesh shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
+  // Mesh shaders have UBO access in mesh stage
+  vk::DescriptorSetLayoutBinding uboBinding = {
+      .binding = 0,
+      .descriptorType = vk::DescriptorType::eUniformBuffer,
+      .descriptorCount = 1,
+      .stageFlags = vk::ShaderStageFlagBits::eMeshEXT};
+
+  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+      .blendEnable = vk::False,
+      .colorWriteMask =
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+  Material::MaterialCreateInfo createInfo{
+      .identifier = to_string(materialId),
+      .shader = shader.get(),
+      .descriptorBindings = {uboBinding},
+      .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
+                             .rasterizerDiscardEnable = vk::False,
+                             .polygonMode = vk::PolygonMode::eFill,
+                             .cullMode = is2D ? vk::CullModeFlagBits::eNone
+                                              : vk::CullModeFlagBits::eBack,
+                             .frontFace = vk::FrontFace::eCounterClockwise,
+                             .depthBiasEnable = vk::False,
+                             .depthBiasSlopeFactor = 1.0f,
+                             .lineWidth = 1.0f},
+      .depthStencilState =
+          is2D ? vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::False,
+                                                         .depthWriteEnable =
+                                                             vk::False}
+               : vk::PipelineDepthStencilStateCreateInfo{.depthTestEnable =
+                                                             vk::True,
+                                                         .depthWriteEnable =
+                                                             vk::True,
+                                                         .depthCompareOp = vk::
+                                                             CompareOp::eLess},
+      .blendState = {.logicOpEnable = vk::False,
+                     .logicOp = vk::LogicOp::eCopy,
+                     .attachmentCount = 1,
+                     .pAttachments = &colorBlendAttachment},
+      .vertexInputState{},  // Mesh shaders don't use vertex input state
+      .inputAssemblyState{},  // Mesh shaders don't use input assembly state
+      .viewportState{.viewportCount = 1, .scissorCount = 1},
+      .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
+                        .sampleShadingEnable = vk::False},
+      .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  // Store shader for lifecycle management
+  sceneShaders.push_back(std::move(shader));
+
+  materialManager->add_material(createInfo);
+
+  // Create associated UBO buffer
+  device::Buffer::TransformUBO uboData = {.model = glm::mat4(1.0f),
+                                          .view = glm::mat4(1.0f),
+                                          .proj = glm::mat4(1.0f)};
+
+  device::Buffer::BufferCreateInfo uboInfo = {
+      .identifier = to_string(materialId) + "_ubo",
+      .type = device::Buffer::BufferType::UNIFORM,
+      .usage = device::Buffer::BufferUsage::DYNAMIC,
+      .size = sizeof(device::Buffer::TransformUBO),
+      .elementSize = sizeof(device::Buffer::TransformUBO),
+      .initialData = &uboData};
+
+  bufferManager->create_buffer(uboInfo);
+}
+
 void render::Scene::create_texture(TextureId textureId,
                                    const std::string &path) {
   std::string texId = to_string(textureId);

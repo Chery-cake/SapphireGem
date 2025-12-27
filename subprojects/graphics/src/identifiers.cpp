@@ -59,6 +59,18 @@ std::string to_string(MaterialId id) {
     return "scene5_face_4";
   case MaterialId::SCENE5_FACE_5:
     return "scene5_face_5";
+  case MaterialId::GEOMETRY_2D:
+    return "geometry_2d";
+  case MaterialId::GEOMETRY_2D_TEXTURED:
+    return "geometry_2d_textured";
+  case MaterialId::GEOMETRY_3D:
+    return "geometry_3d";
+  case MaterialId::GEOMETRY_3D_TEXTURED:
+    return "geometry_3d_textured";
+  case MaterialId::MESH_2D:
+    return "mesh_2d";
+  case MaterialId::MESH_3D:
+    return "mesh_3d";
   default:
     throw std::runtime_error("Unknown MaterialId");
   }
@@ -216,10 +228,17 @@ bool material_uses_textured_vertices(MaterialId id) {
   case MaterialId::SCENE5_FACE_4:
   case MaterialId::SCENE5_FACE_5:
     return true;
+  case MaterialId::GEOMETRY_2D_TEXTURED:
+  case MaterialId::GEOMETRY_3D_TEXTURED:
+    return true;
 
   // Materials that use non-textured vertices
   case MaterialId::SIMPLE_SHADERS:
   case MaterialId::SIMPLE_SHADERS_2D:
+  case MaterialId::GEOMETRY_2D:
+  case MaterialId::GEOMETRY_3D:
+  case MaterialId::MESH_2D:
+  case MaterialId::MESH_3D:
     return false;
 
   default:
@@ -236,6 +255,10 @@ bool material_is_2d(MaterialId id) {
   case MaterialId::TEXTURED_GRADIENT:
   case MaterialId::TEXTURED_ATLAS:
   case MaterialId::LAYERED_2D:
+    return true;
+  case MaterialId::GEOMETRY_2D:
+  case MaterialId::GEOMETRY_2D_TEXTURED:
+  case MaterialId::MESH_2D:
     return true;
 
   // 3D materials
@@ -260,6 +283,9 @@ bool material_is_2d(MaterialId id) {
   case MaterialId::SCENE5_FACE_3:
   case MaterialId::SCENE5_FACE_4:
   case MaterialId::SCENE5_FACE_5:
+  case MaterialId::GEOMETRY_3D:
+  case MaterialId::GEOMETRY_3D_TEXTURED:
+  case MaterialId::MESH_3D:
     return false;
 
   default:

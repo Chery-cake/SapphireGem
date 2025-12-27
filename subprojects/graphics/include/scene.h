@@ -82,6 +82,12 @@ protected:
   // Helper to create a textured material
   void create_textured_material(MaterialId materialId, bool is2D);
 
+  // Helper to create a geometry shader material
+  void create_geometry_material(MaterialId materialId, bool is2D, bool isTextured = false);
+
+  // Helper to create a mesh shader material
+  void create_mesh_material(MaterialId materialId, bool is2D);
+
   // Helper to create a texture
   void create_texture(TextureId textureId, const std::string &path);
 
