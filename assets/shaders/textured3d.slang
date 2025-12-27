@@ -1,3 +1,8 @@
+// 3D Textured Shader - Traditional vertex/fragment pipeline
+// This demonstrates the traditional approach where full vertex data is provided
+// Compare with geometry3d_textured.slang which generates quads from points
+// and mesh3d.slang which generates geometry procedurally
+
 struct VSInput {
     float3 inPosition;
     float2 inTexCoord;
@@ -23,6 +28,7 @@ struct VSOutput
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
+    // Transform 3D position through model-view-projection matrices
     output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 1.0))));
     output.texCoord = input.inTexCoord;
     output.color = input.inColor;

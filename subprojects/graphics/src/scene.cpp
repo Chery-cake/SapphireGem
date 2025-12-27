@@ -374,18 +374,45 @@ render::Object *render::Scene::create_cube_3d(
 
 void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
                                           bool is3DTextured) {
+  // Use geometry shaders for all 2D and 3D rendering
+  // Geometry shaders provide modular pipeline where 3D objects are composed from 2D primitives
+  create_geometry_material(materialId, is2D, is3DTextured);
+}
+
+void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
+  // Use geometry shaders for all textured 2D and 3D rendering
+  // Geometry shaders provide modular pipeline where 3D objects are composed from 2D primitives
+  create_geometry_material(materialId, is2D, true);
+}
+
+void render::Scene::create_geometry_material(MaterialId materialId, bool is2D, bool isTextured) {
   // Check if material already exists
   if (materialManager->get_material(to_string(materialId))) {
     return;
   }
 
-  // Create shader for this material
+  // Select shader path based on type
+  std::string shaderPath;
+  if (is2D && isTextured) {
+    shaderPath = "assets/shaders/geometry2d_textured.slang";
+  } else if (is2D && !isTextured) {
+    shaderPath = "assets/shaders/geometry2d.slang";
+  } else if (!is2D && isTextured) {
+    shaderPath = "assets/shaders/geometry3d_textured.slang";
+  } else {
+    shaderPath = "assets/shaders/geometry3d.slang";
+  }
+
+  // Geometry shader pipeline: vertex, geometry, and fragment shaders
   std::vector<Shader::ShaderStageInfo> stages = {
       {.type = Shader::ShaderType::VERTEX,
-       .filePath = "assets/shaders/shader.slang",
+       .filePath = shaderPath,
        .entryPoint = "vertMain"},
+      {.type = Shader::ShaderType::GEOMETRY,
+       .filePath = shaderPath,
+       .entryPoint = "geomMain"},
       {.type = Shader::ShaderType::FRAGMENT,
-       .filePath = "assets/shaders/shader.slang",
+       .filePath = shaderPath,
        .entryPoint = "fragMain"}};
 
   Shader::ShaderCreateInfo shaderInfo{
@@ -396,29 +423,36 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
       shaderInfo);
 
   if (!shader->compile() || !shader->initialize()) {
-    std::print(stderr, "Failed to create shader for material {}\n",
+    std::print(stderr, "Failed to create geometry shader for material {}\n",
                to_string(materialId));
     return;
   }
 
+  // Setup descriptor bindings
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
       .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
+      .stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry};
 
-  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
-      .blendEnable = vk::False,
-      .colorWriteMask =
-          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+  std::vector<vk::DescriptorSetLayoutBinding> bindings = {uboBinding};
 
+  if (isTextured) {
+    vk::DescriptorSetLayoutBinding samplerBinding = {
+        .binding = 1,
+        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+        .descriptorCount = 1,
+        .stageFlags = vk::ShaderStageFlagBits::eFragment};
+    bindings.push_back(samplerBinding);
+  }
+
+  // Vertex input - just points with position and color (minimal data)
   vk::VertexInputBindingDescription bindingDescription;
   std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
 
-  if (is3DTextured) {
-    bindingDescription = Object::Vertex3DTextured::getBindingDescription();
-    auto attrs = Object::Vertex3DTextured::getAttributeDescriptions();
+  if (is2D) {
+    bindingDescription = Object::Vertex2D::getBindingDescription();
+    auto attrs = Object::Vertex2D::getAttributeDescriptions();
     attributeDescriptions.assign(attrs.begin(), attrs.end());
   } else {
     bindingDescription = Object::Vertex3D::getBindingDescription();
@@ -426,10 +460,16 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
     attributeDescriptions.assign(attrs.begin(), attrs.end());
   }
 
+  vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+      .blendEnable = vk::False,
+      .colorWriteMask =
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+          vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
       .shader = shader.get(),
-      .descriptorBindings = {uboBinding},
+      .descriptorBindings = bindings,
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
                              .polygonMode = vk::PolygonMode::eFill,
@@ -460,7 +500,7 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
                             static_cast<uint32_t>(attributeDescriptions.size()),
                         .pVertexAttributeDescriptions =
                             attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .inputAssemblyState{.topology = vk::PrimitiveTopology::ePointList},  // Points for geometry shader
       .viewportState{.viewportCount = 1, .scissorCount = 1},
       .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
                         .sampleShadingEnable = vk::False},
@@ -487,20 +527,24 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
   bufferManager->create_buffer(uboInfo);
 }
 
-void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
+void render::Scene::create_mesh_material(MaterialId materialId, bool is2D) {
   // Check if material already exists
   if (materialManager->get_material(to_string(materialId))) {
     return;
   }
 
-  // Create shader for this material
-  std::string shaderPath = is2D ? "assets/shaders/textured.slang"
-                                : "assets/shaders/textured3d.slang";
+  // Select shader path
+  std::string shaderPath = is2D ? "assets/shaders/mesh2d.slang"
+                                : "assets/shaders/mesh3d.slang";
 
+  // Mesh shader pipeline: task, mesh, and fragment shaders
   std::vector<Shader::ShaderStageInfo> stages = {
-      {.type = Shader::ShaderType::VERTEX,
+      {.type = Shader::ShaderType::TASK,
        .filePath = shaderPath,
-       .entryPoint = "vertMain"},
+       .entryPoint = "taskMain"},
+      {.type = Shader::ShaderType::MESH,
+       .filePath = shaderPath,
+       .entryPoint = "meshMain"},
       {.type = Shader::ShaderType::FRAGMENT,
        .filePath = shaderPath,
        .entryPoint = "fragMain"}};
@@ -513,35 +557,17 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
       shaderInfo);
 
   if (!shader->compile() || !shader->initialize()) {
-    std::print(stderr, "Failed to create shader for material {}\n",
+    std::print(stderr, "Failed to create mesh shader for material {}\n",
                to_string(materialId));
     return;
   }
 
+  // Mesh shaders have UBO access in mesh stage
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
       .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eVertex};
-
-  vk::DescriptorSetLayoutBinding samplerBinding = {
-      .binding = 1,
-      .descriptorType = vk::DescriptorType::eCombinedImageSampler,
-      .descriptorCount = 1,
-      .stageFlags = vk::ShaderStageFlagBits::eFragment};
-
-  vk::VertexInputBindingDescription bindingDescription;
-  std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
-
-  if (is2D) {
-    bindingDescription = Object::Vertex2DTextured::getBindingDescription();
-    auto attrs = Object::Vertex2DTextured::getAttributeDescriptions();
-    attributeDescriptions.assign(attrs.begin(), attrs.end());
-  } else {
-    bindingDescription = Object::Vertex3DTextured::getBindingDescription();
-    auto attrs = Object::Vertex3DTextured::getAttributeDescriptions();
-    attributeDescriptions.assign(attrs.begin(), attrs.end());
-  }
+      .stageFlags = vk::ShaderStageFlagBits::eMeshEXT};
 
   vk::PipelineColorBlendAttachmentState colorBlendAttachment{
       .blendEnable = vk::False,
@@ -552,11 +578,12 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
       .shader = shader.get(),
-      .descriptorBindings = {uboBinding, samplerBinding},
+      .descriptorBindings = {uboBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
                              .polygonMode = vk::PolygonMode::eFill,
-                             .cullMode = vk::CullModeFlagBits::eBack,
+                             .cullMode = is2D ? vk::CullModeFlagBits::eNone
+                                              : vk::CullModeFlagBits::eBack,
                              .frontFace = vk::FrontFace::eCounterClockwise,
                              .depthBiasEnable = vk::False,
                              .depthBiasSlopeFactor = 1.0f,
@@ -576,13 +603,8 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
                      .logicOp = vk::LogicOp::eCopy,
                      .attachmentCount = 1,
                      .pAttachments = &colorBlendAttachment},
-      .vertexInputState{.vertexBindingDescriptionCount = 1,
-                        .pVertexBindingDescriptions = &bindingDescription,
-                        .vertexAttributeDescriptionCount =
-                            static_cast<uint32_t>(attributeDescriptions.size()),
-                        .pVertexAttributeDescriptions =
-                            attributeDescriptions.data()},
-      .inputAssemblyState{.topology = vk::PrimitiveTopology::eTriangleList},
+      .vertexInputState{},  // Mesh shaders don't use vertex input state
+      .inputAssemblyState{},  // Mesh shaders don't use input assembly state
       .viewportState{.viewportCount = 1, .scissorCount = 1},
       .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
                         .sampleShadingEnable = vk::False},

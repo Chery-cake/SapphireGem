@@ -1,3 +1,9 @@
+// 2D Textured Shader - Traditional vertex/fragment pipeline
+// This demonstrates the traditional approach for 2D rendering
+// Compare with:
+// - geometry2d_textured.slang: Generates textured quads from point primitives
+// - mesh2d.slang: Generates 2D geometry procedurally
+
 struct VSInput {
     float2 inPosition;
     float2 inTexCoord;
@@ -23,6 +29,7 @@ struct VSOutput
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
+    // 2D position with z=0
     output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(input.inPosition, 0.0, 1.0))));
     output.texCoord = input.inTexCoord;
     output.color = input.inColor;

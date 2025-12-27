@@ -36,7 +36,19 @@ enum class MaterialId {
   SCENE5_FACE_2, // Left face shader
   SCENE5_FACE_3, // Right face shader
   SCENE5_FACE_4, // Top face shader
-  SCENE5_FACE_5  // Bottom face shader
+  SCENE5_FACE_5, // Bottom face shader
+
+  // Geometry shader materials (2D objects from points)
+  GEOMETRY_2D,          // Geometry shader for 2D colored objects
+  GEOMETRY_2D_TEXTURED, // Geometry shader for 2D textured objects
+  
+  // Geometry shader materials (3D objects from points)
+  GEOMETRY_3D,          // Geometry shader for 3D colored objects
+  GEOMETRY_3D_TEXTURED, // Geometry shader for 3D textured objects
+  
+  // Mesh shader materials (procedural generation)
+  MESH_2D,          // Mesh shader for procedural 2D objects
+  MESH_3D           // Mesh shader for procedural 3D objects
 };
 
 // Strongly-typed enum for texture identifiers
