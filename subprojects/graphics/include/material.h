@@ -23,12 +23,8 @@ public:
   struct MaterialCreateInfo {
     std::string identifier;
 
-    // Shader reference (new system)
+    // Shader reference
     Shader *shader = nullptr;       // Use existing Shader object (raw pointer, not owned)
-    
-    // Legacy shader paths (for backward compatibility)
-    std::string vertexShaders;
-    std::string fragmentShaders;
 
     // Layout info
     std::vector<vk::DescriptorSetLayoutBinding> descriptorBindings;
@@ -62,9 +58,8 @@ private:
   MaterialCreateInfo createInfo;
   std::vector<std::unique_ptr<DeviceMaterialResources>> deviceResources;
 
-  // Shader reference (not owned by material unless legacy)
+  // Shader reference (not owned by material)
   Shader *shader;
-  std::unique_ptr<Shader> legacyShader; // Owned shader created from legacy paths
 
   // Material properties
   glm::vec4 color;

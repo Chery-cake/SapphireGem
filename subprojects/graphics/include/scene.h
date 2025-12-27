@@ -26,6 +26,7 @@ protected:
   std::vector<Object *> sceneObjects;
   std::unordered_set<std::string>
       sceneTextures; // Track textures created by this scene
+  std::vector<std::unique_ptr<Shader>> sceneShaders; // Track shaders created by this scene
 
   // Helper methods for creating objects with automatic index generation
   // These methods handle the common patterns of object creation

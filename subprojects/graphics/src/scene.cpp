@@ -378,6 +378,31 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
     return;
   }
 
+  // Create shader for this material
+  std::vector<Shader::ShaderStageInfo> stages = {
+    {.type = Shader::ShaderType::VERTEX,
+     .filePath = "assets/shaders/shader.slang",
+     .entryPoint = "vertMain"},
+    {.type = Shader::ShaderType::FRAGMENT,
+     .filePath = "assets/shaders/shader.slang",
+     .entryPoint = "fragMain"}
+  };
+
+  Shader::ShaderCreateInfo shaderInfo{
+    .identifier = to_string(materialId) + "_shader",
+    .stages = stages
+  };
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -405,8 +430,7 @@ void render::Scene::create_basic_material(MaterialId materialId, bool is2D,
 
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
-      .vertexShaders = "assets/shaders/shader.slang",
-      .fragmentShaders = "assets/shaders/shader.slang",
+      .shader = shader.get(),
       .descriptorBindings = {uboBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
@@ -468,6 +492,34 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
     return;
   }
 
+  // Create shader for this material
+  std::string shaderPath = is2D ? "assets/shaders/textured.slang"
+                                : "assets/shaders/textured3d.slang";
+
+  std::vector<Shader::ShaderStageInfo> stages = {
+    {.type = Shader::ShaderType::VERTEX,
+     .filePath = shaderPath,
+     .entryPoint = "vertMain"},
+    {.type = Shader::ShaderType::FRAGMENT,
+     .filePath = shaderPath,
+     .entryPoint = "fragMain"}
+  };
+
+  Shader::ShaderCreateInfo shaderInfo{
+    .identifier = to_string(materialId) + "_shader",
+    .stages = stages
+  };
+
+  auto shader = std::make_unique<Shader>(
+      materialManager->get_device_manager()->get_all_logical_devices(),
+      shaderInfo);
+
+  if (!shader->compile() || !shader->initialize()) {
+    std::print(stderr, "Failed to create shader for material {}\n",
+               to_string(materialId));
+    return;
+  }
+
   vk::DescriptorSetLayoutBinding uboBinding = {
       .binding = 0,
       .descriptorType = vk::DescriptorType::eUniformBuffer,
@@ -501,10 +553,7 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
 
   Material::MaterialCreateInfo createInfo{
       .identifier = to_string(materialId),
-      .vertexShaders = is2D ? "assets/shaders/textured.slang"
-                            : "assets/shaders/textured3d.slang",
-      .fragmentShaders = is2D ? "assets/shaders/textured.slang"
-                              : "assets/shaders/textured3d.slang",
+      .shader = shader.get(),
       .descriptorBindings = {uboBinding, samplerBinding},
       .rasterizationState = {.depthClampEnable = is2D ? vk::False : vk::True,
                              .rasterizerDiscardEnable = vk::False,
@@ -540,6 +589,9 @@ void render::Scene::create_textured_material(MaterialId materialId, bool is2D) {
       .multisampleState{.rasterizationSamples = vk::SampleCountFlagBits::e1,
                         .sampleShadingEnable = vk::False},
       .dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor}};
+
+  // Store shader for lifecycle management
+  sceneShaders.push_back(std::move(shader));
 
   materialManager->add_material(createInfo);
 
