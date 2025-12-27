@@ -38,6 +38,7 @@ static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallbackCpp(
     const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
     void *pUserData) {
   // Call the C version with casted parameters
+  // Note: vk:: types are binary-compatible with Vk types as per Vulkan spec
   return debugCallback(
       static_cast<VkDebugUtilsMessageSeverityFlagBitsEXT>(severity),
       static_cast<VkDebugUtilsMessageTypeFlagsEXT>(type),
