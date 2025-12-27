@@ -143,7 +143,51 @@ bool render::Material::initialize() {
     return true;
   }
 
-  // Shader must be provided and initialized
+  // Handle legacy shader paths by creating a Shader object
+  if (!shader && (!createInfo.vertexShaders.empty() || !createInfo.fragmentShaders.empty())) {
+    std::vector<Shader::ShaderStageInfo> stages;
+    
+    if (!createInfo.vertexShaders.empty()) {
+      stages.push_back({
+        .type = Shader::ShaderType::VERTEX,
+        .filePath = createInfo.vertexShaders,
+        .entryPoint = "vertMain"
+      });
+    }
+    
+    if (!createInfo.fragmentShaders.empty()) {
+      stages.push_back({
+        .type = Shader::ShaderType::FRAGMENT,
+        .filePath = createInfo.fragmentShaders,
+        .entryPoint = "fragMain"
+      });
+    }
+    
+    Shader::ShaderCreateInfo shaderInfo{
+      .identifier = identifier + "_shader",
+      .stages = stages
+    };
+    
+    legacyShader = std::make_unique<Shader>(logicalDevices, shaderInfo);
+    
+    // Compile the shader
+    if (!legacyShader->compile()) {
+      std::print(stderr, "Material - {} - failed to compile legacy shader\n", identifier);
+      legacyShader.reset();
+      return false;
+    }
+    
+    // Initialize shader modules
+    if (!legacyShader->initialize()) {
+      std::print(stderr, "Material - {} - failed to initialize legacy shader\n", identifier);
+      legacyShader.reset();
+      return false;
+    }
+    
+    shader = legacyShader.get();
+  }
+
+  // Shader must be provided (either directly or via legacy paths)
   if (!shader) {
     std::print(stderr, "Material - {} - no shader provided\n", identifier);
     return false;

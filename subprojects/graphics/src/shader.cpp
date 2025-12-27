@@ -62,17 +62,35 @@ bool render::Shader::compile_shader_from_file(ShaderStageInfo &stageInfo) {
   }
 
   // Compile using Slang WASM compiler
-  auto spirvCode = compile_slang_to_spirv(stageInfo.filePath, entryPoint);
-
-  if (spirvCode.empty()) {
+  thread_local wasm::SlangWasmCompiler compiler;
+  
+  std::filesystem::path inputPath(stageInfo.filePath);
+  std::filesystem::path outputPath = inputPath;
+  outputPath.replace_extension(".spv");
+  
+  // Compile the shader to a temporary SPIR-V file
+  if (!compiler.compileShaderToSpirv(inputPath, outputPath, {entryPoint})) {
     std::print(stderr,
-               "Shader - {} - failed to compile {} from {} (entry: {})\n",
+               "Shader - {} - failed to compile {} from {} (entry: {}): {}\n",
                identifier, shader_type_to_string(stageInfo.type),
-               stageInfo.filePath, entryPoint);
+               stageInfo.filePath, entryPoint, compiler.getLastError());
     return false;
   }
+  
+  // Read the compiled SPIR-V file
+  std::ifstream file(outputPath, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    std::print(stderr, "Shader - {} - failed to open compiled SPIR-V file {}\n",
+               identifier, outputPath.string());
+    return false;
+  }
+  
+  size_t fileSize = file.tellg();
+  stageInfo.spirvCode.resize(fileSize);
+  file.seekg(0);
+  file.read(stageInfo.spirvCode.data(), fileSize);
+  file.close();
 
-  stageInfo.spirvCode = std::move(spirvCode);
   stageInfo.entryPoint = entryPoint;
   stageInfo.isCompiled = true;
 
