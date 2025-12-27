@@ -17,7 +17,8 @@
 #include <vulkan/vulkan_hpp_macros.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+// Note: VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE is defined in common library
+// to avoid ODR violations. We use the dispatcher instance from there.
 
 render::Renderer::Renderer(GLFWwindow *window)
     : window(window), instance(nullptr), surface(nullptr),
