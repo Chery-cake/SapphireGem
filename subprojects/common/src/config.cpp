@@ -31,6 +31,20 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
   return VK_FALSE;
 }
 
+// Wrapper to convert C callback to C++ callback signature
+static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallbackCpp(
+    vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
+    vk::DebugUtilsMessageTypeFlagsEXT type,
+    const vk::DebugUtilsMessengerCallbackDataEXT *pCallbackData,
+    void *pUserData) {
+  // Call the C version with casted parameters
+  return debugCallback(
+      static_cast<VkDebugUtilsMessageSeverityFlagBitsEXT>(severity),
+      static_cast<VkDebugUtilsMessageTypeFlagsEXT>(type),
+      reinterpret_cast<const VkDebugUtilsMessengerCallbackDataEXT*>(pCallbackData),
+      pUserData);
+}
+
 general::Config &general::Config::get_instance() {
   static Config instance;
   return instance;
@@ -72,8 +86,7 @@ general::Config::set_up_debug_messanger(vk::raii::Instance &instance) {
   vk::DebugUtilsMessengerCreateInfoEXT debugUtilsMessengerCreateInfoEXT{
       .messageSeverity = severityFlags,
       .messageType = messageTypeFlags,
-      .pfnUserCallback = reinterpret_cast<PFN_vkDebugUtilsMessengerCallbackEXT>(
-          &debugCallback)};
+      .pfnUserCallback = debugCallbackCpp};
   return instance.createDebugUtilsMessengerEXT(
       debugUtilsMessengerCreateInfoEXT);
 }
