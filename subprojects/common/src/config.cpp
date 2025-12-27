@@ -79,10 +79,10 @@ general::Config::set_up_debug_messanger(vk::raii::Instance &instance) {
 }
 
 void general::Config::initialize_vma_functions() {
-  vmaVulkanFunctions.vkGetInstanceProcAddr =
-      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
-  vmaVulkanFunctions.vkGetDeviceProcAddr =
-      VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
+  // Get the function pointers directly from the Vulkan loader
+  // instead of using the dispatcher, to avoid cross-DLL issues
+  vmaVulkanFunctions.vkGetInstanceProcAddr = &vkGetInstanceProcAddr;
+  vmaVulkanFunctions.vkGetDeviceProcAddr = nullptr; // VMA will use vkGetInstanceProcAddr to get this
 
   vmaVulkanFunctionsInitialized = true;
 
