@@ -5,6 +5,31 @@ if(NOT DEFINED TARGET_OS)
     message(FATAL_ERROR "TARGET_OS must be defined before including SetupCrossCompilation.cmake")
 endif()
 
+# Check for stale CMake cache that might have incompatible settings
+# If CMAKE_SYSTEM_NAME is already set but doesn't match our TARGET_OS, warn the user
+if(DEFINED CMAKE_SYSTEM_NAME)
+    set(EXPECTED_SYSTEM_NAME)
+    if(TARGET_OS STREQUAL "windows")
+        set(EXPECTED_SYSTEM_NAME "Windows")
+    elseif(TARGET_OS STREQUAL "linux")
+        set(EXPECTED_SYSTEM_NAME "Linux")
+    elseif(TARGET_OS STREQUAL "macos")
+        set(EXPECTED_SYSTEM_NAME "Darwin")
+    endif()
+    
+    if(EXPECTED_SYSTEM_NAME AND NOT CMAKE_SYSTEM_NAME STREQUAL EXPECTED_SYSTEM_NAME)
+        message(FATAL_ERROR 
+            "CMake cache contains incompatible settings from a previous build!\n"
+            "  Current TARGET_OS: ${TARGET_OS}\n"
+            "  Cached CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME}\n"
+            "  Expected CMAKE_SYSTEM_NAME: ${EXPECTED_SYSTEM_NAME}\n"
+            "\n"
+            "Solution: Delete the build directory and reconfigure:\n"
+            "  rm -rf build\n"
+            "  cmake -B build -DTARGET_OS=${TARGET_OS}")
+    endif()
+endif()
+
 # Determine if we're actually cross-compiling
 # Compare TARGET_OS with the host system
 set(CROSS_COMPILING FALSE)

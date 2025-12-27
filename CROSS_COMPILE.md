@@ -18,14 +18,20 @@ cmake --build build
 Specify the target OS with the `TARGET_OS` option:
 
 ```bash
-# Build for Windows from Linux
+# Build for Windows from Linux (use separate build directory)
 cmake -B build-windows -DTARGET_OS=windows
 
-# Build for macOS from Linux
+# Build for macOS from Linux (use separate build directory)
 cmake -B build-macos -DTARGET_OS=macos
 
-# Build for Linux from macOS
+# Build for Linux from macOS (use separate build directory)
 cmake -B build-linux -DTARGET_OS=linux
+```
+
+**Important:** Always use separate build directories for different target platforms, or delete the build directory when switching targets:
+```bash
+rm -rf build
+cmake -B build -DTARGET_OS=<new_target>
 ```
 
 ## Requirements for Cross-Compilation
@@ -112,6 +118,22 @@ bin/
 - Some dependencies may require manual installation for cross-compilation scenarios.
 
 ## Troubleshooting
+
+### "CMake cache contains incompatible settings from a previous build" Error
+
+This error occurs when switching between different target platforms without cleaning the build directory.
+
+**Solution:**
+```bash
+rm -rf build
+cmake -B build -DTARGET_OS=<your_target>
+```
+
+Or use separate build directories for each platform:
+```bash
+cmake -B build-linux -DTARGET_OS=linux
+cmake -B build-windows -DTARGET_OS=windows
+```
 
 ### "Cross-compiling to Windows requires MinGW-w64 toolchain" Error
 
