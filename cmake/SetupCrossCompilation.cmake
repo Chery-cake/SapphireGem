@@ -23,40 +23,33 @@ if(CROSS_COMPILING)
         set(CMAKE_SYSTEM_NAME Windows)
         set(CMAKE_SYSTEM_PROCESSOR x86_64)
         
-        # Set Windows-specific toolchain variables
-        # User should provide a toolchain file or set compilers for cross-compilation
-        if(NOT CMAKE_C_COMPILER)
-            # Try to find MinGW cross-compiler
-            find_program(MINGW_CC x86_64-w64-mingw32-gcc)
-            if(MINGW_CC)
-                set(CMAKE_C_COMPILER ${MINGW_CC})
-            else()
-                message(FATAL_ERROR 
-                    "Cross-compiling to Windows requires MinGW-w64 toolchain.\n"
-                    "Please install it:\n"
-                    "  Ubuntu/Debian: sudo apt-get install mingw-w64\n"
-                    "  Fedora: sudo dnf install mingw64-gcc mingw64-gcc-c++\n"
-                    "  Arch: sudo pacman -S mingw-w64-gcc\n"
-                    "Or provide a toolchain file with: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake\n"
-                    "Or set compilers manually: cmake -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++")
-            endif()
+        # For cross-compilation, we need to force the use of MinGW compilers
+        # Find MinGW cross-compiler
+        find_program(MINGW_CC x86_64-w64-mingw32-gcc)
+        find_program(MINGW_CXX x86_64-w64-mingw32-g++)
+        
+        if(NOT MINGW_CC OR NOT MINGW_CXX)
+            message(FATAL_ERROR 
+                "Cross-compiling to Windows requires MinGW-w64 toolchain.\n"
+                "Please install it:\n"
+                "  Ubuntu/Debian: sudo apt-get install mingw-w64\n"
+                "  Fedora: sudo dnf install mingw64-gcc mingw64-gcc-c++\n"
+                "  Arch: sudo pacman -S mingw-w64-gcc\n"
+                "\n"
+                "After installation, verify with: which x86_64-w64-mingw32-gcc\n"
+                "\n"
+                "Alternatively:\n"
+                "  - Use a toolchain file: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake\n"
+                "  - Set compilers manually: cmake -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++")
         endif()
         
-        if(NOT CMAKE_CXX_COMPILER)
-            find_program(MINGW_CXX x86_64-w64-mingw32-g++)
-            if(MINGW_CXX)
-                set(CMAKE_CXX_COMPILER ${MINGW_CXX})
-            else()
-                message(FATAL_ERROR 
-                    "Cross-compiling to Windows requires MinGW-w64 toolchain.\n"
-                    "Please install it:\n"
-                    "  Ubuntu/Debian: sudo apt-get install mingw-w64\n"
-                    "  Fedora: sudo dnf install mingw64-gcc mingw64-gcc-c++\n"
-                    "  Arch: sudo pacman -S mingw-w64-gcc\n"
-                    "Or provide a toolchain file with: cmake -DCMAKE_TOOLCHAIN_FILE=path/to/toolchain.cmake\n"
-                    "Or set compilers manually: cmake -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++")
-            endif()
-        endif()
+        # Force set the compilers for cross-compilation
+        set(CMAKE_C_COMPILER ${MINGW_CC} CACHE FILEPATH "C compiler" FORCE)
+        set(CMAKE_CXX_COMPILER ${MINGW_CXX} CACHE FILEPATH "C++ compiler" FORCE)
+        
+        message(STATUS "Using MinGW compilers:")
+        message(STATUS "  C compiler: ${CMAKE_C_COMPILER}")
+        message(STATUS "  C++ compiler: ${CMAKE_CXX_COMPILER}")
         
         # Set find root paths for cross-compilation
         set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)

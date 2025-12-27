@@ -129,12 +129,23 @@ This error occurs when trying to build for Windows without the MinGW-w64 cross-c
 
 ### Linker Errors When Cross-Compiling
 
-If you see errors like `unrecognized option '--major-image-version'`, this means the wrong compiler is being used (e.g., native GCC instead of MinGW).
+If you see errors like `unrecognized option '--major-image-version'`, this means the wrong compiler/linker is being used (e.g., native GCC/Clang instead of MinGW).
+
+**Common causes:**
+1. MinGW not installed or not in PATH
+2. Environment variables (`CC`, `CXX`) pointing to wrong compilers
+3. CMake cache from previous configuration attempts
 
 **Solution:**
-1. Ensure MinGW is installed and in your PATH
-2. Clean the build directory: `rm -rf build`
-3. Reconfigure with: `cmake -B build -DTARGET_OS=windows`
+1. Ensure MinGW is installed: `which x86_64-w64-mingw32-gcc`
+2. Unset compiler environment variables:
+   ```bash
+   unset CC CXX
+   ```
+3. Clean the build directory completely: `rm -rf build`
+4. Reconfigure: `cmake -B build -DTARGET_OS=windows`
+
+The build system will now force MinGW compilers for Windows cross-compilation, ignoring environment variables.
 
 ### Dependencies Not Found During Cross-Compilation
 
