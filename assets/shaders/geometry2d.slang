@@ -1,9 +1,13 @@
-// Geometry shader for 2D objects - generates quads from points
-// Takes a single point and generates a 2D quad (2 triangles)
+// Geometry shader for 2D objects - demonstrates modular rendering
+// Takes a single POINT and generates a QUAD (2D primitive)
+// Benefits of geometry shaders:
+// - Reduced CPU-to-GPU data transfer (send points instead of quads)
+// - Dynamic geometry generation on GPU
+// - More flexible and modular pipeline
 
 struct VSInput {
-    float2 inPosition;
-    float3 inColor;
+    float2 inPosition;  // Just a 2D point
+    float3 inColor;     // And its color
 };
 
 struct UniformBuffer {
@@ -25,16 +29,17 @@ struct GSOutput
     float3 color;
 };
 
-// Vertex shader - just pass through position and color
+// Vertex shader - minimal processing
 [shader("vertex")]
 VSOutput vertMain(VSInput input) {
     VSOutput output;
-    output.pos = float4(input.inPosition, 0.0, 1.0);
+    output.pos = float4(input.inPosition, 0.0, 1.0);  // 2D point, defer transformation
     output.color = input.inColor;
     return output;
 }
 
-// Geometry shader - expand point to quad (2D primitive)
+// Geometry shader - generates quad from point
+// This is the modular part: one point becomes multiple primitives
 [shader("geometry")]
 [maxvertexcount(6)]
 void geomMain(
