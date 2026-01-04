@@ -1,28 +1,23 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.25)
+project(SapphireEngine VERSION 1.0.0 LANGUAGES CXX C)
 
-# Detect default target OS before project() is called
-# Note: TARGET_OS uses lowercase names for consistency in output paths
-if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
-    set(DEFAULT_TARGET_OS "linux")
-elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
-    set(DEFAULT_TARGET_OS "windows")
-elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
-    set(DEFAULT_TARGET_OS "macos")
-else()
-    # For unsupported platforms, use the CMAKE_HOST_SYSTEM_NAME in lowercase
-    string(TOLOWER "${CMAKE_HOST_SYSTEM_NAME}" DEFAULT_TARGET_OS)
-endif()
+# C++ and C standard settings
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(TARGET_OS "${DEFAULT_TARGET_OS}" CACHE STRING "Target operating system (linux, windows, macos)")
-set_property(CACHE TARGET_OS PROPERTY STRINGS linux windows macos)
+# Export compile commands for clangd
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Add cmake module path
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+# Build shared libraries by default
+set(BUILD_SHARED_LIBS ON)
 
-# Setup cross-compilation if needed (must be before project())
-include(SetupCrossCompilation)
-
-project(Exemple LANGUAGES C CXX)
+# Set RPATH settings for finding shared libraries at runtime
+set(CMAKE_SKIP_BUILD_RPATH FALSE)
+set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Set default build type to Debug if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -31,118 +26,65 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         FORCE)
 endif()
 
-option(TEST_MEMORY_LEAKS "Enable ASan to test for memory leaks" OFF)
-
-set(CMAKE_C_STANDARD 17)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS ON)
-
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_COLOR_DIAGNOSTICS ON)
-set(CMAKE_COLOR_MAKEFILE ON)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-# CMAKE_CXX_SCAN_FOR_MODULES: Only set if CMake version supports it (3.28+)
-# Currently disabled for compatibility as C++20 module support is still experimental in most compilers
-# Note: Project requires CMake 3.30, so this check is always true, but kept for clarity and future-proofing
-if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.28")
-    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
-    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: OFF (disabled for compatibility)")
+# Output directories based on OS
+if(WIN32)
+    set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/windows)
+elseif(APPLE)
+    set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/macos)
 else()
-    message(STATUS "CMAKE_CXX_SCAN_FOR_MODULES: Not available (requires CMake 3.28+)")
+    set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/linux)
 endif()
 
-# Set common output directory for all targets with OS-specific subdirectory
-set(COMMON_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/bin/${TARGET_OS})
-set(COMMON_OUTPUT_DIR ${COMMON_OUTPUT_DIR} CACHE INTERNAL "Common output directory for all targets")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIR}/lib)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${COMMON_OUTPUT_DIR})
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${COMMON_OUTPUT_DIR})
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${COMMON_OUTPUT_DIR})
+# Include cmake helper scripts
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
-# Also set per-configuration output directories to ensure consistency
-foreach(config Debug Release RelWithDebInfo MinSizeRel)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config} ${COMMON_OUTPUT_DIR})
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config} ${COMMON_OUTPUT_DIR})
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config} ${COMMON_OUTPUT_DIR})
-endforeach()
+# Include clangd configuration generator
+include(cmake/GenerateClangd.cmake)
 
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "Output directory: ${COMMON_OUTPUT_DIR}")
+# Include library fetching
+include(cmake/FetchLibraries.cmake)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    # Optimizations
-    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)  # LTO
+# Include definitions for Release and Debug
+include(cmake/DefinitionsForVersion.cmake)
 
-    # Strip symbols where applicable
-    if(CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT WIN32)
-        add_link_options(-s)  # GCC/Clang: strip symbols
-    endif()
+# Add library directory
+add_subdirectory(lib)
 
-    add_compile_definitions(
-        NDEBUG  # Disable assertions
-    )
-else()
-    # Compiler flags
-    add_compile_definitions(DEBUG_ENABLED)  # Custom define for debug code
-    add_compile_options(
-        "$<$<C_COMPILER_ID:MSVC>:/Zi>"     # MSVC debug symbols
-        "$<$<CXX_COMPILER_ID:MSVC>:/Zi>"
-        "$<$<NOT:$<C_COMPILER_ID:MSVC>>:-g3>"  # GCC/Clang debug symbols
-        "$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-g3>"
-    )
+# Add subprojects
+add_subdirectory(subprojects)
 
-    # Linker flags
-    add_link_options(
-        "$<$<C_COMPILER_ID:MSVC>:/DEBUG>"  # MSVC PDB generation
-    )
-
-    # Disable optimizations
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-
-    # Enable assertions (remove in production)
-    add_compile_definitions(ENABLE_ASSERTIONS)
-
-    if(TEST_MEMORY_LEAKS)
-
-        # Sanitizers are not available for MinGW cross-compilation
-        if(NOT (CMAKE_CROSSCOMPILING AND WIN32))
-            add_compile_options(
-                -fsanitize=address
-                -fsanitize=undefined
-                -fno-sanitize-recover=all
-                -fno-omit-frame-pointer
-            )
-            add_link_options(
-                -fsanitize=address
-                -fsanitize=undefined
-            )
-
-            if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-                add_compile_options(-fno-var-tracking)
-            endif()
-        else()
-            message(WARNING "Memory leak testing (sanitizers) not available for MinGW cross-compilation")
-        endif()
-
-    endif()
-
-endif()
-
-# Create the common output directory if it doesn't exist
-file(MAKE_DIRECTORY ${COMMON_OUTPUT_DIR})
-
-# Copy assets folder to output directory (including .slang source files for runtime compilation)
-add_custom_target(copy_assets ALL
+# Copy assets to output directory
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/assets
-        ${COMMON_OUTPUT_DIR}/assets
-    COMMENT "Copying assets folder to output directory"
+    ${CMAKE_SOURCE_DIR}/assets
+    ${OUTPUT_DIR}/assets
+    COMMENT "Copying assets to output directory"
 )
 
-add_subdirectory(lib)
-add_subdirectory(subprojects)
+# Copy wasmtime library to output lib directory
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${wasmtime_SOURCE_DIR}/lib/libwasmtime.so
+    ${OUTPUT_DIR}/lib/
+    COMMENT "Copying wasmtime library to output directory"
+)
+
+# Copy slang library to output lib directory
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    ${slang_SOURCE_DIR}/lib/libslang.so
+    ${OUTPUT_DIR}/lib/
+    COMMENT "Copying slang library to output directory"
+)
+
+# Generate .clangd file
+generate_clangd_file()
+
+# Cross-compilation support
+if(CMAKE_CROSSCOMPILING)
+    message(STATUS "Cross-compiling for: ${CMAKE_SYSTEM_NAME}")
+endif()

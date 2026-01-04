@@ -1,166 +1,169 @@
+# lib/CMakeLists.txt
+# Imports all external libraries used in the project
 
-add_subdirectory(steamworks)
+include(FetchContent)
 
-find_package(glfw3 REQUIRED)
-
-target_compile_definitions(glfw INTERFACE
-    GLFW_INCLUDE_VULKAN
-)
-
-if(NOT TARGET glm)
-  add_library(glm INTERFACE)
-  target_include_directories(glm INTERFACE /usr/include)
-endif()
-
-# Try to find Vulkan on the system first
-find_package(Vulkan)
-
-# If not found and cross-compiling, try to download Vulkan SDK
-if(NOT Vulkan_FOUND)
-    include(DownloadVulkan)
-endif()
-
-# Require Vulkan for the build
-if(NOT Vulkan_FOUND)
-    message(FATAL_ERROR
-        "Vulkan SDK not found.\n"
-        "For native builds: Install Vulkan SDK from https://vulkan.lunarg.com/\n"
-        "For cross-compilation: The build system attempted to download it.\n"
-        "You can manually specify: -DVulkan_INCLUDE_DIR=... -DVulkan_LIBRARY=...")
-endif()
-
-add_library(vulkan INTERFACE)
-
-target_compile_definitions(vulkan INTERFACE
-    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
-    VULKAN_HPP_NO_STRUCT_CONSTRUCTORS=1
-)
-target_include_directories(vulkan INTERFACE
-    "${Vulkan_INCLUDE_DIR}"
-)
-target_link_libraries(vulkan INTERFACE
-    Vulkan::Vulkan
-)
-
-# Only fetch if not already available
-if(NOT TARGET VulkanMemoryAllocator)
-    include(FetchContent)
-
-    FetchContent_Declare(
-        VulkanMemoryAllocator
-        GIT_REPOSITORY https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-        GIT_TAG master
-        GIT_SHALLOW TRUE
+# ============================================================================
+# Wasmtime imported library
+# ============================================================================
+add_library(wasmtime_lib SHARED IMPORTED GLOBAL)
+set(WASMTIME_ROOT ${wasmtime_SOURCE_DIR})
+if(WIN32)
+    set_target_properties(wasmtime_lib PROPERTIES
+        IMPORTED_LOCATION ${WASMTIME_ROOT}/lib/wasmtime.dll
+        IMPORTED_IMPLIB ${WASMTIME_ROOT}/lib/wasmtime.dll.lib
+        INTERFACE_INCLUDE_DIRECTORIES ${WASMTIME_ROOT}/include
     )
-
-    FetchContent_MakeAvailable(VulkanMemoryAllocator)
-
-    FetchContent_GetProperties(VulkanMemoryAllocator)
-    message(STATUS "VMA source: ${vulkanmemoryallocator_SOURCE_DIR}")
-    message(STATUS "VMA binary: ${vulkanmemoryallocator_BINARY_DIR}")
+else()
+    set_target_properties(wasmtime_lib PROPERTIES
+        IMPORTED_LOCATION ${WASMTIME_ROOT}/lib/libwasmtime.so
+        INTERFACE_INCLUDE_DIRECTORIES ${WASMTIME_ROOT}/include
+    )
+    set_target_properties(wasmtime_lib PROPERTIES
+        IMPORTED_NO_SONAME TRUE
+    )
 endif()
 
-add_library(vma INTERFACE)
+# ============================================================================
+# Slang imported library - for runtime shader compilation
+# ============================================================================
+add_library(slang_lib SHARED IMPORTED GLOBAL)
+set(SLANG_ROOT ${slang_SOURCE_DIR})
+if(WIN32)
+    set_target_properties(slang_lib PROPERTIES
+        IMPORTED_LOCATION ${SLANG_ROOT}/bin/slang.dll
+        IMPORTED_IMPLIB ${SLANG_ROOT}/lib/slang.lib
+        INTERFACE_INCLUDE_DIRECTORIES ${SLANG_ROOT}/include
+    )
+else()
+    set_target_properties(slang_lib PROPERTIES
+        IMPORTED_LOCATION ${SLANG_ROOT}/lib/libslang.so
+        INTERFACE_INCLUDE_DIRECTORIES ${SLANG_ROOT}/include
+    )
+    set_target_properties(slang_lib PROPERTIES
+        IMPORTED_NO_SONAME TRUE
+    )
+endif()
 
-target_include_directories(vma INTERFACE
-    ${vulkanmemoryallocator_SOURCE_DIR}/src
-    ${vulkanmemoryallocator_SOURCE_DIR}/include
+# ============================================================================
+# STB Implementation Library - single source of STB functions
+# ============================================================================
+add_library(stb_impl SHARED ${CMAKE_CURRENT_SOURCE_DIR}/stb_impl.cpp)
+target_include_directories(stb_impl PUBLIC ${stb_SOURCE_DIR})
+set_target_properties(stb_impl PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET default
+    VISIBILITY_INLINES_HIDDEN OFF
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
-target_compile_definitions(vma INTERFACE
+# ============================================================================
+# VMA Implementation Library - single source of VMA functions
+# Provides VMA_IMPLEMENTATION in one shared library
+# ============================================================================
+add_library(vma_impl SHARED ${CMAKE_CURRENT_SOURCE_DIR}/vma_impl.cpp)
+
+# Use fetched Vulkan headers (must come BEFORE any system includes to take precedence)
+target_include_directories(vma_impl PUBLIC ${vulkan_headers_SOURCE_DIR}/include)
+
+# VMA header-only library from FetchContent
+target_include_directories(vma_impl PUBLIC ${vma_SOURCE_DIR}/include)
+
+# Vulkan-Hpp for dynamic dispatch
+target_include_directories(vma_impl PUBLIC ${vulkan_hpp_SOURCE_DIR})
+
+# Configure VMA to use vulkan.hpp dynamic dispatch
+target_compile_definitions(vma_impl PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=0
     VMA_DYNAMIC_VULKAN_FUNCTIONS=1
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )
 
-target_link_libraries(vma INTERFACE Vulkan::Vulkan)
+set_target_properties(vma_impl PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET default
+    VISIBILITY_INLINES_HIDDEN OFF
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+)
 
-find_package(Threads REQUIRED)
-
-# Fetch BS::thread_pool
-if(NOT TARGET BS::thread_pool)
-    include(FetchContent)
-
-    FetchContent_Declare(
-        bs_thread_pool
-        GIT_REPOSITORY https://github.com/bshoshany/thread-pool.git
-        GIT_TAG v5.0.0  # Use latest stable version
-        GIT_SHALLOW TRUE
-    )
-
-    FetchContent_MakeAvailable(bs_thread_pool)
-
-    FetchContent_GetProperties(bs_thread_pool)
-    message(STATUS "BTP source: ${bs_thread_pool_SOURCE_DIR}")
-    message(STATUS "BTP binary: ${bs_thread_pool_BINARY_DIR}")
+# Link against dl for dlopen/dlsym on Linux
+if(UNIX AND NOT APPLE)
+    target_link_libraries(vma_impl PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
-add_library(btp INTERFACE)
+# ============================================================================
+# Vulkan HPP Dispatch Library - provides VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
+# ============================================================================
+add_library(vulkan_hpp_dispatch SHARED ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_hpp_dispatch.cpp)
 
-target_compile_definitions(btp INTERFACE
-    # BS_THREAD_POOL_NATIVE_EXTENSIONS
+# Use fetched Vulkan headers (must come BEFORE any system includes to take precedence)
+target_include_directories(vulkan_hpp_dispatch PUBLIC ${vulkan_headers_SOURCE_DIR}/include)
+
+# Vulkan-Hpp headers
+target_include_directories(vulkan_hpp_dispatch PUBLIC ${vulkan_hpp_SOURCE_DIR})
+
+# Configure for dynamic dispatch
+target_compile_definitions(vulkan_hpp_dispatch PUBLIC
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+)
+target_compile_definitions(vulkan_hpp_dispatch PRIVATE
+    VULKAN_HPP_STORAGE_SHARED
+    VULKAN_HPP_STORAGE_SHARED_EXPORT
 )
 
-target_include_directories(btp INTERFACE
-    ${bs_thread_pool_SOURCE_DIR}/include
-    ${bs_thread_pool_SOURCE_DIR}/modules
+set_target_properties(vulkan_hpp_dispatch PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET default
+    VISIBILITY_INLINES_HIDDEN OFF
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
-target_link_libraries(btp INTERFACE
-    Threads::Threads
-)
 
-# Fetch stb (stb_image for image loading)
-if(NOT TARGET stb)
-    include(FetchContent)
-
-    FetchContent_Declare(
-        stb
-        GIT_REPOSITORY https://github.com/nothings/stb.git
-        GIT_TAG master
-        GIT_SHALLOW TRUE
-    )
-
-    FetchContent_MakeAvailable(stb)
-
-    FetchContent_GetProperties(stb)
-    message(STATUS "STB source: ${stb_SOURCE_DIR}")
+# Link against dl for dlopen/dlsym on Linux
+if(UNIX AND NOT APPLE)
+    target_link_libraries(vulkan_hpp_dispatch PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
-add_library(stb INTERFACE)
+# ============================================================================
+# Create main interface library for all external dependencies
+# ============================================================================
+add_library(external_libs INTERFACE)
 
-target_include_directories(stb INTERFACE
-    ${stb_SOURCE_DIR}
+# Thread pool (header-only)
+target_include_directories(external_libs INTERFACE ${thread_pool_SOURCE_DIR}/include)
+
+# Fetched Vulkan headers (must come BEFORE vulkan_hpp to take precedence)
+target_include_directories(external_libs INTERFACE ${vulkan_headers_SOURCE_DIR}/include)
+
+# Vulkan-Hpp headers
+target_include_directories(external_libs INTERFACE ${vulkan_hpp_SOURCE_DIR})
+
+# STB headers
+target_include_directories(external_libs INTERFACE ${stb_SOURCE_DIR})
+
+# Configure for dynamic dispatch across the project
+target_compile_definitions(external_libs INTERFACE
+    VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )
 
-# Download and setup Wasmtime runtime
-include(DownloadWasmtime)
-
-add_library(wasmtime INTERFACE)
-target_include_directories(wasmtime INTERFACE ${WASMTIME_INCLUDE_DIR})
-target_link_libraries(wasmtime INTERFACE ${WASMTIME_LIBRARY})
-
-# Copy Wasmtime shared library to output directory
-add_custom_target(copy_wasmtime_library ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${WASMTIME_LIBRARY}
-        ${COMMON_OUTPUT_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${WASMTIME_DLL}
-        ${COMMON_OUTPUT_DIR}
-    COMMENT "Copying Wasmtime library to output directory"
+# ============================================================================
+# Link libraries
+# ============================================================================
+target_link_libraries(external_libs INTERFACE
+    glfw
+    glm::glm
+    GPUOpen::VulkanMemoryAllocator
+    wasmtime_lib
+    vulkan_hpp_dispatch
 )
 
-# Download and setup Slang compiler
-include(DownloadSlang)
-
-# Copy Slang compiler and libraries to output directory for runtime access
-add_custom_target(copy_slang_compiler ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${SLANG_DIR}/bin
-        ${COMMON_OUTPUT_DIR}/slang-bin
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${SLANG_DIR}/lib
-        ${COMMON_OUTPUT_DIR}/slang-bin/lib
-    COMMENT "Copying Slang compiler and libraries to output directory"
-    DEPENDS ${SLANG_COMPILER}
-)
+# ============================================================================
+# Export variables for subprojects
+# ============================================================================
+set(EXTERNAL_LIBS external_libs PARENT_SCOPE)
+set(WASMTIME_ROOT ${WASMTIME_ROOT} PARENT_SCOPE)
+set(STB_INCLUDE_DIR ${stb_SOURCE_DIR} PARENT_SCOPE)
+set(THREAD_POOL_INCLUDE_DIR ${thread_pool_SOURCE_DIR}/include PARENT_SCOPE)
+set(VULKAN_HPP_INCLUDE_DIR ${vulkan_hpp_SOURCE_DIR} PARENT_SCOPE)
+set(VULKAN_HEADERS_INCLUDE_DIR ${vulkan_headers_SOURCE_DIR}/include PARENT_SCOPE)
+set(SLANG_ROOT ${SLANG_ROOT} PARENT_SCOPE)
+set(VMA_INCLUDE_DIR ${vma_SOURCE_DIR}/include PARENT_SCOPE)
