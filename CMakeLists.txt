@@ -26,6 +26,8 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
         FORCE)
 endif()
 
+message(" * Build type: ${CMAKE_BUILD_TYPE}")
+
 # Output directories based on OS
 if(WIN32)
     set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/windows)
@@ -56,30 +58,6 @@ add_subdirectory(lib)
 
 # Add subprojects
 add_subdirectory(subprojects)
-
-# Copy assets to output directory
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/assets
-    ${OUTPUT_DIR}/assets
-    COMMENT "Copying assets to output directory"
-)
-
-# Copy wasmtime library to output lib directory
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${wasmtime_SOURCE_DIR}/lib/libwasmtime.so
-    ${OUTPUT_DIR}/lib/
-    COMMENT "Copying wasmtime library to output directory"
-)
-
-# Copy slang library to output lib directory
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    ${slang_SOURCE_DIR}/lib/libslang.so
-    ${OUTPUT_DIR}/lib/
-    COMMENT "Copying slang library to output directory"
-)
 
 # Generate .clangd file
 generate_clangd_file()

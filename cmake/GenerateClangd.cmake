@@ -5,6 +5,7 @@ function(generate_clangd_file)
     set(CLANGD_CONTENT "CompileFlags:
   CompilationDatabase: ${CMAKE_BINARY_DIR}
   Add:
+    - -std=c17
     - -std=c++23
     - -Wall
     - -Wextra
