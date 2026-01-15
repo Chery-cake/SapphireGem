@@ -4,13 +4,14 @@
 // Uses vulkan.hpp dynamic dispatch loader for Vulkan function loading.
 
 // Include vulkan.hpp first with dynamic dispatch enabled
-#define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
-#include <vulkan/vulkan.hpp>
-
-// Configure VMA to use dynamic function loading
-#define VMA_STATIC_VULKAN_FUNCTIONS 0
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+//#include <vulkan/vulkan.hpp>
 
 // Provide VMA implementation
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnullability-completeness"
+#pragma clang diagnostic ignored "-Wnullability-extension"
+
 #define VMA_IMPLEMENTATION
-#include <vk_mem_alloc.h>
+#include <vk_mem_alloc.hpp>
+
+#pragma clang diagnostic pop
