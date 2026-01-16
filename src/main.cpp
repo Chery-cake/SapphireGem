@@ -1,4 +1,7 @@
+#ifdef ENGINE_DEBUG
 #include "hot_reload.h"
+#endif
+#include <bump_allocator.h>
 #include <print>
 #include <thread>
 
@@ -8,6 +11,7 @@ struct AppContext {
   BumpAllocator *frameAlloc;       // Reset every frame
 };
 
+#ifdef ENGINE_DEBUG
 void onLoad(void *userData) {
   auto *ctx = static_cast<AppContext *>(userData);
   std::print("[Callback] Library loaded! Counter: {}\n", ctx->counter);
@@ -34,6 +38,7 @@ void onReload(void *userData) {
   ctx->counter++;
   std::print("[Callback] Reload #{}\n", ctx->counter);
 }
+#endif // ENGINE_DEBUG
 
 int main(int argc, char *argv[]) {
 
@@ -49,7 +54,8 @@ int main(int argc, char *argv[]) {
 
   AppContext ctx{0, &persistentAlloc, &frameAlloc};
 
-  HotReload core("core", "lib/libcored.so", 2 * 1024 * 1024);
+#ifdef ENGINE_DEBUG
+  HotReload core("core", "lib/libcored.so");
   core.setUserData(&ctx);
 
   core.registerLoadCallback("InitializeResources", onLoad);
@@ -66,12 +72,16 @@ int main(int argc, char *argv[]) {
   }
 
   std::print("\n=== Starting Hot Reload Loop ===\n\n");
+#else
+  std::print("\n=== Starting Main Loop (Hot Reload Disabled) ===\n\n");
+#endif // ENGINE_DEBUG
 
   int frame = 0;
   while (true) {
     // Reset frame allocator at start of each iteration
     frameAlloc.reset();
 
+#ifdef ENGINE_DEBUG
     if (core.checkAndReloadIfNeeded()) {
       std::print(">>> Library reloaded! <<<\n\n");
       // Note: persistentAlloc keeps its data across reloads!
@@ -88,6 +98,7 @@ int main(int argc, char *argv[]) {
       int sum = change(2);
       std::print("(2+5)%2={}\n", sum);
     }
+#endif // ENGINE_DEBUG
 
     // Frame-local allocations (reset every iteration)
     struct TempData {

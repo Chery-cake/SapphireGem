@@ -97,7 +97,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    #core
+    core
     #window
     #device
     #render
@@ -110,6 +110,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
+)
+
+# Add ENGINE_DEBUG definition for Debug builds
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

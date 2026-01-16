@@ -12,10 +12,8 @@
 std::set<HotReload *> HotReload::instances;
 std::mutex HotReload::registry_mutex;
 
-HotReload::HotReload(const std::string &libName, const std::string &libPath,
-                     size_t allocatorSize)
-: name(libName), path(libPath), lastModTime(0), userData(nullptr),
-allocator(std::make_unique<BumpAllocator>(allocatorSize)) {
+HotReload::HotReload(const std::string &libName, const std::string &libPath)
+: name(libName), path(libPath), lastModTime(0), userData(nullptr) {
   setup_signal_handlers();
   std::lock_guard<std::mutex> lock(registry_mutex);
   instances.insert(this);
@@ -77,9 +75,6 @@ void HotReload::unload() {
     std::remove(tempPath.c_str());
     tempPath.clear();
   }
-
-  // Reset allocator on unload
-  resetAllocator();
 }
 
 void *HotReload::getSymbol(const std::string &symbolName) {
@@ -247,16 +242,3 @@ void HotReload::registerLoadCallback(const std::string &name,
                                                                                                                      }
                                                                                                                      }
 
-                                                                                                                     // ============================================================================
-                                                                                                                     // Memory Management
-                                                                                                                     // ============================================================================
-
-                                                                                                                     void *HotReload::allocate(size_t size, size_t alignment) {
-                                                                                                                       return allocator->allocate(size, alignment);
-                                                                                                                     }
-
-                                                                                                                     void HotReload::resetAllocator() {
-                                                                                                                       std::print("[HotReload] Resetting allocator (freed {} bytes).\n",
-                                                                                                                                  allocator->bytes_allocated());
-                                                                                                                       allocator->reset();
-                                                                                                                     }

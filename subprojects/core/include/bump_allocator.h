@@ -3,8 +3,19 @@
 
 #include <cstddef>
 
+// Export macro for Windows/Linux
+#ifdef _WIN32
+#ifdef ENGINE_CORE_EXPORTS
+#define CORE_API __declspec(dllexport)
+#else
+#define CORE_API __declspec(dllimport)
+#endif
+#else
+#define CORE_API __attribute__((visibility("default")))
+#endif
+
 // Simple Bump Allocator for fast allocations
-class BumpAllocator {
+class CORE_API BumpAllocator {
 public:
   explicit BumpAllocator(size_t size);
   ~BumpAllocator();
