@@ -9,8 +9,7 @@
 // BumpAllocator Implementation
 // ============================================================================
 
-BumpAllocator::BumpAllocator(size_t size)
-: total_size(size), offset(0) {
+BumpAllocator::BumpAllocator(size_t size) : total_size(size), offset(0) {
   memory = static_cast<char *>(::operator new(size));
   if (!memory) {
     throw std::bad_alloc();

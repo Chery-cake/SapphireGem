@@ -3,8 +3,19 @@
 
 #include <cstddef>
 
+// Export macro for Windows/Linux
+#ifdef _WIN32
+#ifdef ENGINE_CORE_EXPORTS
+#define CORE_API __declspec(dllexport)
+#else
+#define CORE_API __declspec(dllimport)
+#endif
+#else
+#define CORE_API __attribute__((visibility("default")))
+#endif
+
 // Simple Bump Allocator for fast allocations
-class BumpAllocator {
+class CORE_API BumpAllocator {
 public:
   explicit BumpAllocator(size_t size);
   ~BumpAllocator();
@@ -28,7 +39,8 @@ private:
 template <typename T> class ScopedAlloc {
 public:
   ScopedAlloc(BumpAllocator &alloc, size_t count = 1)
-  : allocator(alloc), ptr(nullptr), initial_offset(alloc.bytes_allocated()) {
+      : allocator(alloc), ptr(nullptr),
+        initial_offset(alloc.bytes_allocated()) {
     ptr = static_cast<T *>(alloc.allocate(sizeof(T) * count, alignof(T)));
   }
 

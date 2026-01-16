@@ -1,17 +1,12 @@
 # ==============================================================================
 # Core Engine Module
 # ==============================================================================
-# Provides common functionality shared across all engine modules:
-# - Thread-pool management
-# - Asset registry
-# - Main engine configurations
-# ==============================================================================
 
 cmake_minimum_required(VERSION 3.25)
 
-project(core 
+project(core
     VERSION 0.1.0
-    DESCRIPTION "Core engine module - Threading, asset registry"
+    DESCRIPTION "Core engine module - Threading, memory management, asset registry"
     LANGUAGES CXX C
 )
 
@@ -35,7 +30,7 @@ add_library(${PROJECT_NAME} SHARED ${CORE_SOURCES} ${CORE_HEADERS})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE: ${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -47,13 +42,13 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
         nlohmann_json::nlohmann_json
+        glm::glm
     PRIVATE
         thread_pool
-        glm::glm
 )
 
 # ==============================================================================
-# Compiler Options (Per-Target Only)
+# Compiler Options
 # ==============================================================================
 target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
@@ -62,12 +57,12 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
-        ENGINE_CORE_EXPORTS
+        CORE_EXPORTS
         $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 
 # ==============================================================================
-# Version Information
+# Version and Library Properties
 # ==============================================================================
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
@@ -75,4 +70,4 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     EXPORT_NAME ${PROJECT_NAME}
 )
 
-message(STATUS "Configured: ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "Configured:  ${PROJECT_NAME} v${PROJECT_VERSION}")

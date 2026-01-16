@@ -57,7 +57,7 @@ FetchContent_MakeAvailable(zlib)
 FetchContent_Declare(
     physfs
     GIT_REPOSITORY https://github.com/icculus/physfs.git
-    GIT_TAG release-3.2.0
+    GIT_TAG stable-3.2
     GIT_SHALLOW TRUE
 )
 set(PHYSFS_BUILD_STATIC OFF CACHE BOOL "" FORCE)
@@ -65,6 +65,7 @@ set(PHYSFS_BUILD_SHARED ON CACHE BOOL "" FORCE)
 set(PHYSFS_BUILD_TEST OFF CACHE BOOL "" FORCE)
 set(PHYSFS_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(physfs)
+set(CMAKE_SKIP_RPATH OFF CACHE BOOL "Skip RPATH" FORCE)
 
 # ==============================================================================
 # Recast & Detour - Navigation Meshes

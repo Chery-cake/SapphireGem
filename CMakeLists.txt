@@ -1,9 +1,6 @@
 # ==============================================================================
 # Modular C++ Engine - Root CMakeLists.txt
 # ==============================================================================
-# Orchestrates all subprojects, global dependency configuration, versioning,
-# and build types. Enforces out-of-source builds and modern CMake practices.
-# ==============================================================================
 
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.30)
@@ -23,7 +20,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 endif()
 
 # ==============================================================================
-# Global Settings (No Global Compiler Flags - Per-Target Only)
+# Global Settings
 # ==============================================================================
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,7 +31,6 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-# Export compile_commands.json for tooling
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Enable POSIX features
@@ -44,13 +40,12 @@ else()
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
 
-# Default to Release build if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type" FORCE)
 endif()
 
 # Set output directories
-set(TARGET_OS ${CMAKE_HOST_SYSTEM_NAME}) # TODO add system to define OS for cross-compiling
+set(TARGET_OS ${CMAKE_HOST_SYSTEM_NAME})
 set(OUTPUT_DIR ${CMAKE_BINARY_DIR}/bin/${CMAKE_BUILD_TYPE}/${TARGET_OS})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIR}/lib)
@@ -71,12 +66,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 
 # ==============================================================================
-# Dependencies (via lib/ subdirectory)
+# Dependencies
 # ==============================================================================
 add_subdirectory(lib)
 
 # ==============================================================================
-# Engine Subprojects (Shared Libraries via subprojects/ subdirectory)
+# Engine Subprojects
 # ==============================================================================
 add_subdirectory(subprojects)
 
@@ -97,7 +92,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    #core
+    core
     #window
     #device
     #render
@@ -106,16 +101,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     #runtime
 )
 
-# Per-target compiler options (never global)
 target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-  INSTALL_RPATH "$ORIGIN/lib"
-  BUILD_RPATH "$ORIGIN/lib"
-  BUILD_WITH_INSTALL_RPATH ON
+# Add ENGINE_DEBUG definition for Debug builds
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 
 # ==============================================================================
@@ -146,6 +139,9 @@ install(TARGETS ${PROJECT_NAME}
 
 install(DIRECTORY ${OUTPUT_DIR}/assets DESTINATION share/engine)
 
+# ==============================================================================
+# Debug Output
+# ==============================================================================
 message(STATUS "")
 message(STATUS "========================================")
 message(STATUS " Modular C++ Engine v${PROJECT_VERSION}")
@@ -153,4 +149,6 @@ message(STATUS "========================================")
 message(STATUS " Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS " C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS " Output: ${OUTPUT_DIR}")
+message(STATUS " Runtime:  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS " Library: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 message(STATUS "========================================")
