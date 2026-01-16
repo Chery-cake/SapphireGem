@@ -1,42 +1,20 @@
 #ifdef ENGINE_DEBUG
 #include "hot_reload.h"
 #endif
-#include <bump_allocator.h>
 #include <print>
 #include <thread>
 
-struct AppContext {
-  int counter;
-  BumpAllocator *persistentAlloc;  // Never reset
-  BumpAllocator *frameAlloc;       // Reset every frame
-};
-
 #ifdef ENGINE_DEBUG
 void onLoad(void *userData) {
-  auto *ctx = static_cast<AppContext *>(userData);
-  std::print("[Callback] Library loaded! Counter: {}\n", ctx->counter);
-
-  // Allocate persistent data (survives across frames)
-  if (ctx->persistentAlloc) {
-    int *persistent = static_cast<int*>(
-      ctx->persistentAlloc->allocate(sizeof(int), alignof(int))
-    );
-    *persistent = 42;
-    std::print("[Callback] Allocated persistent data\n");
-  }
+  std::print("[Main] Core library loaded successfully\n");
 }
 
 void onUnload(void *userData) {
-  auto *ctx = static_cast<AppContext *>(userData);
-  std::print("[Callback] Cleaning up!  Persistent memory used: {} bytes\n",
-             ctx->persistentAlloc->bytes_allocated());
-  ctx->counter = 0;
+  std::print("[Main] Core library unloading\n");
 }
 
 void onReload(void *userData) {
-  auto *ctx = static_cast<AppContext *>(userData);
-  ctx->counter++;
-  std::print("[Callback] Reload #{}\n", ctx->counter);
+  std::print("[Main] Core library reloading\n");
 }
 #endif // ENGINE_DEBUG
 
@@ -48,15 +26,9 @@ int main(int argc, char *argv[]) {
     std::print("argv[{}]: {}\n", i, argv[i]);
   }
 
-  // Create separate allocators for different lifetimes
-  BumpAllocator persistentAlloc(1 * 1024 * 1024);  // 1MB - never reset
-  BumpAllocator frameAlloc(1 * 1024 * 1024);        // 1MB - reset every frame
-
-  AppContext ctx{0, &persistentAlloc, &frameAlloc};
-
 #ifdef ENGINE_DEBUG
+  // Initialize hot reload system for core library
   HotReload core("core", "lib/libcored.so");
-  core.setUserData(&ctx);
 
   core.registerLoadCallback("InitializeResources", onLoad);
   core.registerUnloadCallback("CleanupResources", onUnload);
@@ -67,26 +39,32 @@ int main(int argc, char *argv[]) {
   core.registerReloadSymbol("lib_on_reload");
 
   if (!core.load()) {
-    std::print(stderr, "Failed to load library!\n");
+    std::print(stderr, "Failed to load core library!\n");
     return 1;
   }
 
   std::print("\n=== Starting Hot Reload Loop ===\n\n");
 #else
   std::print("\n=== Starting Main Loop (Hot Reload Disabled) ===\n\n");
+  // In release mode, you would initialize the core library directly
+  // For now, just run without hot reload
 #endif // ENGINE_DEBUG
 
   int frame = 0;
   while (true) {
-    // Reset frame allocator at start of each iteration
-    frameAlloc.reset();
-
 #ifdef ENGINE_DEBUG
+    // Check for library changes and reload if needed
     if (core.checkAndReloadIfNeeded()) {
-      std::print(">>> Library reloaded! <<<\n\n");
-      // Note: persistentAlloc keeps its data across reloads!
+      std::print(">>> Core library reloaded! <<<\n\n");
     }
 
+    // Call frame begin function to reset frame allocator
+    auto begin_frame_func = (void (*)())core.getSymbol("begin_frame");
+    if (begin_frame_func) {
+      begin_frame_func();
+    }
+
+    // Call test functions from core library
     auto print_func = (void (*)())core.getSymbol("test_print");
     auto change = (int (*)(int))core.getSymbol("change");
 
@@ -100,32 +78,10 @@ int main(int argc, char *argv[]) {
     }
 #endif // ENGINE_DEBUG
 
-    // Frame-local allocations (reset every iteration)
-    struct TempData {
-      int values[10];
-      char message[64];
-    };
-
-    auto *temp = static_cast<TempData *>(
-      frameAlloc.allocate(sizeof(TempData), alignof(TempData)));
-
-    if (temp) {
-      for (int i = 0; i < 10; i++) {
-        temp->values[i] = i * frame;
-      }
-
-      std::print("Frame allocator:  {}/{} bytes (frame {})\n",
-                 frameAlloc.bytes_allocated(),
-                 frameAlloc.capacity(),
-                 frame);
-      std::print("Persistent allocator: {}/{} bytes\n",
-                 persistentAlloc.bytes_allocated(),
-                 persistentAlloc.capacity());
-    }
-
+    std::print("Frame {}\n", frame);
     std::print("\n");
     frame++;
-    std::this_thread::sleep_for(std::chrono:: seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(2));
   }
 
   return EXIT_SUCCESS;
