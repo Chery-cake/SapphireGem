@@ -47,9 +47,9 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
         nlohmann_json::nlohmann_json
+        glm::glm
     PRIVATE
         thread_pool
-        glm::glm
 )
 
 # ==============================================================================
@@ -73,6 +73,8 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
     EXPORT_NAME ${PROJECT_NAME}
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_RPATH "$ORIGIN"
 )
 
 message(STATUS "Configured: ${PROJECT_NAME} v${PROJECT_VERSION}")
