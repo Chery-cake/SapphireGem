@@ -8,11 +8,25 @@
 
 #ifdef ENGINE_DEBUG
 // In debug mode with hot reload, we need to allocate singletons in main executable
-// memory so they persist across library reloads
+// memory so they persist across library reloads.
 static core::MemoryManager *g_persistentMemoryManager = nullptr;
 static core::ThreadManager *g_persistentThreadManager = nullptr;
 
 coreState g_coreState = {nullptr, nullptr};
+
+// Cleanup function to be called on exit
+void cleanupPersistentSingletons() {
+  if (g_persistentThreadManager) {
+    g_persistentThreadManager->shutdown();
+    delete g_persistentThreadManager;
+    g_persistentThreadManager = nullptr;
+  }
+  if (g_persistentMemoryManager) {
+    g_persistentMemoryManager->shutdown();
+    delete g_persistentMemoryManager;
+    g_persistentMemoryManager = nullptr;
+  }
+}
 
 void onLoad(void *userData) {
   std::print("[Main] Core library loaded successfully\n");
@@ -27,6 +41,9 @@ void onLoad(void *userData) {
       g_persistentThreadManager = new core::ThreadManager();
       g_coreState.memory = g_persistentMemoryManager;
       g_coreState.thread = g_persistentThreadManager;
+      
+      // Register cleanup function to be called on exit
+      std::atexit(cleanupPersistentSingletons);
     }
     lib_on_load_func(&g_coreState);
   }
@@ -41,6 +58,10 @@ void onUnload(void *userData) {
   if (lib_on_unload_func) {
     lib_on_unload_func(&g_coreState);
   }
+  
+  // Note: We don't delete the persistent singletons here because this is called
+  // during hot reload. They should only be deleted on final application exit,
+  // which is handled by the signal handlers or when the HotReload destructor is called.
 }
 
 void onReload(void *userData) {
@@ -76,6 +97,15 @@ int main(int argc, char *argv[]) {
 
   if (!core.load()) {
     std::print(stderr, "Failed to load core library!\n");
+    // Cleanup on failure
+    if (g_persistentMemoryManager) {
+      delete g_persistentMemoryManager;
+      g_persistentMemoryManager = nullptr;
+    }
+    if (g_persistentThreadManager) {
+      delete g_persistentThreadManager;
+      g_persistentThreadManager = nullptr;
+    }
     return 1;
   }
 
