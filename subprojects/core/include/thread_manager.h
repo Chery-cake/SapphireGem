@@ -1,7 +1,7 @@
 #ifndef THREAD_MANAGER_H_
 #define THREAD_MANAGER_H_
 
-#include "export.h"
+#include "core_export.h"
 #include <BS_thread_pool.hpp>
 #include <cstdint>
 #include <functional>

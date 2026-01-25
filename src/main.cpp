@@ -1,3 +1,4 @@
+#include <cstdlib>
 #ifdef ENGINE_DEBUG
 #include "hot_reload.h"
 #endif

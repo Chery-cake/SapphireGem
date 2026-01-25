@@ -1,18 +1,8 @@
 #ifndef BUMP_ALLOCATOR_H_
 #define BUMP_ALLOCATOR_H_
 
+#include "core_export.h"
 #include <cstddef>
-
-// Export macro for Windows/Linux
-#ifdef _WIN32
-#ifdef ENGINE_CORE_EXPORTS
-#define CORE_API __declspec(dllexport)
-#else
-#define CORE_API __declspec(dllimport)
-#endif
-#else
-#define CORE_API __attribute__((visibility("default")))
-#endif
 
 // Simple Bump Allocator for fast allocations
 class CORE_API BumpAllocator {

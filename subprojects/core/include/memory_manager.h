@@ -4,17 +4,6 @@
 #include "bump_allocator.h"
 #include <memory>
 
-// Export macro for Windows/Linux
-#ifdef _WIN32
-#ifdef ENGINE_CORE_EXPORTS
-#define CORE_API __declspec(dllexport)
-#else
-#define CORE_API __declspec(dllimport)
-#endif
-#else
-#define CORE_API __attribute__((visibility("default")))
-#endif
-
 namespace core {
 
 // Manages memory allocators for the engine

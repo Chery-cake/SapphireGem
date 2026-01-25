@@ -44,8 +44,8 @@ public:
   void registerReloadSymbol(const std::string &symbolName);
 
   // User data pointer (passed to all callbacks)
-  void setUserData(void *data) { userData = data; }
-  void *getUserData() const { return userData; }
+  void setUserData(void *newData) { data = newData; }
+  void *getUserData() const { return data; }
 
 private:
   struct CallbackEntry {
@@ -67,7 +67,7 @@ private:
   std::string path;
   std::string tempPath;
   std::time_t lastModTime;
-  void *userData;
+  void *data;
 
   // Lifecycle callbacks
   std::vector<CallbackEntry> loadCallbacks;

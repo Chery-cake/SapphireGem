@@ -13,7 +13,7 @@ std::set<HotReload *> HotReload::instances;
 std::mutex HotReload::registry_mutex;
 
 HotReload::HotReload(const std::string &libName, const std::string &libPath)
-    : name(libName), path(libPath), lastModTime(0), userData(nullptr) {
+    : name(libName), path(libPath), lastModTime(0), data(nullptr) {
   setup_signal_handlers();
   std::lock_guard<std::mutex> lock(registry_mutex);
   instances.insert(this);
@@ -213,7 +213,7 @@ void HotReload::registerReloadSymbol(const std::string &symbolName) {
 void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
   for (auto &entry : callbacks) {
     try {
-      entry.callback(userData);
+      entry.callback(data);
       std::print("[HotReload] Executed callback: '{}'\n", entry.name);
     } catch (const std::exception &e) {
       std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
@@ -228,7 +228,7 @@ void HotReload::executeSymbolCallbacks(
     auto *func = reinterpret_cast<SymbolCallback>(getSymbol(entry.symbolName));
     if (func) {
       try {
-        func(userData);
+        func(data);
         std::print("[HotReload] Executed symbol callback: '{}'\n", entry.name);
       } catch (const std::exception &e) {
         std::print(stderr,
