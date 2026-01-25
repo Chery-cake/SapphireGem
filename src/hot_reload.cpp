@@ -13,7 +13,8 @@ std::set<HotReload *> HotReload::instances;
 std::mutex HotReload::registry_mutex;
 
 HotReload::HotReload(const std::string &libName, const std::string &libPath)
-    : name(libName), path(libPath), lastModTime(0), data(nullptr) {
+    : name(libName), path(libPath), lastModTime(0), data(nullptr),
+      savedReloadData(nullptr) {
   setup_signal_handlers();
   std::lock_guard<std::mutex> lock(registry_mutex);
   instances.insert(this);
@@ -50,7 +51,6 @@ bool HotReload::load() {
 
   // Execute load callbacks
   executeCallbacks(loadCallbacks);
-  executeSymbolCallbacks(loadSymbols);
 
   std::print("[HotReload] '{}' loaded successfully.\n", name);
   return true;
@@ -60,7 +60,6 @@ void HotReload::unload() {
   if (handle) {
     // Execute unload callbacks
     executeCallbacks(unloadCallbacks);
-    executeSymbolCallbacks(unloadSymbols);
 
 #ifdef _WIN32
     FreeLibrary(handle);
@@ -90,9 +89,8 @@ void *HotReload::getSymbol(const std::string &symbolName) {
 bool HotReload::reload() {
   std::print("[HotReload] Reloading '{}'...\n", name);
 
-  // Execute reload callbacks before unloading
+  // Execute reload callbacks before unloading to save state
   executeCallbacks(reloadCallbacks);
-  executeSymbolCallbacks(reloadSymbols);
 
   unload();
   return load();
@@ -198,18 +196,6 @@ void HotReload::registerReloadCallback(const std::string &name,
   reloadCallbacks.push_back({name, std::move(callback)});
 }
 
-void HotReload::registerLoadSymbol(const std::string &symbolName) {
-  loadSymbols.push_back({symbolName, symbolName});
-}
-
-void HotReload::registerUnloadSymbol(const std::string &symbolName) {
-  unloadSymbols.push_back({symbolName, symbolName});
-}
-
-void HotReload::registerReloadSymbol(const std::string &symbolName) {
-  reloadSymbols.push_back({symbolName, symbolName});
-}
-
 void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
   for (auto &entry : callbacks) {
     try {
@@ -218,26 +204,6 @@ void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
     } catch (const std::exception &e) {
       std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
                  entry.name, e.what());
-    }
-  }
-}
-
-void HotReload::executeSymbolCallbacks(
-    std::vector<SymbolCallbackEntry> &entries) {
-  for (auto &entry : entries) {
-    auto *func = reinterpret_cast<SymbolCallback>(getSymbol(entry.symbolName));
-    if (func) {
-      try {
-        func(data);
-        std::print("[HotReload] Executed symbol callback: '{}'\n", entry.name);
-      } catch (const std::exception &e) {
-        std::print(stderr,
-                   "[HotReload] Symbol callback '{}' threw exception: {}\n",
-                   entry.name, e.what());
-      }
-    } else {
-      std::print(stderr, "[HotReload] Symbol '{}' not found in library.\n",
-                 entry.symbolName);
     }
   }
 }

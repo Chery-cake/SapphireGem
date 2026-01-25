@@ -1,18 +1,46 @@
 #include <cstdlib>
 #ifdef ENGINE_DEBUG
 #include "hot_reload.h"
+#include "core_export_functions.h"
 #endif
 #include <print>
 #include <thread>
 
 #ifdef ENGINE_DEBUG
+coreState g_coreState = {nullptr, nullptr};
+
 void onLoad(void *userData) {
   std::print("[Main] Core library loaded successfully\n");
+  
+  // Get the symbol and call it
+  HotReload *core = static_cast<HotReload *>(userData);
+  auto lib_on_load_func = (void (*)(void *))core->getSymbol("lib_on_load");
+  if (lib_on_load_func) {
+    lib_on_load_func(&g_coreState);
+  }
 }
 
-void onUnload(void *userData) { std::print("[Main] Core library unloading\n"); }
+void onUnload(void *userData) {
+  std::print("[Main] Core library unloading\n");
+  
+  // Get the symbol and call it
+  HotReload *core = static_cast<HotReload *>(userData);
+  auto lib_on_unload_func = (void (*)(void *))core->getSymbol("lib_on_unload");
+  if (lib_on_unload_func) {
+    lib_on_unload_func(&g_coreState);
+  }
+}
 
-void onReload(void *userData) { std::print("[Main] Core library reloading\n"); }
+void onReload(void *userData) {
+  std::print("[Main] Core library reloading\n");
+  
+  // Get the symbol and call it
+  HotReload *core = static_cast<HotReload *>(userData);
+  auto lib_on_reload_func = (void (*)(void *))core->getSymbol("lib_on_reload");
+  if (lib_on_reload_func) {
+    lib_on_reload_func(&g_coreState);
+  }
+}
 #endif // ENGINE_DEBUG
 
 int main(int argc, char *argv[]) {
@@ -27,13 +55,12 @@ int main(int argc, char *argv[]) {
   // Initialize hot reload system for core library
   HotReload core("core", "lib/libcored.so");
 
+  // Set the core as user data for the callbacks
+  core.setUserData(&core);
+
   core.registerLoadCallback("InitializeResources", onLoad);
   core.registerUnloadCallback("CleanupResources", onUnload);
   core.registerReloadCallback("PrepareReload", onReload);
-
-  core.registerLoadSymbol("lib_on_load");
-  core.registerUnloadSymbol("lib_on_unload");
-  core.registerReloadSymbol("lib_on_reload");
 
   if (!core.load()) {
     std::print(stderr, "Failed to load core library!\n");

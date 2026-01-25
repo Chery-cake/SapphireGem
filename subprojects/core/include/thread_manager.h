@@ -24,6 +24,12 @@ public:
   // Singleton access
   static ThreadManager &instance();
 
+#ifdef ENGINE_DEBUG
+  // Hot reload support: set/get the singleton instance
+  static void setInstance(ThreadManager *inst);
+  static ThreadManager *getInstance();
+#endif
+
   // Delete copy and move operations
   ThreadManager(const ThreadManager &) = delete;
   ThreadManager &operator=(const ThreadManager &) = delete;

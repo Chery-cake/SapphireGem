@@ -12,38 +12,58 @@ struct coreState {
   core::MemoryManager *memory;
 };
 
-static coreState *state;
-
 // Lifecycle callbacks that the hot reload system can call
 extern "C" {
 void lib_on_load(void *data) {
-  std::print("[Core] Library loaded! Initializing memory manager...\n");
+  std::print("[Core] Library loaded!\n");
 
-  // Initialize memory
-  state = static_cast<coreState *>(data);
-  state->thread = &core::ThreadManager::instance();
-  state->memory = &core::MemoryManager::instance();
-
-  std::print("[Core] Memory manager initialized\n");
+  coreState *state = static_cast<coreState *>(data);
+  
+  // If we have saved singleton pointers, restore them
+  if (state && state->thread && state->memory) {
+    std::print("[Core] Restoring saved singleton instances...\n");
+    core::ThreadManager::setInstance(state->thread);
+    core::MemoryManager::setInstance(state->memory);
+  } else {
+    // First load - create new singleton instances
+    std::print("[Core] First load - initializing singletons...\n");
+    if (state) {
+      state->thread = &core::ThreadManager::instance();
+      state->memory = &core::MemoryManager::instance();
+      state->memory->initialize();
+      state->thread->initialize();
+    }
+  }
+  
+  std::print("[Core] Singletons ready\n");
 }
 
 void lib_on_unload(void *data) {
   std::print("[Core] Library unloading!\n");
-  std::print("[Core] Persistent memory used: {} bytes\n",
-             core::MemoryManager::instance().getPersistentBytesAllocated());
-
-  // Clear memory
-  state = static_cast<coreState *>(data);
-  state->thread->shutdown();
-  state->memory->shutdown();
+  
+  coreState *state = static_cast<coreState *>(data);
+  
+  if (state && state->memory) {
+    std::print("[Core] Persistent memory used: {} bytes\n",
+               state->memory->getPersistentBytesAllocated());
+  }
+  
+  // DO NOT shutdown or clear the singletons - we want to preserve them!
+  // Just clear the global pointers so the library can be unloaded
+  std::print("[Core] Preserving singleton instances for reload...\n");
 }
 
 void lib_on_reload(void *data) {
   std::print("[Core] Library preparing for reload...\n");
-  // Save state here if needed
-  state = static_cast<coreState *>(data);
-  state->thread = &core::ThreadManager::instance();
-  state->memory = &core::MemoryManager::instance();
+  
+  // This is called BEFORE unload
+  // Save the current singleton pointers so they can be restored after reload
+  coreState *state = static_cast<coreState *>(data);
+  if (state) {
+    state->thread = core::ThreadManager::getInstance();
+    state->memory = core::MemoryManager::getInstance();
+    std::print("[Core] Saved singleton pointers for reload\n");
+  }
 }
 
 // Your actual plugin functions

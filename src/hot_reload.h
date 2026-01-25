@@ -17,7 +17,6 @@ class HotReload {
 public:
   // Lifecycle callback types
   using LifecycleCallback = std::function<void(void *)>;
-  using SymbolCallback = void (*)(void *); // Function pointer from library
 
   HotReload(const std::string &libName, const std::string &libPath);
   virtual ~HotReload();
@@ -38,14 +37,13 @@ public:
   void registerReloadCallback(const std::string &name,
                               LifecycleCallback callback);
 
-  // Register callbacks from library symbols
-  void registerLoadSymbol(const std::string &symbolName);
-  void registerUnloadSymbol(const std::string &symbolName);
-  void registerReloadSymbol(const std::string &symbolName);
-
   // User data pointer (passed to all callbacks)
   void setUserData(void *newData) { data = newData; }
   void *getUserData() const { return data; }
+
+  // Saved data storage for hot reload persistence
+  void setSavedData(void *savedData) { savedReloadData = savedData; }
+  void *getSavedData() const { return savedReloadData; }
 
 private:
   struct CallbackEntry {
@@ -53,31 +51,21 @@ private:
     LifecycleCallback callback;
   };
 
-  struct SymbolCallbackEntry {
-    std::string name;
-    std::string symbolName;
-  };
-
   bool copy_file();
   std::string makeTempLibPath();
   void executeCallbacks(std::vector<CallbackEntry> &callbacks);
-  void executeSymbolCallbacks(std::vector<SymbolCallbackEntry> &entries);
 
   std::string name;
   std::string path;
   std::string tempPath;
   std::time_t lastModTime;
   void *data;
+  void *savedReloadData;
 
   // Lifecycle callbacks
   std::vector<CallbackEntry> loadCallbacks;
   std::vector<CallbackEntry> unloadCallbacks;
   std::vector<CallbackEntry> reloadCallbacks;
-
-  // Symbol-based callbacks
-  std::vector<SymbolCallbackEntry> loadSymbols;
-  std::vector<SymbolCallbackEntry> unloadSymbols;
-  std::vector<SymbolCallbackEntry> reloadSymbols;
 
   // Instance tracking
   static std::set<HotReload *> instances;

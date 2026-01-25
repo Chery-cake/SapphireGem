@@ -11,6 +11,12 @@ class CORE_API MemoryManager {
 public:
   static MemoryManager &instance();
 
+#ifdef ENGINE_DEBUG
+  // Hot reload support: set/get the singleton instance
+  static void setInstance(MemoryManager *inst);
+  static MemoryManager *getInstance();
+#endif
+
   // Initialize the memory manager with allocator sizes
   void initialize(size_t persistentSize = 10 * 1024 * 1024, // 10MB
                   size_t frameSize = 5 * 1024 * 1024);      // 5MB
