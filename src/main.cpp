@@ -7,73 +7,7 @@
 #include <thread>
 
 #ifdef ENGINE_DEBUG
-// In debug mode with hot reload, we need to allocate singletons in main executable
-// memory so they persist across library reloads.
-static core::MemoryManager *g_persistentMemoryManager = nullptr;
-static core::ThreadManager *g_persistentThreadManager = nullptr;
-
-coreState g_coreState = {nullptr, nullptr};
-
-// Cleanup function to be called on exit
-void cleanupPersistentSingletons() {
-  if (g_persistentThreadManager) {
-    g_persistentThreadManager->shutdown();
-    delete g_persistentThreadManager;
-    g_persistentThreadManager = nullptr;
-  }
-  if (g_persistentMemoryManager) {
-    g_persistentMemoryManager->shutdown();
-    delete g_persistentMemoryManager;
-    g_persistentMemoryManager = nullptr;
-  }
-}
-
-void onLoad(void *userData) {
-  std::print("[Main] Core library loaded successfully\n");
-  
-  // Get the symbol and call it
-  HotReload *core = static_cast<HotReload *>(userData);
-  auto lib_on_load_func = (void (*)(void *))core->getSymbol("lib_on_load");
-  if (lib_on_load_func) {
-    // If this is the first load, allocate the singletons in main executable memory
-    if (!g_persistentMemoryManager) {
-      g_persistentMemoryManager = new core::MemoryManager();
-      g_persistentThreadManager = new core::ThreadManager();
-      g_coreState.memory = g_persistentMemoryManager;
-      g_coreState.thread = g_persistentThreadManager;
-      
-      // Register cleanup function to be called on exit
-      std::atexit(cleanupPersistentSingletons);
-    }
-    lib_on_load_func(&g_coreState);
-  }
-}
-
-void onUnload(void *userData) {
-  std::print("[Main] Core library unloading\n");
-  
-  // Get the symbol and call it
-  HotReload *core = static_cast<HotReload *>(userData);
-  auto lib_on_unload_func = (void (*)(void *))core->getSymbol("lib_on_unload");
-  if (lib_on_unload_func) {
-    lib_on_unload_func(&g_coreState);
-  }
-  
-  // Note: We don't delete the persistent singletons here because this is called
-  // during hot reload. They should only be deleted on final application exit,
-  // which is handled by the signal handlers or when the HotReload destructor is called.
-}
-
-void onReload(void *userData) {
-  std::print("[Main] Core library reloading\n");
-  
-  // Get the symbol and call it
-  HotReload *core = static_cast<HotReload *>(userData);
-  auto lib_on_reload_func = (void (*)(void *))core->getSymbol("lib_on_reload");
-  if (lib_on_reload_func) {
-    lib_on_reload_func(&g_coreState);
-  }
-}
+// No global state needed - everything is managed by HotReload object
 #endif // ENGINE_DEBUG
 
 int main(int argc, char *argv[]) {
@@ -88,24 +22,81 @@ int main(int argc, char *argv[]) {
   // Initialize hot reload system for core library
   HotReload core("core", "lib/libcored.so");
 
-  // Set the core as user data for the callbacks
-  core.setUserData(&core);
+  // Create and store the coreState in the HotReload object's data
+  coreState *state = new coreState{nullptr, nullptr};
+  core.setUserData(state);
 
-  core.registerLoadCallback("InitializeResources", onLoad);
-  core.registerUnloadCallback("CleanupResources", onUnload);
-  core.registerReloadCallback("PrepareReload", onReload);
+  // Register load callback using lambda for easier identification
+  core.registerLoadCallback("core_load", [&core](void *userData) {
+    std::print("[Main] Core library loaded successfully\n");
+    
+    coreState *state = static_cast<coreState *>(userData);
+    auto lib_on_load_func = (void (*)(void *))core.getSymbol("lib_on_load");
+    
+    if (lib_on_load_func) {
+      // If this is the first load, allocate the singletons in main executable memory
+      if (!state->memory) {
+        state->memory = new core::MemoryManager();
+        state->thread = new core::ThreadManager();
+      }
+      lib_on_load_func(state);
+    }
+  });
+
+  // Register unload callback using lambda
+  core.registerUnloadCallback("core_unload", [&core](void *userData) {
+    std::print("[Main] Core library unloading\n");
+    
+    coreState *state = static_cast<coreState *>(userData);
+    auto lib_on_unload_func = (void (*)(void *))core.getSymbol("lib_on_unload");
+    
+    if (lib_on_unload_func) {
+      lib_on_unload_func(state);
+    }
+    
+    // On final unload (when HotReload is being destroyed), cleanup the state
+    // This will be called last when the core object goes out of scope
+  });
+  
+  // Register a cleanup callback to be executed when core is destroyed
+  // Using a separate lambda to handle final cleanup
+  core.registerUnloadCallback("core_cleanup", [](void *userData) {
+    coreState *state = static_cast<coreState *>(userData);
+    if (state) {
+      if (state->thread) {
+        state->thread->shutdown();
+        delete state->thread;
+      }
+      if (state->memory) {
+        state->memory->shutdown();
+        delete state->memory;
+      }
+      delete state;
+    }
+  });
+
+  // Register reload callback using lambda
+  core.registerReloadCallback("core_reload", [&core](void *userData) {
+    std::print("[Main] Core library reloading\n");
+    
+    coreState *state = static_cast<coreState *>(userData);
+    auto lib_on_reload_func = (void (*)(void *))core.getSymbol("lib_on_reload");
+    
+    if (lib_on_reload_func) {
+      lib_on_reload_func(state);
+    }
+  });
 
   if (!core.load()) {
     std::print(stderr, "Failed to load core library!\n");
     // Cleanup on failure
-    if (g_persistentMemoryManager) {
-      delete g_persistentMemoryManager;
-      g_persistentMemoryManager = nullptr;
+    if (state->memory) {
+      delete state->memory;
     }
-    if (g_persistentThreadManager) {
-      delete g_persistentThreadManager;
-      g_persistentThreadManager = nullptr;
+    if (state->thread) {
+      delete state->thread;
     }
+    delete state;
     return 1;
   }
 
