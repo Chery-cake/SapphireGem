@@ -7,6 +7,11 @@
 #include <thread>
 
 #ifdef ENGINE_DEBUG
+// In debug mode with hot reload, we need to allocate singletons in main executable
+// memory so they persist across library reloads
+static core::MemoryManager *g_persistentMemoryManager = nullptr;
+static core::ThreadManager *g_persistentThreadManager = nullptr;
+
 coreState g_coreState = {nullptr, nullptr};
 
 void onLoad(void *userData) {
@@ -16,6 +21,13 @@ void onLoad(void *userData) {
   HotReload *core = static_cast<HotReload *>(userData);
   auto lib_on_load_func = (void (*)(void *))core->getSymbol("lib_on_load");
   if (lib_on_load_func) {
+    // If this is the first load, allocate the singletons in main executable memory
+    if (!g_persistentMemoryManager) {
+      g_persistentMemoryManager = new core::MemoryManager();
+      g_persistentThreadManager = new core::ThreadManager();
+      g_coreState.memory = g_persistentMemoryManager;
+      g_coreState.thread = g_persistentThreadManager;
+    }
     lib_on_load_func(&g_coreState);
   }
 }

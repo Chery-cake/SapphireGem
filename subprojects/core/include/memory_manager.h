@@ -38,9 +38,15 @@ public:
   MemoryManager(const MemoryManager &) = delete;
   MemoryManager &operator=(const MemoryManager &) = delete;
 
+#ifdef ENGINE_DEBUG
+  // In debug mode, allow direct instantiation for hot reload
+  MemoryManager() = default;
+  ~MemoryManager() = default;
+#else
 private:
   MemoryManager() = default;
   ~MemoryManager() = default;
+#endif
 
   std::unique_ptr<BumpAllocator> persistentAlloc;
   std::unique_ptr<BumpAllocator> frameAlloc;

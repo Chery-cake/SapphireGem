@@ -114,9 +114,15 @@ public:
    */
   [[nodiscard]] bool isRunning() const { return up_pool != nullptr; }
 
+#ifdef ENGINE_DEBUG
+  // In debug mode, allow direct instantiation for hot reload
+  ThreadManager();
+  ~ThreadManager();
+#else
 private:
   ThreadManager();
   ~ThreadManager();
+#endif
 
   const static BS::tp features = BS::tp::priority | BS::tp::pause;
   std::unique_ptr<BS::thread_pool<features>> up_pool;
