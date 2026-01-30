@@ -29,47 +29,188 @@ MemoryManager *MemoryManager::getInstance() { return g_memoryManagerInstance; }
 #endif
 
 void MemoryManager::initialize(size_t persistentSize, size_t frameSize) {
-  if (persistentAlloc || frameAlloc) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  // Check if default allocators already exist
+  if (persistentAllocators.find(DEFAULT_ALLOCATOR_NAME) !=
+          persistentAllocators.end() ||
+      frameAllocators.find(DEFAULT_ALLOCATOR_NAME) != frameAllocators.end()) {
     return; // Already initialized
   }
 
-  persistentAlloc = std::make_unique<BumpAllocator>(persistentSize);
-  frameAlloc = std::make_unique<BumpAllocator>(frameSize);
+  persistentAllocators[DEFAULT_ALLOCATOR_NAME] =
+      std::make_unique<BumpAllocator>(persistentSize);
+  frameAllocators[DEFAULT_ALLOCATOR_NAME] =
+      std::make_unique<BumpAllocator>(frameSize);
 }
 
+// ========== Default Allocator Access (Backward Compatible) ==========
+
 BumpAllocator &MemoryManager::getPersistentAllocator() {
-  if (!persistentAlloc) {
-    throw std::runtime_error(
-        "MemoryManager not initialized. Call initialize() first.");
-  }
-  return *persistentAlloc;
+  return getPersistentAllocator(DEFAULT_ALLOCATOR_NAME);
 }
 
 BumpAllocator &MemoryManager::getFrameAllocator() {
-  if (!frameAlloc) {
-    throw std::runtime_error(
-        "MemoryManager not initialized. Call initialize() first.");
-  }
-  return *frameAlloc;
+  return getFrameAllocator(DEFAULT_ALLOCATOR_NAME);
 }
 
 void MemoryManager::resetFrameAllocator() {
-  if (frameAlloc) {
-    frameAlloc->reset();
-  }
+  resetFrameAllocator(DEFAULT_ALLOCATOR_NAME);
 }
 
 size_t MemoryManager::getPersistentBytesAllocated() const {
-  return persistentAlloc ? persistentAlloc->bytes_allocated() : 0;
+  return getPersistentBytesAllocated(DEFAULT_ALLOCATOR_NAME);
 }
 
 size_t MemoryManager::getFrameBytesAllocated() const {
-  return frameAlloc ? frameAlloc->bytes_allocated() : 0;
+  return getFrameBytesAllocated(DEFAULT_ALLOCATOR_NAME);
+}
+
+// ========== Named Allocator Management ==========
+
+BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,
+                                                        size_t size) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  if (persistentAllocators.find(name) != persistentAllocators.end()) {
+    throw std::runtime_error("Persistent allocator '" + name +
+                             "' already exists");
+  }
+
+  persistentAllocators[name] = std::make_unique<BumpAllocator>(size);
+  return *persistentAllocators[name];
+}
+
+BumpAllocator &MemoryManager::createFrameAllocator(const std::string &name,
+                                                   size_t size) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  if (frameAllocators.find(name) != frameAllocators.end()) {
+    throw std::runtime_error("Frame allocator '" + name + "' already exists");
+  }
+
+  frameAllocators[name] = std::make_unique<BumpAllocator>(size);
+  return *frameAllocators[name];
+}
+
+BumpAllocator &
+MemoryManager::getPersistentAllocator(const std::string &name) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = persistentAllocators.find(name);
+  if (it == persistentAllocators.end()) {
+    throw std::runtime_error("Persistent allocator '" + name +
+                             "' not found. Call createPersistentAllocator() or "
+                             "initialize() first.");
+  }
+  return *it->second;
+}
+
+BumpAllocator &MemoryManager::getFrameAllocator(const std::string &name) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = frameAllocators.find(name);
+  if (it == frameAllocators.end()) {
+    throw std::runtime_error(
+        "Frame allocator '" + name +
+        "' not found. Call createFrameAllocator() or initialize() first.");
+  }
+  return *it->second;
+}
+
+bool MemoryManager::hasPersistentAllocator(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+  return persistentAllocators.find(name) != persistentAllocators.end();
+}
+
+bool MemoryManager::hasFrameAllocator(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+  return frameAllocators.find(name) != frameAllocators.end();
+}
+
+bool MemoryManager::destroyPersistentAllocator(const std::string &name) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = persistentAllocators.find(name);
+  if (it == persistentAllocators.end()) {
+    return false;
+  }
+
+  persistentAllocators.erase(it);
+  return true;
+}
+
+bool MemoryManager::destroyFrameAllocator(const std::string &name) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = frameAllocators.find(name);
+  if (it == frameAllocators.end()) {
+    return false;
+  }
+
+  frameAllocators.erase(it);
+  return true;
+}
+
+void MemoryManager::resetFrameAllocator(const std::string &name) {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = frameAllocators.find(name);
+  if (it != frameAllocators.end()) {
+    it->second->reset();
+  }
+}
+
+void MemoryManager::resetAllFrameAllocators() {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  for (auto &pair : frameAllocators) {
+    pair.second->reset();
+  }
+}
+
+size_t
+MemoryManager::getPersistentBytesAllocated(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = persistentAllocators.find(name);
+  return it != persistentAllocators.end() ? it->second->bytes_allocated() : 0;
+}
+
+size_t MemoryManager::getFrameBytesAllocated(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  auto it = frameAllocators.find(name);
+  return it != frameAllocators.end() ? it->second->bytes_allocated() : 0;
+}
+
+std::vector<std::string> MemoryManager::getPersistentAllocatorNames() const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  std::vector<std::string> names;
+  names.reserve(persistentAllocators.size());
+  for (const auto &pair : persistentAllocators) {
+    names.push_back(pair.first);
+  }
+  return names;
+}
+
+std::vector<std::string> MemoryManager::getFrameAllocatorNames() const {
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  std::vector<std::string> names;
+  names.reserve(frameAllocators.size());
+  for (const auto &pair : frameAllocators) {
+    names.push_back(pair.first);
+  }
+  return names;
 }
 
 void MemoryManager::shutdown() {
-  persistentAlloc.reset();
-  frameAlloc.reset();
+  std::lock_guard<std::mutex> lock(allocatorMutex);
+
+  persistentAllocators.clear();
+  frameAllocators.clear();
 }
 
 } // namespace core
