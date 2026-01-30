@@ -25,8 +25,13 @@ CORE_API void lib_on_load(void *data) {
     if (state) {
       state->thread = &core::ThreadManager::instance();
       state->memory = &core::MemoryManager::instance();
-      state->memory->initialize();
-      state->thread->initialize();
+      state->memory->createPersistentAllocator("core",
+                                               10 * 1024 * 1024); // 10 MB
+      state->memory->createFrameAllocator("core",
+                                          5 * 1024 * 1024); // 5 MB
+      state->thread->applyConfig(core::ThreadManagerConfig());
+      state->thread->createPool(
+          core::ThreadPoolConfig("main", core::PoolType::Worker, 0));
     }
   }
 
@@ -40,7 +45,7 @@ CORE_API void lib_on_unload(void *data) {
 
   if (state && state->memory) {
     std::print("[Core] Persistent memory used: {} bytes\n",
-               state->memory->getPersistentBytesAllocated());
+               state->memory->getPersistentBytesAllocated("core"));
   }
 
   // DO NOT shutdown or clear the singletons - we want to preserve them!
@@ -67,18 +72,18 @@ CORE_API void test_print() {
   auto &memMgr = core::MemoryManager::instance();
   std::print("[Core] Hello from hot-reloaded library!\n");
   std::print("[Core] Persistent memory: {}/{} bytes\n",
-             memMgr.getPersistentBytesAllocated(),
-             memMgr.getPersistentAllocator().capacity());
+             memMgr.getPersistentBytesAllocated("core"),
+             memMgr.getPersistentAllocator("core").capacity());
   std::print("[Core] Frame memory: {}/{} bytes\n",
-             memMgr.getFrameBytesAllocated(),
-             memMgr.getFrameAllocator().capacity());
+             memMgr.getFrameBytesAllocated("core"),
+             memMgr.getFrameAllocator("core").capacity());
 }
 
 CORE_API int change(int x) { return (x + 5) % 2; }
 
 // Frame management function
 CORE_API void begin_frame() {
-  core::MemoryManager::instance().resetFrameAllocator();
+  core::MemoryManager::instance().resetAllFrameAllocators();
 }
 }
 #endif

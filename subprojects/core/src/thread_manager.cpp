@@ -35,57 +35,214 @@ ThreadManager::ThreadManager() = default;
 
 ThreadManager::~ThreadManager() { shutdown(); }
 
-void ThreadManager::initialize(uint32_t workerCount) {
-  if (up_pool)
-    return;
-
-  if (workerCount == 0)
-    workerCount = std::max(1u, std::thread::hardware_concurrency());
-  up_pool = std::make_unique<BS::thread_pool<features>>(workerCount);
-  _totalWorkerCount = workerCount;
+void ThreadManager::shutdown() {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+  for (auto &pair : threadPools_) {
+    if (pair.second.pool) {
+      pair.second.pool->wait();
+      pair.second.pool.reset();
+    }
+  }
+  threadPools_.clear();
 }
 
-void ThreadManager::shutdown() {
-  if (up_pool) {
-    up_pool->wait();
-    up_pool.reset();
+bool ThreadManager::createPool(const ThreadPoolConfig &config) {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  if (threadPools_.find(config.name) != threadPools_.end()) {
+    return false; // Pool already exists
+  }
+
+  // Validate thread count
+  uint32_t threadCount = config.threadCount > 0 ? config.threadCount : 1;
+
+  PoolEntry entry;
+  entry.config = config;
+  entry.config.threadCount = threadCount;
+  entry.pool = std::make_unique<BS::thread_pool<features>>(threadCount);
+  threadPools_[config.name] = std::move(entry);
+
+  return true;
+}
+
+BS::thread_pool<ThreadManager::features> *
+ThreadManager::getPool(const std::string &name) {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  auto it = threadPools_.find(name);
+  if (it == threadPools_.end()) {
+    return nullptr;
+  }
+  return it->second.pool.get();
+}
+
+bool ThreadManager::hasPool(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+  return threadPools_.find(name) != threadPools_.end();
+}
+
+bool ThreadManager::destroyPool(const std::string &name) {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  auto it = threadPools_.find(name);
+  if (it == threadPools_.end()) {
+    return false;
+  }
+
+  // Wait for all tasks and destroy
+  if (it->second.pool) {
+    it->second.pool->wait();
+    it->second.pool.reset();
+  }
+
+  threadPools_.erase(it);
+  return true;
+}
+
+bool ThreadManager::resizePool(const std::string &name,
+                               uint32_t newThreadCount) {
+  // Validate thread count
+  uint32_t actualThreadCount = newThreadCount > 0 ? newThreadCount : 1;
+
+  std::function<void(uint32_t)> callback;
+  uint32_t oldThreadCount = 0;
+
+  {
+    std::lock_guard<std::mutex> lock(threadMutex_);
+
+    auto it = threadPools_.find(name);
+    if (it == threadPools_.end()) {
+      return false;
+    }
+
+    if (it->second.pool) {
+      it->second.pool->pause();
+      it->second.pool->reset(actualThreadCount);
+      it->second.pool->unpause();
+    }
+
+    // Update config
+    oldThreadCount = it->second.config.threadCount;
+    it->second.config.threadCount = actualThreadCount;
+
+    // Copy callback for invocation outside lock
+    if (it->second.config.onReconfigure &&
+        oldThreadCount != actualThreadCount) {
+      callback = it->second.config.onReconfigure;
+    }
+  }
+
+  // Notify callback outside lock to avoid deadlock
+  if (callback) {
+    callback(actualThreadCount);
+  }
+
+  return true;
+}
+
+void ThreadManager::waitAll(const std::string &name) {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  auto it = threadPools_.find(name);
+  if (it != threadPools_.end() && it->second.pool) {
+    it->second.pool->wait();
   }
 }
 
-void ThreadManager::waitAll() { up_pool->wait(); }
+void ThreadManager::waitAllPools() {
+  std::lock_guard<std::mutex> lock(threadMutex_);
 
-void ThreadManager::reserveDeviceThread(int reserve) {
-  std::lock_guard<std::mutex> lock(_poolMutex);
-  up_pool->pause();
-  _reservedWorkerCount += reserve;
-  if (_reservedWorkerCount >= _totalWorkerCount)
-    throw std::runtime_error(
-        "reserved worker count is to big - it can't be bigger "
-        "than total worker count");
-  up_pool->reset(_totalWorkerCount - _reservedWorkerCount);
-  up_pool->unpause();
+  for (auto &pair : threadPools_) {
+    if (pair.second.pool) {
+      pair.second.pool->wait();
+    }
+  }
 }
 
-void ThreadManager::releaseDeviceThread(int release) {
-  std::lock_guard<std::mutex> lock(_poolMutex);
-  up_pool->pause();
-  _reservedWorkerCount -= release;
-  if (_reservedWorkerCount <= 0)
-    throw std::runtime_error(
-        "reserved worker count is to low - it can't be 0 or lower");
-  up_pool->reset(_totalWorkerCount - _reservedWorkerCount);
-  up_pool->unpause();
+std::vector<std::string> ThreadManager::getPoolNames() const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  std::vector<std::string> names;
+  names.reserve(threadPools_.size());
+  for (const auto &pair : threadPools_) {
+    names.push_back(pair.first);
+  }
+  return names;
 }
 
-void ThreadManager::resetPoolSize(uint8_t threads) {
-  std::lock_guard<std::mutex> lock(_poolMutex);
-  up_pool->pause();
-  if (threads < _reservedWorkerCount)
-    throw std::runtime_error(
-        "new amount of workers is lower than the reserved amount");
-  _totalWorkerCount = threads;
-  up_pool->reset(threads - _reservedWorkerCount);
-  up_pool->unpause();
+ThreadPoolConfig ThreadManager::getPoolConfig(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  auto it = threadPools_.find(name);
+  if (it != threadPools_.end()) {
+    return it->second.config;
+  }
+  return ThreadPoolConfig{};
+}
+
+// ========== Configuration Management ==========
+
+void ThreadManager::applyConfig(const ThreadManagerConfig &config) {
+  // Collect callbacks to invoke outside the lock
+  std::vector<std::pair<std::function<void(uint32_t)>, uint32_t>> callbacks;
+
+  {
+    std::lock_guard<std::mutex> lock(threadMutex_);
+
+    uint32_t totalThreads = config.totalThreads;
+    if (totalThreads == 0)
+      totalThreads = std::max(1u, std::thread::hardware_concurrency());
+
+    totalWorkerCount_ = static_cast<uint32_t>(totalThreads);
+
+    // Collect GPU pool callbacks for invocation outside lock
+    for (auto &pair : threadPools_) {
+      if (pair.second.config.type == PoolType::GPU &&
+          pair.second.config.onReconfigure) {
+        callbacks.emplace_back(pair.second.config.onReconfigure,
+                               pair.second.config.threadCount);
+      }
+    }
+
+    currentConfig_ = config;
+    currentConfig_.totalThreads = totalThreads;
+  }
+
+  // Notify GPU pools outside lock to avoid deadlock
+  for (auto &[callback, threadCount] : callbacks) {
+    callback(threadCount);
+  }
+}
+
+ThreadManagerConfig ThreadManager::getConfig() const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+  return currentConfig_;
+}
+
+// ========== Statistics ==========
+
+uint32_t ThreadManager::getPoolThreadCount(const std::string &name) const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  auto it = threadPools_.find(name);
+  if (it != threadPools_.end() && it->second.pool) {
+    return static_cast<uint32_t>(it->second.pool->get_thread_count());
+  }
+  return 0;
+}
+
+uint32_t ThreadManager::totalThreadCount() const {
+  std::lock_guard<std::mutex> lock(threadMutex_);
+
+  uint32_t total = 0;
+
+  for (const auto &pair : threadPools_) {
+    if (pair.second.pool) {
+      total += static_cast<uint32_t>(pair.second.pool->get_thread_count());
+    }
+  }
+
+  return total;
 }
 
 } // namespace core
