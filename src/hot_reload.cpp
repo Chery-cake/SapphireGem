@@ -163,15 +163,17 @@ void HotReload::setup_signal_handlers() {
   auto fn = cleanup_all;
   std::signal(SIGINT, fn);
   std::signal(SIGTERM, fn);
+  std::signal(SIGABRT, fn);
+  std::signal(SIGSEGV, fn);
 }
 
-void HotReload::cleanup_all(int /*signum*/) {
+void HotReload::cleanup_all(int signum) {
   std::lock_guard<std::mutex> lock(registry_mutex);
   for (auto *inst : instances) {
     if (inst) {
       inst->unload();
-      std::print(stderr, "[HotReload] Cleaned up '{}' on signal.\n",
-                 inst->name);
+      std::print(stderr, "[HotReload] Cleaned up '{}' on signal {}.\n",
+                 inst->name, signum);
     }
   }
   std::_Exit(1);
