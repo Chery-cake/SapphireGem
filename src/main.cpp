@@ -95,6 +95,9 @@ int main(int argc, char *argv[]) {
     if (s->thread) {
       delete s->thread;
     }
+    if (s->config) {
+      delete s->config;
+    }
     delete s;
     return 1;
   }

@@ -75,31 +75,47 @@ void EngineConfig::shutdown() {
 }
 
 void EngineConfig::resetToDefaults() {
-  std::lock_guard<std::mutex> lock(configMutex_);
+  std::vector<CallbackEntry> callbacksToNotify;
 
-  vulkanConfig_ = VulkanConfig{};
-  vulkanConfig_.enableValidation = true;
-  vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
-  vulkanConfig_.instanceExtensions.push_back("VK_KHR_surface");
-  vulkanConfig_.deviceExtensions.push_back("VK_KHR_swapchain");
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
 
-  threadPoolAllocation_ = ThreadPoolAllocation{};
-  gpuConfig_ = GPUConfig{};
-  loopConfig_ = LoopConfig{};
+    vulkanConfig_ = VulkanConfig{};
+    vulkanConfig_.enableValidation = true;
+    vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+    vulkanConfig_.instanceExtensions.push_back("VK_KHR_surface");
 
-  pendingChanges_ = ConfigSection::All;
+    // Add platform-specific instance extensions
+#ifdef _WIN32
+    vulkanConfig_.instanceExtensions.push_back("VK_KHR_win32_surface");
+#elif defined(__linux__)
+    vulkanConfig_.instanceExtensions.push_back("VK_KHR_xcb_surface");
+    vulkanConfig_.instanceExtensions.push_back("VK_KHR_wayland_surface");
+#elif defined(__APPLE__)
+    vulkanConfig_.instanceExtensions.push_back("VK_EXT_metal_surface");
+#endif
 
-  if (immediateMode_) {
-    // Copy callbacks to notify outside lock
-    auto callbacksCopy = callbacks_;
-    configMutex_.unlock();
-    for (const auto &entry : callbacksCopy) {
-      if (hasFlag(pendingChanges_, entry.sections)) {
-        entry.callback();
+    vulkanConfig_.deviceExtensions.push_back("VK_KHR_swapchain");
+
+    threadPoolAllocation_ = ThreadPoolAllocation{};
+    gpuConfig_ = GPUConfig{};
+    loopConfig_ = LoopConfig{};
+
+    pendingChanges_ = ConfigSection::All;
+
+    if (immediateMode_) {
+      for (const auto &entry : callbacks_) {
+        if (hasFlag(pendingChanges_, entry.sections)) {
+          callbacksToNotify.push_back(entry);
+        }
       }
+      pendingChanges_ = ConfigSection::None;
     }
-    configMutex_.lock();
-    pendingChanges_ = ConfigSection::None;
+  }
+
+  // Notify callbacks outside lock
+  for (const auto &entry : callbacksToNotify) {
+    entry.callback();
   }
 }
 
@@ -403,28 +419,29 @@ ThreadPoolAllocation EngineConfig::getEffectiveThreadAllocation() const {
 
   ThreadPoolAllocation effective = threadPoolAllocation_;
 
+  // Calculate total threads for loops and GPUs
+  // Note: loopThreads and gpuThreads are "per loop" and "per GPU" values
+  uint32_t totalLoopThreads = effective.loopThreads * loopConfig_.mainLoopCount;
+  uint32_t totalGPUThreads = gpuConfig_.enableMultiGPU
+                                 ? (effective.gpuThreads * gpuConfig_.gpuCount)
+                                 : effective.gpuThreads;
+
   // Calculate effective worker threads if set to auto-detect
   if (effective.workerThreads == 0) {
     uint32_t hardwareThreads =
         std::max(1u, std::thread::hardware_concurrency());
 
     // Reserve threads for loops and GPUs
-    uint32_t reservedForLoops = effective.loopThreads * loopConfig_.mainLoopCount;
-    uint32_t reservedForGPUs = effective.gpuThreads * gpuConfig_.gpuCount;
-    uint32_t totalReserved = reservedForLoops + reservedForGPUs;
+    uint32_t totalReserved = totalLoopThreads + totalGPUThreads;
 
     // Ensure we have at least 1 worker thread
     effective.workerThreads =
         (hardwareThreads > totalReserved) ? (hardwareThreads - totalReserved) : 1;
   }
 
-  // Adjust GPU threads based on actual GPU count
-  if (gpuConfig_.enableMultiGPU) {
-    effective.gpuThreads = effective.gpuThreads * gpuConfig_.gpuCount;
-  }
-
-  // Adjust loop threads based on main loop count
-  effective.loopThreads = effective.loopThreads * loopConfig_.mainLoopCount;
+  // Set the effective values (total threads, not per-loop/per-GPU)
+  effective.loopThreads = totalLoopThreads;
+  effective.gpuThreads = totalGPUThreads;
 
   return effective;
 }

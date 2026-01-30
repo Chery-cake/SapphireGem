@@ -39,11 +39,16 @@ struct CORE_API VulkanConfig {
  *
  * Specifies how many threads should be dedicated to each type of pool,
  * adjusting for the number of loops and GPUs.
+ *
+ * @note loopThreads and gpuThreads are "per loop" and "per GPU" values.
+ *       When calling getEffectiveThreadAllocation(), these values are
+ *       multiplied by mainLoopCount and gpuCount respectively to get
+ *       the total thread counts.
  */
 struct CORE_API ThreadPoolAllocation {
   uint32_t workerThreads = 0;   // 0 = auto-detect based on hardware
-  uint32_t loopThreads = 1;     // Threads for main loop callbacks
-  uint32_t gpuThreads = 0;      // Threads per GPU for GPU operations
+  uint32_t loopThreads = 1;     // Threads per main loop (multiplied by mainLoopCount)
+  uint32_t gpuThreads = 0;      // Threads per GPU (multiplied by gpuCount if multi-GPU enabled)
 
   bool operator==(const ThreadPoolAllocation &other) const {
     return workerThreads == other.workerThreads &&
