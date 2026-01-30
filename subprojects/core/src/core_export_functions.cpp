@@ -1,3 +1,4 @@
+#include "config.h"
 #ifdef ENGINE_DEBUG
 
 #include "core_export.h"
@@ -15,23 +16,25 @@ CORE_API void lib_on_load(void *data) {
   coreState *state = static_cast<coreState *>(data);
 
   // If we have saved singleton pointers, restore them
-  if (state && state->thread && state->memory) {
+  if (state && state->thread && state->memory && state->config) {
     std::print("[Core] Restoring saved singleton instances...\n");
     core::ThreadManager::setInstance(state->thread);
     core::MemoryManager::setInstance(state->memory);
+    core::Config::setInstance(state->config);
   } else {
     // First load - create new singleton instances
     std::print("[Core] First load - initializing singletons...\n");
     if (state) {
-      state->thread = &core::ThreadManager::instance();
       state->memory = &core::MemoryManager::instance();
       state->memory->createPersistentAllocator("core",
                                                10 * 1024 * 1024); // 10 MB
       state->memory->createFrameAllocator("core",
                                           5 * 1024 * 1024); // 5 MB
+      state->thread = &core::ThreadManager::instance();
       state->thread->applyConfig(core::ThreadManagerConfig());
       state->thread->createPool(
           core::ThreadPoolConfig("main", core::PoolType::Worker, 0));
+      state->config = &core::Config::instance();
     }
   }
 
@@ -62,6 +65,7 @@ CORE_API void lib_on_reload(void *data) {
   if (state) {
     state->thread = core::ThreadManager::getInstance();
     state->memory = core::MemoryManager::getInstance();
+    state->config = core::Config::getInstance();
     std::print("[Core] Saved singleton pointers for reload\n");
   }
 }

@@ -44,6 +44,7 @@ target_link_libraries(${PROJECT_NAME}
         nlohmann_json::nlohmann_json
         glm::glm
         thread_pool
+        vulkan
 )
 
 # ==============================================================================

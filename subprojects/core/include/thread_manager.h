@@ -241,8 +241,8 @@ private:
 
   mutable std::mutex threadMutex_;
 
-  uint8_t totalWorkerCount_ = 0;
-  uint8_t reservedWorkerCount_ = 0;
+  uint32_t totalWorkerCount_ = 0;
+  uint32_t reservedWorkerCount_ = 0;
 };
 
 } // namespace core
