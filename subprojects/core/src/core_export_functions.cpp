@@ -66,6 +66,9 @@ CORE_API void test_print() {
   // Demonstrate using the memory manager
   auto &memMgr = core::MemoryManager::instance();
   std::print("[Core] Hello from hot-reloaded library!\n");
+  std::print("[Core] Persistent memory: {}/{} bytes\n",
+             memMgr.getPersistentBytesAllocated(),
+             memMgr.getPersistentAllocator().capacity());
   std::print("[Core] Frame memory: {}/{} bytes\n",
              memMgr.getFrameBytesAllocated(),
              memMgr.getFrameAllocator().capacity());
