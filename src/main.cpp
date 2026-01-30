@@ -53,14 +53,12 @@ int main(int argc, char *argv[]) {
     if (lib_on_unload_func) {
       lib_on_unload_func(state);
     }
-    
-    // On final unload (when HotReload is being destroyed), cleanup the state
-    // This will be called last when the core object goes out of scope
   });
   
-  // Register a cleanup callback to be executed when core is destroyed
-  // Using a separate lambda to handle final cleanup
-  core.registerUnloadCallback("core_cleanup", [](void *userData) {
+  // Register a destroy callback to be executed only when core is destroyed
+  // This handles final cleanup of singleton resources
+  core.registerDestroyCallback("core_cleanup", [](void *userData) {
+    std::print("[Main] Core library cleanup\n");
     coreState *state = static_cast<coreState *>(userData);
     if (state) {
       if (state->thread) {

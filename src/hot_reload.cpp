@@ -23,6 +23,10 @@ HotReload::HotReload(const std::string &libName, const std::string &libPath)
 HotReload::~HotReload() {
   std::lock_guard<std::mutex> lock(registry_mutex);
   instances.erase(this);
+  
+  // Execute destroy callbacks before unload
+  executeCallbacks(destroyCallbacks);
+  
   unload();
 }
 
@@ -194,6 +198,11 @@ void HotReload::registerUnloadCallback(const std::string &name,
 void HotReload::registerReloadCallback(const std::string &name,
                                        LifecycleCallback callback) {
   reloadCallbacks.push_back({name, std::move(callback)});
+}
+
+void HotReload::registerDestroyCallback(const std::string &name,
+                                        LifecycleCallback callback) {
+  destroyCallbacks.push_back({name, std::move(callback)});
 }
 
 void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {

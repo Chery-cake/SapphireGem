@@ -36,6 +36,8 @@ public:
                               LifecycleCallback callback);
   void registerReloadCallback(const std::string &name,
                               LifecycleCallback callback);
+  void registerDestroyCallback(const std::string &name,
+                               LifecycleCallback callback);
 
   // User data pointer (passed to all callbacks)
   void setUserData(void *newData) { data = newData; }
@@ -66,6 +68,7 @@ private:
   std::vector<CallbackEntry> loadCallbacks;
   std::vector<CallbackEntry> unloadCallbacks;
   std::vector<CallbackEntry> reloadCallbacks;
+  std::vector<CallbackEntry> destroyCallbacks;
 
   // Instance tracking
   static std::set<HotReload *> instances;
