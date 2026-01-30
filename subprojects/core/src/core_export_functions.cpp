@@ -2,6 +2,7 @@
 
 #include "core_export.h"
 #include "core_export_struct.h"
+#include "engine_config.h"
 #include "memory_manager.h"
 #include "thread_manager.h"
 #include <print>
@@ -15,16 +16,18 @@ CORE_API void lib_on_load(void *data) {
   coreState *state = static_cast<coreState *>(data);
 
   // If we have saved singleton pointers, restore them
-  if (state && state->thread && state->memory) {
+  if (state && state->thread && state->memory && state->config) {
     std::print("[Core] Restoring saved singleton instances...\n");
     core::ThreadManager::setInstance(state->thread);
     core::MemoryManager::setInstance(state->memory);
+    core::EngineConfig::setInstance(state->config);
   } else {
     // First load - create new singleton instances
     std::print("[Core] First load - initializing singletons...\n");
     if (state) {
       state->thread = &core::ThreadManager::instance();
       state->memory = &core::MemoryManager::instance();
+      state->config = &core::EngineConfig::instance();
       state->memory->createPersistentAllocator("core",
                                                10 * 1024 * 1024); // 10 MB
       state->memory->createFrameAllocator("core",
@@ -62,6 +65,7 @@ CORE_API void lib_on_reload(void *data) {
   if (state) {
     state->thread = core::ThreadManager::getInstance();
     state->memory = core::MemoryManager::getInstance();
+    state->config = core::EngineConfig::getInstance();
     std::print("[Core] Saved singleton pointers for reload\n");
   }
 }
