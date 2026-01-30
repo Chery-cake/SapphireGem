@@ -19,7 +19,6 @@ set(ASAN_SUPPRESSION_FILE "${SANITIZER_SUPPRESSION_DIR}/asan.supp")
 function(target_configure_debug TARGET_NAME)
     if(NOT TARGET ${TARGET_NAME})
         message(FATAL_ERROR "target_configure_debug: Target '${TARGET_NAME}' does not exist")
-        return()
     endif()
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -69,7 +68,6 @@ endfunction()
 function(target_configure_release TARGET_NAME)
     if(NOT TARGET ${TARGET_NAME})
         message(FATAL_ERROR "target_configure_release: Target '${TARGET_NAME}' does not exist")
-        return()
     endif()
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -77,9 +75,6 @@ function(target_configure_release TARGET_NAME)
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<CONFIG:Release>:
                 -O3                     # Maximum optimization
-                -march=native           # Optimize for current CPU
-                -mtune=native           # Tune for current CPU
-                -ffast-math             # Fast floating point (use with caution)
                 -funroll-loops          # Unroll loops
                 -ffunction-sections     # Place each function in its own section
                 -fdata-sections         # Place each data item in its own section
@@ -87,6 +82,25 @@ function(target_configure_release TARGET_NAME)
                 -fvisibility-inlines-hidden # Hide inline function symbols
             >
         )
+
+        # Optional: Optimize for current CPU (not suitable for distribution)
+        if(ENGINE_OPTIMIZE_NATIVE)
+            target_compile_options(${TARGET_NAME} PRIVATE
+                $<$<CONFIG:Release>:
+                    -march=native       # Optimize for current CPU
+                    -mtune=native       # Tune for current CPU
+                >
+            )
+        endif()
+
+        # Optional: Enable fast-math (breaks IEEE 754 compliance)
+        # WARNING: This may cause issues with physics simulations, financial
+        # calculations, or any code requiring strict floating-point behavior.
+        if(ENGINE_FAST_MATH)
+            target_compile_options(${TARGET_NAME} PRIVATE
+                $<$<CONFIG:Release>:-ffast-math>
+            )
+        endif()
 
         # Release definitions
         target_compile_definitions(${TARGET_NAME} PRIVATE
@@ -139,7 +153,6 @@ endfunction()
 function(target_enable_lto TARGET_NAME)
     if(NOT TARGET ${TARGET_NAME})
         message(FATAL_ERROR "target_enable_lto: Target '${TARGET_NAME}' does not exist")
-        return()
     endif()
 
     include(CheckIPOSupported)
@@ -166,7 +179,6 @@ function(target_enable_sanitizers TARGET_NAME)
 
     if(NOT TARGET ${TARGET_NAME})
         message(FATAL_ERROR "target_enable_sanitizers: Target '${TARGET_NAME}' does not exist")
-        return()
     endif()
 
     # MSVC doesn't support all sanitizers
@@ -251,7 +263,6 @@ function(target_configure_build TARGET_NAME)
 
     if(NOT TARGET ${TARGET_NAME})
         message(FATAL_ERROR "target_configure_build: Target '${TARGET_NAME}' does not exist")
-        return()
     endif()
 
     # Apply Debug configuration
@@ -292,6 +303,10 @@ option(ENGINE_SANITIZER_LEAK "Enable LeakSanitizer" ON)
 option(ENGINE_SANITIZER_UNDEFINED "Enable UndefinedBehaviorSanitizer" ON)
 option(ENGINE_SANITIZER_THREAD "Enable ThreadSanitizer (cannot be combined with ASan/LSan)" OFF)
 
+# Release optimization options
+option(ENGINE_OPTIMIZE_NATIVE "Optimize for current CPU (not suitable for distribution)" OFF)
+option(ENGINE_FAST_MATH "Enable fast-math (breaks IEEE 754 compliance - use with caution)" OFF)
+
 # ==============================================================================
 # Setup Sanitizer Environment Variables
 # ==============================================================================
@@ -322,6 +337,8 @@ function(print_build_configuration)
     message(STATUS "========================================")
     message(STATUS " Build Type: ${CMAKE_BUILD_TYPE}")
     message(STATUS " LTO Enabled: ${ENGINE_ENABLE_LTO}")
+    message(STATUS " Native Optimization: ${ENGINE_OPTIMIZE_NATIVE}")
+    message(STATUS " Fast Math: ${ENGINE_FAST_MATH}")
     message(STATUS " Sanitizers Enabled: ${ENGINE_ENABLE_SANITIZERS}")
     if(ENGINE_ENABLE_SANITIZERS)
         message(STATUS "   - AddressSanitizer: ${ENGINE_SANITIZER_ADDRESS}")
