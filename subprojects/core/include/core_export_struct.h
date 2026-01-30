@@ -3,11 +3,13 @@
 #ifdef ENGINE_DEBUG
 
 #include "memory_manager.h"
+#include "tag_registry.h"
 #include "thread_manager.h"
 
 struct coreState {
   core::ThreadManager *thread;
   core::MemoryManager *memory;
+  core::TagRegistry *tags;
 };
 
 #endif
