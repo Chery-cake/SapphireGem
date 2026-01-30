@@ -23,16 +23,33 @@ namespace core {
  * Example usage:
  * @code
  *   auto& registry = TagRegistry::instance();
+ *
+ *   // Register resources when a module loads
  *   registry.add("shader", "default_vertex");
  *   registry.add("shader", "default_fragment");
  *   registry.add("texture", "diffuse_map");
  *
- *   // Get all items for a tag
- *   auto shaders = registry.get("shader");
+ *   // Check if a resource is registered
+ *   if (registry.contains("shader", "default_vertex")) {
+ *     // Resource is available
+ *   }
  *
- *   // Remove items when unloading
+ *   // Get all items for a tag and iterate
+ *   for (const auto& shader : registry.get("shader")) {
+ *     // Process each shader name
+ *   }
+ *
+ *   // Register callbacks for resource changes
+ *   registry.onAdd("shader", [](const std::string& name) {
+ *     // Handle new shader registration
+ *   });
+ *
+ *   // Remove items when module unloads
  *   registry.remove("shader", "default_vertex");
  * @endcode
+ *
+ * @note Callbacks are invoked outside the mutex lock to prevent deadlocks.
+ *       This means callbacks can safely call other TagRegistry methods.
  */
 class CORE_API TagRegistry {
 public:

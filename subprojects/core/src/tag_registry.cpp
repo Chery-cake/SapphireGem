@@ -29,49 +29,66 @@ TagRegistry *TagRegistry::getInstance() { return g_tagRegistryInstance; }
 #endif
 
 bool TagRegistry::add(const std::string &tag, const std::string &item) {
-  std::lock_guard<std::mutex> lock(_mutex);
+  std::vector<std::function<void(const std::string &)>> callbacksCopy;
+  bool inserted = false;
 
-  auto [it, inserted] = _registry[tag].insert(item);
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+    auto [it, ins] = _registry[tag].insert(item);
+    inserted = ins;
 
-  // Call add callbacks if item was actually added
-  if (inserted) {
-    auto callbackIt = _addCallbacks.find(tag);
-    if (callbackIt != _addCallbacks.end()) {
-      for (const auto &callback : callbackIt->second) {
-        callback(item);
+    // Copy callbacks while holding the lock
+    if (inserted) {
+      auto callbackIt = _addCallbacks.find(tag);
+      if (callbackIt != _addCallbacks.end()) {
+        callbacksCopy = callbackIt->second;
       }
     }
+  }
+
+  // Invoke callbacks outside the lock to prevent deadlock
+  for (const auto &callback : callbacksCopy) {
+    callback(item);
   }
 
   return inserted;
 }
 
 bool TagRegistry::remove(const std::string &tag, const std::string &item) {
-  std::lock_guard<std::mutex> lock(_mutex);
+  std::vector<std::function<void(const std::string &)>> callbacksCopy;
+  bool removed = false;
 
-  auto tagIt = _registry.find(tag);
-  if (tagIt == _registry.end()) {
-    return false;
-  }
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
 
-  size_t removed = tagIt->second.erase(item);
+    auto tagIt = _registry.find(tag);
+    if (tagIt == _registry.end()) {
+      return false;
+    }
 
-  // Call remove callbacks if item was actually removed
-  if (removed > 0) {
-    auto callbackIt = _removeCallbacks.find(tag);
-    if (callbackIt != _removeCallbacks.end()) {
-      for (const auto &callback : callbackIt->second) {
-        callback(item);
+    size_t removedCount = tagIt->second.erase(item);
+    removed = removedCount > 0;
+
+    // Copy callbacks while holding the lock
+    if (removed) {
+      auto callbackIt = _removeCallbacks.find(tag);
+      if (callbackIt != _removeCallbacks.end()) {
+        callbacksCopy = callbackIt->second;
+      }
+
+      // Clean up empty tags
+      if (tagIt->second.empty()) {
+        _registry.erase(tagIt);
       }
     }
-
-    // Clean up empty tags
-    if (tagIt->second.empty()) {
-      _registry.erase(tagIt);
-    }
   }
 
-  return removed > 0;
+  // Invoke callbacks outside the lock to prevent deadlock
+  for (const auto &callback : callbacksCopy) {
+    callback(item);
+  }
+
+  return removed;
 }
 
 bool TagRegistry::contains(const std::string &tag,
@@ -122,31 +139,58 @@ size_t TagRegistry::count(const std::string &tag) const {
 }
 
 void TagRegistry::clear(const std::string &tag) {
-  std::lock_guard<std::mutex> lock(_mutex);
+  std::vector<std::string> itemsCopy;
+  std::vector<std::function<void(const std::string &)>> callbacksCopy;
 
-  auto tagIt = _registry.find(tag);
-  if (tagIt != _registry.end()) {
-    // Call remove callbacks for each item
-    auto callbackIt = _removeCallbacks.find(tag);
-    if (callbackIt != _removeCallbacks.end()) {
-      for (const auto &item : tagIt->second) {
-        for (const auto &callback : callbackIt->second) {
-          callback(item);
-        }
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    auto tagIt = _registry.find(tag);
+    if (tagIt != _registry.end()) {
+      // Copy items and callbacks while holding the lock
+      itemsCopy =
+          std::vector<std::string>(tagIt->second.begin(), tagIt->second.end());
+
+      auto callbackIt = _removeCallbacks.find(tag);
+      if (callbackIt != _removeCallbacks.end()) {
+        callbacksCopy = callbackIt->second;
       }
-    }
 
-    _registry.erase(tagIt);
+      _registry.erase(tagIt);
+    }
+  }
+
+  // Invoke callbacks outside the lock to prevent deadlock
+  for (const auto &item : itemsCopy) {
+    for (const auto &callback : callbacksCopy) {
+      callback(item);
+    }
   }
 }
 
 void TagRegistry::clearAll() {
-  std::lock_guard<std::mutex> lock(_mutex);
+  // Copy all data needed for callbacks while holding the lock
+  std::vector<std::pair<std::string, std::vector<std::string>>> tagItemsCopy;
+  std::unordered_map<std::string,
+                     std::vector<std::function<void(const std::string &)>>>
+      callbacksCopy;
 
-  // Call remove callbacks for all items
-  for (const auto &[tag, items] : _registry) {
-    auto callbackIt = _removeCallbacks.find(tag);
-    if (callbackIt != _removeCallbacks.end()) {
+  {
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    for (const auto &[tag, items] : _registry) {
+      tagItemsCopy.emplace_back(
+          tag, std::vector<std::string>(items.begin(), items.end()));
+    }
+    callbacksCopy = _removeCallbacks;
+
+    _registry.clear();
+  }
+
+  // Invoke callbacks outside the lock to prevent deadlock
+  for (const auto &[tag, items] : tagItemsCopy) {
+    auto callbackIt = callbacksCopy.find(tag);
+    if (callbackIt != callbacksCopy.end()) {
       for (const auto &item : items) {
         for (const auto &callback : callbackIt->second) {
           callback(item);
@@ -154,8 +198,6 @@ void TagRegistry::clearAll() {
       }
     }
   }
-
-  _registry.clear();
 }
 
 void TagRegistry::onAdd(const std::string &tag,
