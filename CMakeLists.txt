@@ -64,6 +64,8 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(CompilerWarnings)
+include(BuildConfiguration)
+include(CrossCompiling)
 
 # ==============================================================================
 # Dependencies
@@ -112,6 +114,19 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 
 # ==============================================================================
+# Apply Build Configuration
+# ==============================================================================
+target_configure_build(${PROJECT_NAME}
+    ENABLE_LTO
+    ENABLE_SANITIZERS
+    SANITIZERS ADDRESS LEAK UNDEFINED
+)
+
+# Apply platform-specific configuration
+target_configure_platform(${PROJECT_NAME})
+target_configure_rpath(${PROJECT_NAME})
+
+# ==============================================================================
 # Copy Assets to Build Directory
 # ==============================================================================
 add_custom_target(copy_assets ALL
@@ -152,3 +167,9 @@ message(STATUS " Output: ${OUTPUT_DIR}")
 message(STATUS " Runtime:  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
 message(STATUS " Library: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 message(STATUS "========================================")
+
+# Print build configuration summary
+print_build_configuration()
+
+# Print cross-compilation info if applicable
+print_cross_compilation_info()
