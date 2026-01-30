@@ -70,6 +70,10 @@ size_t MemoryManager::getFrameBytesAllocated() const {
 
 BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,
                                                         size_t size) {
+  if (size == 0) {
+    throw std::runtime_error("Allocator size must be greater than 0");
+  }
+
   std::lock_guard<std::mutex> lock(allocatorMutex);
 
   if (persistentAllocators.find(name) != persistentAllocators.end()) {
@@ -83,6 +87,10 @@ BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,
 
 BumpAllocator &MemoryManager::createFrameAllocator(const std::string &name,
                                                    size_t size) {
+  if (size == 0) {
+    throw std::runtime_error("Allocator size must be greater than 0");
+  }
+
   std::lock_guard<std::mutex> lock(allocatorMutex);
 
   if (frameAllocators.find(name) != frameAllocators.end()) {
@@ -129,6 +137,12 @@ bool MemoryManager::hasFrameAllocator(const std::string &name) const {
 }
 
 bool MemoryManager::destroyPersistentAllocator(const std::string &name) {
+  // Prevent destruction of the default allocator to maintain backward
+  // compatibility
+  if (name == DEFAULT_ALLOCATOR_NAME) {
+    return false;
+  }
+
   std::lock_guard<std::mutex> lock(allocatorMutex);
 
   auto it = persistentAllocators.find(name);
@@ -141,6 +155,12 @@ bool MemoryManager::destroyPersistentAllocator(const std::string &name) {
 }
 
 bool MemoryManager::destroyFrameAllocator(const std::string &name) {
+  // Prevent destruction of the default allocator to maintain backward
+  // compatibility
+  if (name == DEFAULT_ALLOCATOR_NAME) {
+    return false;
+  }
+
   std::lock_guard<std::mutex> lock(allocatorMutex);
 
   auto it = frameAllocators.find(name);

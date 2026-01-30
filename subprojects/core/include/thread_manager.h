@@ -38,11 +38,16 @@ struct CORE_API ThreadPoolConfig {
 
 /**
  * @brief Global configuration for thread allocation
+ *
+ * Note: loopThreads and gpuThreads values are subtracted from totalThreads
+ * to calculate the default worker pool size. These values represent thread
+ * budget that should be allocated to specialized pools created via
+ * createPool(). The specialized pools must still be created manually.
  */
 struct CORE_API ThreadManagerConfig {
   uint32_t totalThreads = 0; // 0 = auto-detect
-  uint32_t loopThreads = 1;  // Threads reserved for main loops
-  uint32_t gpuThreads = 0;   // Threads reserved for GPU operations
+  uint32_t loopThreads = 1;  // Thread budget for main loop pools
+  uint32_t gpuThreads = 0;   // Thread budget for GPU operation pools
 };
 
 /**
@@ -138,7 +143,7 @@ public:
    * @brief Reset the default pool to a new total amount of threads
    * @param threads Amount of worker threads to be allocated
    */
-  void resetPoolSize(uint8_t threads = 2);
+  void resetPoolSize(uint32_t threads = 2);
 
   // ========== Named Pool Management ==========
 
@@ -301,8 +306,8 @@ private:
 
   mutable std::mutex _poolMutex;
 
-  uint8_t _totalWorkerCount = 0;
-  uint8_t _reservedWorkerCount = 0;
+  uint32_t _totalWorkerCount = 0;
+  uint32_t _reservedWorkerCount = 0;
 };
 
 } // namespace core

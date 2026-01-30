@@ -141,6 +141,9 @@ public:
 
   void shutdown();
 
+  // Name of the default allocator used for backward-compatible methods
+  static constexpr const char *DEFAULT_ALLOCATOR_NAME = "default";
+
   // Disable copying
   MemoryManager(const MemoryManager &) = delete;
   MemoryManager &operator=(const MemoryManager &) = delete;
@@ -160,8 +163,6 @@ private:
 #endif
 
 private:
-  static constexpr const char *DEFAULT_ALLOCATOR_NAME = "default";
-
   // Named allocator registries
   std::unordered_map<std::string, std::unique_ptr<BumpAllocator>>
       persistentAllocators;

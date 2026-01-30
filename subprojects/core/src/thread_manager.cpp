@@ -51,16 +51,13 @@ void ThreadManager::initialize(const ThreadManagerConfig &config) {
   if (totalThreads == 0)
     totalThreads = std::max(1u, std::thread::hardware_concurrency());
 
-  // Reserve threads for specialized pools
-  uint32_t workerThreads = totalThreads;
-  if (workerThreads > config.loopThreads + config.gpuThreads) {
-    workerThreads -= (config.loopThreads + config.gpuThreads);
-  } else {
-    workerThreads = std::max(1u, workerThreads);
-  }
+  // Reserve threads for specialized pools, ensuring at least 1 worker thread
+  uint32_t reservedThreads = config.loopThreads + config.gpuThreads;
+  uint32_t workerThreads =
+      (totalThreads > reservedThreads) ? (totalThreads - reservedThreads) : 1;
 
   up_pool = std::make_unique<BS::thread_pool<features>>(workerThreads);
-  _totalWorkerCount = static_cast<uint8_t>(totalThreads);
+  _totalWorkerCount = static_cast<uint32_t>(totalThreads);
 
   currentConfig.totalThreads = totalThreads;
 }
@@ -113,7 +110,7 @@ void ThreadManager::releaseDeviceThread(int release) {
   up_pool->unpause();
 }
 
-void ThreadManager::resetPoolSize(uint8_t threads) {
+void ThreadManager::resetPoolSize(uint32_t threads) {
   std::lock_guard<std::mutex> lock(_poolMutex);
   up_pool->pause();
   if (threads < _reservedWorkerCount)
@@ -133,9 +130,13 @@ bool ThreadManager::createPool(const ThreadPoolConfig &config) {
     return false; // Pool already exists
   }
 
+  // Validate thread count
+  uint32_t threadCount = config.threadCount > 0 ? config.threadCount : 1;
+
   PoolEntry entry;
   entry.config = config;
-  entry.pool = std::make_unique<BS::thread_pool<features>>(config.threadCount);
+  entry.config.threadCount = threadCount;
+  entry.pool = std::make_unique<BS::thread_pool<features>>(threadCount);
   namedPools[config.name] = std::move(entry);
 
   return true;
@@ -177,26 +178,39 @@ bool ThreadManager::destroyPool(const std::string &name) {
 
 bool ThreadManager::resizePool(const std::string &name,
                                uint32_t newThreadCount) {
-  std::lock_guard<std::mutex> lock(_poolMutex);
+  // Validate thread count
+  uint32_t actualThreadCount = newThreadCount > 0 ? newThreadCount : 1;
 
-  auto it = namedPools.find(name);
-  if (it == namedPools.end()) {
-    return false;
+  std::function<void(uint32_t)> callback;
+  uint32_t oldThreadCount = 0;
+
+  {
+    std::lock_guard<std::mutex> lock(_poolMutex);
+
+    auto it = namedPools.find(name);
+    if (it == namedPools.end()) {
+      return false;
+    }
+
+    if (it->second.pool) {
+      it->second.pool->pause();
+      it->second.pool->reset(actualThreadCount);
+      it->second.pool->unpause();
+    }
+
+    // Update config
+    oldThreadCount = it->second.config.threadCount;
+    it->second.config.threadCount = actualThreadCount;
+
+    // Copy callback for invocation outside lock
+    if (it->second.config.onReconfigure && oldThreadCount != actualThreadCount) {
+      callback = it->second.config.onReconfigure;
+    }
   }
 
-  if (it->second.pool) {
-    it->second.pool->pause();
-    it->second.pool->reset(newThreadCount);
-    it->second.pool->unpause();
-  }
-
-  // Update config
-  uint32_t oldThreadCount = it->second.config.threadCount;
-  it->second.config.threadCount = newThreadCount;
-
-  // Notify callback if set (for GPU implementations)
-  if (it->second.config.onReconfigure && oldThreadCount != newThreadCount) {
-    it->second.config.onReconfigure(newThreadCount);
+  // Notify callback outside lock to avoid deadlock
+  if (callback) {
+    callback(actualThreadCount);
   }
 
   return true;
@@ -251,39 +265,53 @@ ThreadPoolConfig ThreadManager::getPoolConfig(const std::string &name) const {
 // ========== Configuration Management ==========
 
 void ThreadManager::applyConfig(const ThreadManagerConfig &config) {
-  std::lock_guard<std::mutex> lock(_poolMutex);
+  // Collect callbacks to invoke outside the lock
+  std::vector<std::pair<std::function<void(uint32_t)>, uint32_t>> callbacks;
 
-  uint32_t totalThreads = config.totalThreads;
-  if (totalThreads == 0)
-    totalThreads = std::max(1u, std::thread::hardware_concurrency());
+  {
+    std::lock_guard<std::mutex> lock(_poolMutex);
 
-  // Calculate new worker thread count
-  uint32_t workerThreads = totalThreads;
-  if (workerThreads > config.loopThreads + config.gpuThreads) {
-    workerThreads -= (config.loopThreads + config.gpuThreads);
-  } else {
-    workerThreads = std::max(1u, workerThreads);
-  }
+    uint32_t totalThreads = config.totalThreads;
+    if (totalThreads == 0)
+      totalThreads = std::max(1u, std::thread::hardware_concurrency());
 
-  // Resize default pool
-  if (up_pool) {
-    up_pool->pause();
-    up_pool->reset(workerThreads - _reservedWorkerCount);
-    up_pool->unpause();
-  }
+    // Calculate new worker thread count, ensuring at least 1 worker thread
+    uint32_t reservedThreads = config.loopThreads + config.gpuThreads;
+    uint32_t workerThreads =
+        (totalThreads > reservedThreads) ? (totalThreads - reservedThreads) : 1;
 
-  _totalWorkerCount = static_cast<uint8_t>(totalThreads);
+    // Ensure we have enough threads for reserved workers
+    uint32_t actualWorkerThreads =
+        (workerThreads > _reservedWorkerCount)
+            ? (workerThreads - _reservedWorkerCount)
+            : 1;
 
-  // Notify GPU pools about configuration change
-  for (auto &pair : namedPools) {
-    if (pair.second.config.type == PoolType::GPU &&
-        pair.second.config.onReconfigure) {
-      pair.second.config.onReconfigure(pair.second.config.threadCount);
+    // Resize default pool
+    if (up_pool) {
+      up_pool->pause();
+      up_pool->reset(actualWorkerThreads);
+      up_pool->unpause();
     }
+
+    _totalWorkerCount = static_cast<uint32_t>(totalThreads);
+
+    // Collect GPU pool callbacks for invocation outside lock
+    for (auto &pair : namedPools) {
+      if (pair.second.config.type == PoolType::GPU &&
+          pair.second.config.onReconfigure) {
+        callbacks.emplace_back(pair.second.config.onReconfigure,
+                               pair.second.config.threadCount);
+      }
+    }
+
+    currentConfig = config;
+    currentConfig.totalThreads = totalThreads;
   }
 
-  currentConfig = config;
-  currentConfig.totalThreads = totalThreads;
+  // Notify GPU pools outside lock to avoid deadlock
+  for (auto &[callback, threadCount] : callbacks) {
+    callback(threadCount);
+  }
 }
 
 ThreadManagerConfig ThreadManager::getConfig() const {
