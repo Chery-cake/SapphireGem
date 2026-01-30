@@ -102,10 +102,13 @@ void ThreadManager::reserveDeviceThread(int reserve) {
 void ThreadManager::releaseDeviceThread(int release) {
   std::lock_guard<std::mutex> lock(_poolMutex);
   up_pool->pause();
-  _reservedWorkerCount -= release;
-  if (_reservedWorkerCount < 0)
+  // Check for underflow before subtraction
+  if (static_cast<uint32_t>(release) > _reservedWorkerCount) {
+    up_pool->unpause();
     throw std::runtime_error(
-        "reserved worker count is too low - it can't be negative");
+        "cannot release more threads than are currently reserved");
+  }
+  _reservedWorkerCount -= release;
   up_pool->reset(_totalWorkerCount - _reservedWorkerCount);
   up_pool->unpause();
 }
