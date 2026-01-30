@@ -3,10 +3,30 @@
 
 namespace core {
 
+#ifdef ENGINE_DEBUG
+static MemoryManager *g_memoryManagerInstance = nullptr;
+#endif
+
 MemoryManager &MemoryManager::instance() {
+#ifdef ENGINE_DEBUG
+  if (g_memoryManagerInstance) {
+    return *g_memoryManagerInstance;
+  }
+#endif
   static MemoryManager instance;
+#ifdef ENGINE_DEBUG
+  g_memoryManagerInstance = &instance;
+#endif
   return instance;
 }
+
+#ifdef ENGINE_DEBUG
+void MemoryManager::setInstance(MemoryManager *inst) {
+  g_memoryManagerInstance = inst;
+}
+
+MemoryManager *MemoryManager::getInstance() { return g_memoryManagerInstance; }
+#endif
 
 void MemoryManager::initialize(size_t persistentSize, size_t frameSize) {
   if (persistentAlloc || frameAlloc) {

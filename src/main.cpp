@@ -1,19 +1,11 @@
+#include <cstdio>
 #include <cstdlib>
 #ifdef ENGINE_DEBUG
+#include "core_export_struct.h"
 #include "hot_reload.h"
 #endif
 #include <print>
 #include <thread>
-
-#ifdef ENGINE_DEBUG
-void onLoad(void *userData) {
-  std::print("[Main] Core library loaded successfully\n");
-}
-
-void onUnload(void *userData) { std::print("[Main] Core library unloading\n"); }
-
-void onReload(void *userData) { std::print("[Main] Core library reloading\n"); }
-#endif // ENGINE_DEBUG
 
 int main(int argc, char *argv[]) {
 
@@ -27,16 +19,79 @@ int main(int argc, char *argv[]) {
   // Initialize hot reload system for core library
   HotReload core("core", "lib/libcored.so");
 
-  core.registerLoadCallback("InitializeResources", onLoad);
-  core.registerUnloadCallback("CleanupResources", onUnload);
-  core.registerReloadCallback("PrepareReload", onReload);
+  // Create and store the coreState in the HotReload object's data
+  core.setData(new coreState{nullptr, nullptr});
 
-  core.registerLoadSymbol("lib_on_load");
-  core.registerUnloadSymbol("lib_on_unload");
-  core.registerReloadSymbol("lib_on_reload");
+  // Register load callback
+  core.registerLoadCallback("core_load", [&core](void *data) {
+    std::print("[Main] Core library loaded successfully\n");
+
+    coreState *state = static_cast<coreState *>(data);
+    auto lib_on_load_func = (void (*)(void *))core.getSymbol("lib_on_load");
+    if (!lib_on_load_func) {
+      std::print(stderr,
+                 "[HotReload] Could not find symbol 'lib_on_load': {}\n",
+                 dlerror());
+    }
+
+    if (lib_on_load_func) {
+      lib_on_load_func(state);
+    }
+  });
+
+  // Register unload
+  core.registerUnloadCallback("core_unload", [&core](void *data) {
+    std::print("[Main] Core library unloading\n");
+
+    coreState *state = static_cast<coreState *>(data);
+    auto lib_on_unload_func = (void (*)(void *))core.getSymbol("lib_on_unload");
+
+    if (lib_on_unload_func) {
+      lib_on_unload_func(state);
+    }
+  });
+
+  // Register a destroy callback to be executed only when core is destroyed
+  // This handles final cleanup of singleton resources
+  core.registerDestroyCallback("core_cleanup", [](void *data) {
+    std::print("[Main] Core library cleanup\n");
+    coreState *state = static_cast<coreState *>(data);
+    if (state) {
+      if (state->thread) {
+        state->thread->shutdown();
+        delete state->thread;
+      }
+      if (state->memory) {
+        state->memory->shutdown();
+        delete state->memory;
+      }
+      delete state;
+    }
+  });
+
+  // Register reload callback
+  core.registerReloadCallback("core_reload", [&core](void *data) {
+    std::print("[Main] Core library reloading\n");
+
+    coreState *state = static_cast<coreState *>(data);
+    auto lib_on_reload_func = (void (*)(void *))core.getSymbol("lib_on_reload");
+
+    if (lib_on_reload_func) {
+      lib_on_reload_func(state);
+    }
+  });
 
   if (!core.load()) {
     std::print(stderr, "Failed to load core library!\n");
+    // Cleanup on failure
+    coreState *s = static_cast<coreState *>(core.getData());
+    if (s->memory) {
+      delete s->memory;
+    }
+    if (s->thread) {
+      delete s->thread;
+    }
+    delete s;
     return 1;
   }
 

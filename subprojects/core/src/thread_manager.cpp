@@ -6,10 +6,30 @@
 
 namespace core {
 
+#ifdef ENGINE_DEBUG
+static ThreadManager *g_threadManagerInstance = nullptr;
+#endif
+
 ThreadManager &ThreadManager::instance() {
+#ifdef ENGINE_DEBUG
+  if (g_threadManagerInstance) {
+    return *g_threadManagerInstance;
+  }
+#endif
   static ThreadManager instance;
+#ifdef ENGINE_DEBUG
+  g_threadManagerInstance = &instance;
+#endif
   return instance;
 }
+
+#ifdef ENGINE_DEBUG
+void ThreadManager::setInstance(ThreadManager *inst) {
+  g_threadManagerInstance = inst;
+}
+
+ThreadManager *ThreadManager::getInstance() { return g_threadManagerInstance; }
+#endif
 
 ThreadManager::ThreadManager() = default;
 
