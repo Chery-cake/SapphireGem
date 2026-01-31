@@ -68,6 +68,28 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
     EXPORT_NAME ${PROJECT_NAME}
+    POSITION_INDEPENDENT_CODE ON
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
 )
+
+# ==============================================================================
+# Apply Build Configuration (Debug/Release)
+# ==============================================================================
+if(COMMAND target_configure_build)
+    target_configure_build(${PROJECT_NAME}
+        ENABLE_LTO
+        ENABLE_SANITIZERS
+        SANITIZERS ADDRESS LEAK UNDEFINED
+    )
+endif()
+
+if(COMMAND target_configure_platform)
+    target_configure_platform(${PROJECT_NAME})
+endif()
+
+if(COMMAND target_configure_rpath)
+    target_configure_rpath(${PROJECT_NAME})
+endif()
 
 message(STATUS "Configured:  ${PROJECT_NAME} v${PROJECT_VERSION}")

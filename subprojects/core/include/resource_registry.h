@@ -235,12 +235,14 @@ public:
    * @return true if removed, false if tag didn't exist
    */
   bool remove(const Tag *tag) {
+    Asset *assetPtr = nullptr;
     bool removed = false;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = assets_.find(tag);
       if (it != assets_.end()) {
+        assetPtr = it->second.get();
         assets_.erase(it);
         removed = true;
       }
@@ -248,7 +250,7 @@ public:
 
     if (removed) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(tag, assetPtr);
       }
     }
 
@@ -261,12 +263,14 @@ public:
    * @return Unique pointer to the asset, or nullptr if not found
    */
   std::unique_ptr<Asset> extract(const Tag *tag) {
+    Asset *assetPtr = nullptr;
     std::unique_ptr<Asset> result;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = assets_.find(tag);
       if (it != assets_.end()) {
+        assetPtr = it->second.get();
         result = std::move(it->second);
         assets_.erase(it);
       }
@@ -274,7 +278,7 @@ public:
 
     if (result) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(tag, assetPtr);
       }
     }
 
@@ -315,19 +319,19 @@ public:
    * @brief Clear all assets from the registry
    */
   void clear() {
-    std::vector<const Tag *> tags;
+    std::vector<Entry> entries;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto &[tag, asset] : assets_) {
-        tags.push_back(tag);
+        entries.push_back({tag, asset.get()});
       }
       assets_.clear();
     }
 
-    for (const Tag *tag : tags) {
+    for (const Entry &entry : entries) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(entry.tag, entry.tag);
       }
     }
   }
