@@ -148,6 +148,119 @@ function(target_configure_release TARGET_NAME)
 endfunction()
 
 # ==============================================================================
+# Function to configure RelWithDebInfo build settings for a target
+# ==============================================================================
+function(target_configure_relwithdebinfo TARGET_NAME)
+    if(NOT TARGET ${TARGET_NAME})
+        message(FATAL_ERROR "target_configure_relwithdebinfo: Target '${TARGET_NAME}' does not exist")
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # RelWithDebInfo-specific compile options - optimization with debug info
+        target_compile_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:RelWithDebInfo>:
+                -O2                     # Good optimization
+                -g                      # Debug information
+                -ffunction-sections     # Place each function in its own section
+                -fdata-sections         # Place each data item in its own section
+            >
+        )
+
+        # RelWithDebInfo definitions
+        target_compile_definitions(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:RelWithDebInfo>:
+                NDEBUG
+                ENGINE_RELEASE
+            >
+        )
+
+        # Linker options for RelWithDebInfo
+        target_link_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:RelWithDebInfo>:
+                -Wl,--gc-sections       # Remove unused sections
+            >
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:RelWithDebInfo>:
+                /O2         # Good optimization
+                /Zi         # Debug information
+                /Ob1        # Inline expansion
+                /Oi         # Intrinsic functions
+            >
+        )
+
+        target_compile_definitions(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:RelWithDebInfo>:
+                NDEBUG
+                ENGINE_RELEASE
+            >
+        )
+    endif()
+endfunction()
+
+# ==============================================================================
+# Function to configure MinSizeRel build settings for a target
+# ==============================================================================
+function(target_configure_minsizerel TARGET_NAME)
+    if(NOT TARGET ${TARGET_NAME})
+        message(FATAL_ERROR "target_configure_minsizerel: Target '${TARGET_NAME}' does not exist")
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # MinSizeRel-specific compile options - optimize for size
+        target_compile_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                -Os                     # Optimize for size
+                -ffunction-sections     # Place each function in its own section
+                -fdata-sections         # Place each data item in its own section
+                -fvisibility=hidden     # Hide symbols by default
+                -fvisibility-inlines-hidden # Hide inline function symbols
+            >
+        )
+
+        # MinSizeRel definitions
+        target_compile_definitions(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                NDEBUG
+                ENGINE_RELEASE
+            >
+        )
+
+        # Linker options for MinSizeRel
+        target_link_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                -Wl,--gc-sections       # Remove unused sections
+                -Wl,--strip-all         # Strip all symbols
+                -Wl,-s                  # Strip symbol table
+            >
+        )
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                /O1         # Minimize size
+                /Ob1        # Inline expansion
+                /Gy         # Function-level linking
+            >
+        )
+
+        target_compile_definitions(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                NDEBUG
+                ENGINE_RELEASE
+            >
+        )
+
+        target_link_options(${TARGET_NAME} PRIVATE
+            $<$<CONFIG:MinSizeRel>:
+                /OPT:REF    # Remove unreferenced code
+                /OPT:ICF    # COMDAT folding
+            >
+        )
+    endif()
+endfunction()
+
+# ==============================================================================
 # Function to enable Link-Time Optimization (LTO) for Release builds
 # ==============================================================================
 function(target_enable_lto TARGET_NAME)
@@ -270,6 +383,12 @@ function(target_configure_build TARGET_NAME)
 
     # Apply Release configuration
     target_configure_release(${TARGET_NAME})
+
+    # Apply RelWithDebInfo configuration
+    target_configure_relwithdebinfo(${TARGET_NAME})
+
+    # Apply MinSizeRel configuration
+    target_configure_minsizerel(${TARGET_NAME})
 
     # Enable LTO if requested
     if(CONFIG_ENABLE_LTO)

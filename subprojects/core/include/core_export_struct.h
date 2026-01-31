@@ -4,12 +4,14 @@
 
 #include "config.h"
 #include "memory_manager.h"
+#include "persistent_storage.h"
 #include "thread_manager.h"
 
 struct coreState {
   core::ThreadManager *thread;
   core::MemoryManager *memory;
   core::Config *config;
+  core::PersistentStorage *storage;
 };
 
 #endif

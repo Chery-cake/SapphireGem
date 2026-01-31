@@ -11,6 +11,7 @@
 
 std::set<HotReload *> HotReload::instances;
 std::mutex HotReload::registry_mutex;
+std::atomic<bool> HotReload::cleanup_in_progress{false};
 
 HotReload::HotReload(const std::string &libName, const std::string &libPath)
     : name(libName), path(libPath), lastModTime(0), data(nullptr) {
@@ -167,13 +168,33 @@ void HotReload::setup_signal_handlers() {
   std::signal(SIGSEGV, fn);
 }
 
-void HotReload::cleanup_all(int signum) {
-  std::lock_guard<std::mutex> lock(registry_mutex);
+void HotReload::cleanup_all([[maybe_unused]] int signum) {
+  // Use atomic to prevent re-entry and avoid mutex in signal handler
+  // Note: Using mutex in signal handler can cause deadlock if signal
+  // is received while mutex is held. We use atomic flag instead.
+  bool expected = false;
+  if (!cleanup_in_progress.compare_exchange_strong(expected, true)) {
+    // Another cleanup is in progress, just exit
+    std::_Exit(1);
+  }
+
+  // Signal-safe: Iterate without mutex. This is safe because:
+  // 1. We're about to exit anyway
+  // 2. The atomic flag prevents concurrent cleanup attempts
+  // Note: In a signal handler, we can't safely use most C++ features,
+  // but since we're calling _Exit immediately after, it's acceptable.
   for (auto *inst : instances) {
-    if (inst) {
-      inst->unload();
-      std::print(stderr, "[HotReload] Cleaned up '{}' on signal {}.\n",
-                 inst->name, signum);
+    if (inst && inst->handle) {
+#ifdef _WIN32
+      FreeLibrary(inst->handle);
+#else
+      dlclose(inst->handle);
+#endif
+      inst->handle = nullptr;
+    }
+    // Clean up temp file - use C-style for signal safety
+    if (inst && !inst->tempPath.empty()) {
+      std::remove(inst->tempPath.c_str());
     }
   }
   std::_Exit(1);

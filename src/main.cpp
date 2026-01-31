@@ -20,7 +20,7 @@ int main(int argc, char *argv[]) {
   HotReload core("core", "lib/libcored.so");
 
   // Create and store the coreState in the HotReload object's data
-  core.setData(new coreState{nullptr, nullptr, nullptr});
+  core.setData(new coreState{nullptr, nullptr, nullptr, nullptr});
 
   // Register load callback
   core.registerLoadCallback("core_load", [&core](void *data) {
@@ -68,6 +68,10 @@ int main(int argc, char *argv[]) {
       if (state->config) {
         state->config->shutdown();
         delete state->config;
+      }
+      if (state->storage) {
+        state->storage->shutdown();
+        delete state->storage;
       }
       delete state;
     }

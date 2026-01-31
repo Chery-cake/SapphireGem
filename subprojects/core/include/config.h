@@ -328,8 +328,8 @@ public:
   ~Config();
 #else
 private:
-  EngineConfig();
-  ~EngineConfig();
+  Config();
+  ~Config();
 #endif
 
 private:

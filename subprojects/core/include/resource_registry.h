@@ -6,6 +6,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -235,12 +236,14 @@ public:
    * @return true if removed, false if tag didn't exist
    */
   bool remove(const Tag *tag) {
+    Asset *assetPtr = nullptr;
     bool removed = false;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = assets_.find(tag);
       if (it != assets_.end()) {
+        assetPtr = it->second.get();
         assets_.erase(it);
         removed = true;
       }
@@ -248,7 +251,7 @@ public:
 
     if (removed) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(tag, assetPtr);
       }
     }
 
@@ -262,11 +265,13 @@ public:
    */
   std::unique_ptr<Asset> extract(const Tag *tag) {
     std::unique_ptr<Asset> result;
+    Asset *assetPtr = nullptr;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       auto it = assets_.find(tag);
       if (it != assets_.end()) {
+        assetPtr = it->second.get();
         result = std::move(it->second);
         assets_.erase(it);
       }
@@ -274,7 +279,7 @@ public:
 
     if (result) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(tag, assetPtr);
       }
     }
 
@@ -315,19 +320,19 @@ public:
    * @brief Clear all assets from the registry
    */
   void clear() {
-    std::vector<const Tag *> tags;
+    std::vector<std::pair<const Tag *, Asset *>> entries;
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
       for (const auto &[tag, asset] : assets_) {
-        tags.push_back(tag);
+        entries.push_back({tag, asset.get()});
       }
       assets_.clear();
     }
 
-    for (const Tag *tag : tags) {
+    for (const auto &[tag, assetPtr] : entries) {
       for (const auto &callback : removeCallbacks_) {
-        callback(tag);
+        callback(tag, assetPtr);
       }
     }
   }

@@ -1,6 +1,7 @@
 #ifndef HOT_RELOAD_H_
 #define HOT_RELOAD_H_
 
+#include <atomic>
 #include <ctime>
 #include <functional>
 #include <mutex>
@@ -65,9 +66,10 @@ private:
   std::vector<CallbackEntry> reloadCallbacks;
   std::vector<CallbackEntry> destroyCallbacks;
 
-  // Instance tracking
+  // Instance tracking (using atomic for signal safety)
   static std::set<HotReload *> instances;
   static std::mutex registry_mutex;
+  static std::atomic<bool> cleanup_in_progress;
   static void setup_signal_handlers();
   static void cleanup_all(int signum);
 

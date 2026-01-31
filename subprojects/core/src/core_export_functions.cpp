@@ -4,6 +4,7 @@
 #include "core_export.h"
 #include "core_export_struct.h"
 #include "memory_manager.h"
+#include "persistent_storage.h"
 #include "thread_manager.h"
 #include <print>
 
@@ -16,11 +17,17 @@ CORE_API void lib_on_load(void *data) {
   coreState *state = static_cast<coreState *>(data);
 
   // If we have saved singleton pointers, restore them
-  if (state && state->thread && state->memory && state->config) {
+  if (state && state->thread && state->memory && state->config &&
+      state->storage) {
     std::print("[Core] Restoring saved singleton instances...\n");
     core::ThreadManager::setInstance(state->thread);
     core::MemoryManager::setInstance(state->memory);
     core::Config::setInstance(state->config);
+    core::PersistentStorage::setInstance(state->storage);
+
+    // Run recovery callbacks to reinitialize objects after reload
+    state->storage->runRecoveryCallbacks();
+    std::print("[Core] Recovery callbacks executed\n");
   } else {
     // First load - create new singleton instances
     std::print("[Core] First load - initializing singletons...\n");
@@ -35,6 +42,10 @@ CORE_API void lib_on_load(void *data) {
       state->thread->createPool(
           core::ThreadPoolConfig("main", core::PoolType::Worker, 0));
       state->config = &core::Config::instance();
+
+      // Initialize persistent storage for hot-reload recovery
+      state->storage = &core::PersistentStorage::instance();
+      state->storage->initialize(5 * 1024 * 1024); // 5 MB for recoverable storage
     }
   }
 
@@ -49,6 +60,13 @@ CORE_API void lib_on_unload(void *data) {
   if (state && state->memory) {
     std::print("[Core] Persistent memory used: {} bytes\n",
                state->memory->getPersistentBytesAllocated("core"));
+  }
+
+  if (state && state->storage) {
+    std::print("[Core] Recoverable storage used: {}/{} bytes\n",
+               state->storage->getBytesUsed(), state->storage->getCapacity());
+    std::print("[Core] Variables stored for recovery: {}\n",
+               state->storage->getVariableNames().size());
   }
 
   // DO NOT shutdown or clear the singletons - we want to preserve them!
@@ -66,6 +84,7 @@ CORE_API void lib_on_reload(void *data) {
     state->thread = core::ThreadManager::getInstance();
     state->memory = core::MemoryManager::getInstance();
     state->config = core::Config::getInstance();
+    state->storage = core::PersistentStorage::getInstance();
     std::print("[Core] Saved singleton pointers for reload\n");
   }
 }
@@ -81,6 +100,14 @@ CORE_API void test_print() {
   std::print("[Core] Frame memory: {}/{} bytes\n",
              memMgr.getFrameBytesAllocated("core"),
              memMgr.getFrameAllocator("core").capacity());
+
+  // Show recoverable storage status
+  auto &storage = core::PersistentStorage::instance();
+  if (storage.isInitialized()) {
+    std::print("[Core] Recoverable storage: {}/{} bytes ({} variables)\n",
+               storage.getBytesUsed(), storage.getCapacity(),
+               storage.getVariableNames().size());
+  }
 }
 
 CORE_API int change(int x) { return (x + 5) % 2; }
