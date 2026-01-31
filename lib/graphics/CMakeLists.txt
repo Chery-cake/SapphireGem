@@ -162,7 +162,13 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
     UPDATE_DISCONNECTED 1
     GIT_SHALLOW TRUE
     CMAKE_ARGS
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
+        -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
         -DCMAKE_INSTALL_PREFIX=${SLANG_INSTALL_DIR}
         -DSLANG_ENABLE_TESTS=OFF
         -DSLANG_ENABLE_EXAMPLES=OFF
@@ -175,12 +181,11 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
         -DSLANG_EXCLUDE_TINT=ON
         -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
         -DSLANG_ENABLE_SLANG_RHI=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
 ExternalProject_Get_Property(_slang source_dir)
 ExternalProject_Get_Property(_slang binary_dir)
-#-- slang source dir: /home/chery/Documents/SapphireGem/build/lib/graphics/_slang-prefix/src/_slang
-#-- slang binary dir: /home/chery/Documents/SapphireGem/build/lib/graphics/_slang-prefix/src/_slang-build
 
 add_library(slang SHARED IMPORTED)
 if(WIN32)
