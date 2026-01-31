@@ -100,6 +100,8 @@ set(SDL_STATIC OFF CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SDL_TOOLS OFF CACHE BOOL "" FORCE)
+# Allow building without X11/Wayland (for CI environments)
+set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(sdl3)
 
 # ==============================================================================

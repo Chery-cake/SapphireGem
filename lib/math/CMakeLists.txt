@@ -2,7 +2,7 @@
 # Math Dependencies
 # ==============================================================================
 # - GLM - Graphics vector/matrix math
-# - Eigen - Advanced linear algebra
+# - Eigen - Advanced linear algebra (optional, disabled in CI)
 # - Boost - Modern STL extensions (optional parts)
 # ==============================================================================
 
@@ -22,15 +22,17 @@ FetchContent_MakeAvailable(glm)
 # ==============================================================================
 # Eigen - Linear Algebra Library - doesn't have module
 # ==============================================================================
-FetchContent_Declare(
-    eigen
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG 5.0.1
-    GIT_SHALLOW TRUE
-)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
-set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(eigen)
+# Eigen is hosted on GitLab which may not be accessible in all environments
+# Uncomment below to enable Eigen support
+#FetchContent_Declare(
+#    eigen
+#    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
+#    GIT_TAG 5.0.1
+#    GIT_SHALLOW TRUE
+#)
+#set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+#set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
+#set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
+#FetchContent_MakeAvailable(eigen)
 
 message(STATUS "Math dependencies configured")
