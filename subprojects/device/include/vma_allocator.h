@@ -11,43 +11,69 @@
 #include <vk_mem_alloc.hpp>
 #include <vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace device {
 
 /**
- * @brief Wrapper for a VMA-allocated buffer
+ * @brief RAII wrapper for a VMA-allocated buffer
+ * 
+ * Uses vma::raii::Buffer for automatic resource cleanup.
+ * The buffer is automatically destroyed when this object goes out of scope.
  */
 struct DEVICE_API AllocatedBuffer {
-    vk::Buffer buffer;
-    vma::Allocation allocation;
-    vma::AllocationInfo allocationInfo;
+    std::unique_ptr<vma::raii::Buffer> buffer;
     vk::DeviceSize size = 0;
     std::string name;
 
-    [[nodiscard]] bool isValid() const { return buffer && allocation; }
+    AllocatedBuffer() = default;
+    ~AllocatedBuffer() = default;
+
+    // Move only
+    AllocatedBuffer(const AllocatedBuffer&) = delete;
+    AllocatedBuffer& operator=(const AllocatedBuffer&) = delete;
+    AllocatedBuffer(AllocatedBuffer&&) noexcept = default;
+    AllocatedBuffer& operator=(AllocatedBuffer&&) noexcept = default;
+
+    [[nodiscard]] bool isValid() const { return buffer != nullptr; }
+    [[nodiscard]] vk::Buffer getBuffer() const { return buffer ? static_cast<vk::Buffer>(*buffer) : vk::Buffer{}; }
+    [[nodiscard]] vma::Allocation getAllocation() const { return buffer ? buffer->getAllocation() : vma::Allocation{}; }
 
     // Map/unmap for host-visible buffers
-    void* map(vma::Allocator allocator);
-    void unmap(vma::Allocator allocator);
-    void flush(vma::Allocator allocator, vk::DeviceSize offset = 0, vk::DeviceSize size = VK_WHOLE_SIZE);
-    void invalidate(vma::Allocator allocator, vk::DeviceSize offset = 0, vk::DeviceSize size = VK_WHOLE_SIZE);
+    void* map();
+    void unmap();
+    void flush(vk::DeviceSize offset = 0, vk::DeviceSize flushSize = VK_WHOLE_SIZE);
+    void invalidate(vk::DeviceSize offset = 0, vk::DeviceSize invalSize = VK_WHOLE_SIZE);
 };
 
 /**
- * @brief Wrapper for a VMA-allocated image
+ * @brief RAII wrapper for a VMA-allocated image
+ * 
+ * Uses vma::raii::Image for automatic resource cleanup.
+ * The image is automatically destroyed when this object goes out of scope.
  */
 struct DEVICE_API AllocatedImage {
-    vk::Image image;
-    vk::ImageView view;
-    vma::Allocation allocation;
-    vma::AllocationInfo allocationInfo;
+    std::unique_ptr<vma::raii::Image> image;
+    std::unique_ptr<vk::raii::ImageView> view;
     vk::Format format = vk::Format::eUndefined;
     vk::Extent3D extent = {};
     uint32_t mipLevels = 1;
     uint32_t arrayLayers = 1;
     std::string name;
 
-    [[nodiscard]] bool isValid() const { return image && allocation; }
+    AllocatedImage() = default;
+    ~AllocatedImage() = default;
+
+    // Move only
+    AllocatedImage(const AllocatedImage&) = delete;
+    AllocatedImage& operator=(const AllocatedImage&) = delete;
+    AllocatedImage(AllocatedImage&&) noexcept = default;
+    AllocatedImage& operator=(AllocatedImage&&) noexcept = default;
+
+    [[nodiscard]] bool isValid() const { return image != nullptr; }
+    [[nodiscard]] vk::Image getImage() const { return image ? static_cast<vk::Image>(*image) : vk::Image{}; }
+    [[nodiscard]] vk::ImageView getView() const { return view ? static_cast<vk::ImageView>(**view) : vk::ImageView{}; }
+    [[nodiscard]] vma::Allocation getAllocation() const { return image ? image->getAllocation() : vma::Allocation{}; }
 };
 
 /**
@@ -79,10 +105,11 @@ struct DEVICE_API ImageCreateInfo {
 };
 
 /**
- * @brief Manages GPU memory allocation using VMA
+ * @brief Manages GPU memory allocation using VMA with RAII
  *
  * Each VMAAllocator is associated with a single GPUDevice.
  * For multi-GPU setups, create one VMAAllocator per device.
+ * Uses vma::raii::Allocator for automatic cleanup.
  */
 class DEVICE_API VMAAllocator {
 public:
@@ -106,19 +133,19 @@ public:
     bool initialize(vk::Instance instance, GPUDevice& device);
 
     /**
-     * @brief Shutdown and cleanup all allocations
+     * @brief Shutdown and cleanup (RAII handles most cleanup automatically)
      */
     void shutdown();
 
     [[nodiscard]] bool isInitialized() const { return initialized_; }
-    [[nodiscard]] vma::Allocator getAllocator() const { return allocator_; }
+    [[nodiscard]] vma::Allocator getAllocator() const;
 
     // ========== Buffer Operations ==========
 
     /**
      * @brief Create a buffer with specified parameters
      * @param info Buffer creation info
-     * @return Created buffer, or invalid buffer on failure
+     * @return Created buffer (RAII managed), or invalid buffer on failure
      */
     AllocatedBuffer createBuffer(const BufferCreateInfo& info);
 
@@ -126,7 +153,7 @@ public:
      * @brief Create a staging buffer for CPU-to-GPU transfers
      * @param size Buffer size
      * @param debugName Optional debug name
-     * @return Created staging buffer
+     * @return Created staging buffer (RAII managed)
      */
     AllocatedBuffer createStagingBuffer(vk::DeviceSize size, const std::string& debugName = "");
 
@@ -134,7 +161,7 @@ public:
      * @brief Create a vertex buffer
      * @param size Buffer size
      * @param debugName Optional debug name
-     * @return Created vertex buffer
+     * @return Created vertex buffer (RAII managed)
      */
     AllocatedBuffer createVertexBuffer(vk::DeviceSize size, const std::string& debugName = "");
 
@@ -142,7 +169,7 @@ public:
      * @brief Create an index buffer
      * @param size Buffer size
      * @param debugName Optional debug name
-     * @return Created index buffer
+     * @return Created index buffer (RAII managed)
      */
     AllocatedBuffer createIndexBuffer(vk::DeviceSize size, const std::string& debugName = "");
 
@@ -150,7 +177,7 @@ public:
      * @brief Create a uniform buffer
      * @param size Buffer size
      * @param debugName Optional debug name
-     * @return Created uniform buffer
+     * @return Created uniform buffer (RAII managed)
      */
     AllocatedBuffer createUniformBuffer(vk::DeviceSize size, const std::string& debugName = "");
 
@@ -158,22 +185,19 @@ public:
      * @brief Create a storage buffer
      * @param size Buffer size
      * @param debugName Optional debug name
-     * @return Created storage buffer
+     * @return Created storage buffer (RAII managed)
      */
     AllocatedBuffer createStorageBuffer(vk::DeviceSize size, const std::string& debugName = "");
 
-    /**
-     * @brief Destroy a buffer
-     * @param buffer Buffer to destroy
-     */
-    void destroyBuffer(AllocatedBuffer& buffer);
+    // Note: destroyBuffer() removed - RAII handles cleanup automatically
+    // Just let the AllocatedBuffer go out of scope or reset it
 
     // ========== Image Operations ==========
 
     /**
      * @brief Create an image with specified parameters
      * @param info Image creation info
-     * @return Created image, or invalid image on failure
+     * @return Created image (RAII managed), or invalid image on failure
      */
     AllocatedImage createImage(const ImageCreateInfo& info);
 
@@ -184,7 +208,7 @@ public:
      * @param format Image format
      * @param usage Usage flags
      * @param debugName Optional debug name
-     * @return Created image
+     * @return Created image (RAII managed)
      */
     AllocatedImage createImage2D(uint32_t width, uint32_t height, 
                                   vk::Format format, vk::ImageUsageFlags usage,
@@ -198,11 +222,8 @@ public:
      */
     bool createImageView(AllocatedImage& image, vk::ImageAspectFlags aspectMask = vk::ImageAspectFlagBits::eColor);
 
-    /**
-     * @brief Destroy an image
-     * @param image Image to destroy
-     */
-    void destroyImage(AllocatedImage& image);
+    // Note: destroyImage() removed - RAII handles cleanup automatically
+    // Just let the AllocatedImage go out of scope or reset it
 
     // ========== Statistics ==========
 
@@ -226,8 +247,8 @@ public:
     void setDebugName(const AllocatedImage& image, const std::string& name);
 
 private:
-    vma::Allocator allocator_;
-    vk::Device device_;
+    std::unique_ptr<vma::raii::Allocator> allocator_;
+    const vk::raii::Device* device_ = nullptr;
     bool initialized_ = false;
     mutable std::mutex allocatorMutex_;
 };

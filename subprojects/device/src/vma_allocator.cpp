@@ -7,20 +7,27 @@ namespace device {
 // AllocatedBuffer Implementation
 // ============================================================================
 
-void* AllocatedBuffer::map(vma::Allocator allocator) {
-    return allocator.mapMemory(allocation);
+void* AllocatedBuffer::map() {
+    if (!buffer) return nullptr;
+    return buffer->map();
 }
 
-void AllocatedBuffer::unmap(vma::Allocator allocator) {
-    allocator.unmapMemory(allocation);
+void AllocatedBuffer::unmap() {
+    if (buffer) {
+        buffer->unmap();
+    }
 }
 
-void AllocatedBuffer::flush(vma::Allocator allocator, vk::DeviceSize offset, vk::DeviceSize flushSize) {
-    allocator.flushAllocation(allocation, offset, flushSize);
+void AllocatedBuffer::flush(vk::DeviceSize offset, vk::DeviceSize flushSize) {
+    if (buffer) {
+        buffer->flush(offset, flushSize);
+    }
 }
 
-void AllocatedBuffer::invalidate(vma::Allocator allocator, vk::DeviceSize offset, vk::DeviceSize invalSize) {
-    allocator.invalidateAllocation(allocation, offset, invalSize);
+void AllocatedBuffer::invalidate(vk::DeviceSize offset, vk::DeviceSize invalSize) {
+    if (buffer) {
+        buffer->invalidate(offset, invalSize);
+    }
 }
 
 // ============================================================================
@@ -34,10 +41,9 @@ VMAAllocator::~VMAAllocator() {
 }
 
 VMAAllocator::VMAAllocator(VMAAllocator&& other) noexcept
-    : allocator_(other.allocator_)
+    : allocator_(std::move(other.allocator_))
     , device_(other.device_)
     , initialized_(other.initialized_) {
-    other.allocator_ = nullptr;
     other.device_ = nullptr;
     other.initialized_ = false;
 }
@@ -45,14 +51,17 @@ VMAAllocator::VMAAllocator(VMAAllocator&& other) noexcept
 VMAAllocator& VMAAllocator::operator=(VMAAllocator&& other) noexcept {
     if (this != &other) {
         shutdown();
-        allocator_ = other.allocator_;
+        allocator_ = std::move(other.allocator_);
         device_ = other.device_;
         initialized_ = other.initialized_;
-        other.allocator_ = nullptr;
         other.device_ = nullptr;
         other.initialized_ = false;
     }
     return *this;
+}
+
+vma::Allocator VMAAllocator::getAllocator() const {
+    return allocator_ ? static_cast<vma::Allocator>(*allocator_) : vma::Allocator{};
 }
 
 bool VMAAllocator::initialize(vk::Instance instance, GPUDevice& device) {
@@ -61,14 +70,14 @@ bool VMAAllocator::initialize(vk::Instance instance, GPUDevice& device) {
         return false;
     }
 
-    device_ = device.getDevice();
+    device_ = &device.getRaiiDevice();
 
     // Setup VMA allocator create info using Vulkan-Hpp dynamic dispatch
     vma::AllocatorCreateInfo allocatorInfo{};
     allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_3;
     allocatorInfo.instance = instance;
     allocatorInfo.physicalDevice = device.getPhysicalDevice();
-    allocatorInfo.device = device_;
+    allocatorInfo.device = device.getDevice();
 
     // Use dynamic function dispatch
     allocatorInfo.flags = vma::AllocatorCreateFlagBits::eExtMemoryBudget;
@@ -80,7 +89,7 @@ bool VMAAllocator::initialize(vk::Instance instance, GPUDevice& device) {
     allocatorInfo.pVulkanFunctions = &vulkanFunctions;
 
     try {
-        allocator_ = vma::createAllocator(allocatorInfo);
+        allocator_ = std::make_unique<vma::raii::Allocator>(allocatorInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[VMAAllocator] Failed to create allocator: " << e.what() << std::endl;
         return false;
@@ -96,11 +105,8 @@ void VMAAllocator::shutdown() {
         return;
     }
 
-    if (allocator_) {
-        allocator_.destroy();
-        allocator_ = nullptr;
-    }
-
+    // RAII handles cleanup - just reset the unique_ptr
+    allocator_.reset();
     device_ = nullptr;
     initialized_ = false;
     std::cout << "[VMAAllocator] Shutdown complete" << std::endl;
@@ -112,6 +118,11 @@ AllocatedBuffer VMAAllocator::createBuffer(const BufferCreateInfo& info) {
     AllocatedBuffer result{};
     result.size = info.size;
     result.name = info.debugName;
+
+    if (!allocator_) {
+        std::cerr << "[VMAAllocator] Allocator not initialized" << std::endl;
+        return result;
+    }
 
     vk::BufferCreateInfo bufferInfo{
         {},
@@ -125,10 +136,7 @@ AllocatedBuffer VMAAllocator::createBuffer(const BufferCreateInfo& info) {
     allocInfo.flags = info.flags;
 
     try {
-        auto [buffer, allocation] = allocator_.createBuffer(bufferInfo, allocInfo);
-        result.buffer = buffer;
-        result.allocation = allocation;
-        result.allocationInfo = allocator_.getAllocationInfo(allocation);
+        result.buffer = std::make_unique<vma::raii::Buffer>(*allocator_, bufferInfo, allocInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[VMAAllocator] Failed to create buffer: " << e.what() << std::endl;
         return result;
@@ -184,16 +192,8 @@ AllocatedBuffer VMAAllocator::createStorageBuffer(vk::DeviceSize size, const std
     return createBuffer(info);
 }
 
-void VMAAllocator::destroyBuffer(AllocatedBuffer& buffer) {
-    std::lock_guard<std::mutex> lock(allocatorMutex_);
-
-    if (buffer.isValid()) {
-        allocator_.destroyBuffer(buffer.buffer, buffer.allocation);
-        buffer.buffer = nullptr;
-        buffer.allocation = nullptr;
-        buffer.size = 0;
-    }
-}
+// Note: destroyBuffer() removed - RAII handles cleanup automatically
+// Just let the AllocatedBuffer go out of scope or call buffer.reset()
 
 AllocatedImage VMAAllocator::createImage(const ImageCreateInfo& info) {
     std::lock_guard<std::mutex> lock(allocatorMutex_);
@@ -204,6 +204,11 @@ AllocatedImage VMAAllocator::createImage(const ImageCreateInfo& info) {
     result.mipLevels = info.mipLevels;
     result.arrayLayers = info.arrayLayers;
     result.name = info.debugName;
+
+    if (!allocator_) {
+        std::cerr << "[VMAAllocator] Allocator not initialized" << std::endl;
+        return result;
+    }
 
     vk::ImageCreateInfo imageInfo{
         {},
@@ -223,10 +228,7 @@ AllocatedImage VMAAllocator::createImage(const ImageCreateInfo& info) {
     allocInfo.flags = info.flags;
 
     try {
-        auto [image, allocation] = allocator_.createImage(imageInfo, allocInfo);
-        result.image = image;
-        result.allocation = allocation;
-        result.allocationInfo = allocator_.getAllocationInfo(allocation);
+        result.image = std::make_unique<vma::raii::Image>(*allocator_, imageInfo, allocInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[VMAAllocator] Failed to create image: " << e.what() << std::endl;
         return result;
@@ -264,7 +266,7 @@ bool VMAAllocator::createImageView(AllocatedImage& image, vk::ImageAspectFlags a
 
     vk::ImageViewCreateInfo viewInfo{
         {},
-        image.image,
+        image.getImage(),
         viewType,
         image.format,
         {},  // Component mapping
@@ -276,7 +278,7 @@ bool VMAAllocator::createImageView(AllocatedImage& image, vk::ImageAspectFlags a
     };
 
     try {
-        image.view = device_.createImageView(viewInfo);
+        image.view = std::make_unique<vk::raii::ImageView>(*device_, viewInfo);
         return true;
     } catch (const vk::SystemError& e) {
         std::cerr << "[VMAAllocator] Failed to create image view: " << e.what() << std::endl;
@@ -284,30 +286,18 @@ bool VMAAllocator::createImageView(AllocatedImage& image, vk::ImageAspectFlags a
     }
 }
 
-void VMAAllocator::destroyImage(AllocatedImage& image) {
-    std::lock_guard<std::mutex> lock(allocatorMutex_);
-
-    if (image.view && device_) {
-        device_.destroyImageView(image.view);
-        image.view = nullptr;
-    }
-
-    if (image.isValid()) {
-        allocator_.destroyImage(image.image, image.allocation);
-        image.image = nullptr;
-        image.allocation = nullptr;
-    }
-}
+// Note: destroyImage() removed - RAII handles cleanup automatically
+// Just let the AllocatedImage go out of scope or call image.reset()
 
 VMAAllocator::MemoryStats VMAAllocator::getStats() const {
     std::lock_guard<std::mutex> lock(allocatorMutex_);
 
     MemoryStats stats{};
-    if (!initialized_) {
+    if (!initialized_ || !allocator_) {
         return stats;
     }
 
-    auto budget = allocator_.getHeapBudgets();
+    auto budget = allocator_->getHeapBudgets();
     for (const auto& heap : budget) {
         stats.totalAllocated += heap.statistics.blockBytes;
         stats.totalUsed += heap.statistics.allocationBytes;
@@ -318,17 +308,17 @@ VMAAllocator::MemoryStats VMAAllocator::getStats() const {
 }
 
 void VMAAllocator::setDebugName(const AllocatedBuffer& buffer, const std::string& name) {
-    if (!initialized_ || !buffer.isValid()) {
+    if (!initialized_ || !buffer.isValid() || !allocator_) {
         return;
     }
-    allocator_.setAllocationName(buffer.allocation, name.c_str());
+    allocator_->setAllocationName(buffer.getAllocation(), name.c_str());
 }
 
 void VMAAllocator::setDebugName(const AllocatedImage& image, const std::string& name) {
-    if (!initialized_ || !image.isValid()) {
+    if (!initialized_ || !image.isValid() || !allocator_) {
         return;
     }
-    allocator_.setAllocationName(image.allocation, name.c_str());
+    allocator_->setAllocationName(image.getAllocation(), name.c_str());
 }
 
 // ============================================================================
