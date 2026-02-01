@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <unordered_set>
 
 namespace device {
 
@@ -40,7 +41,7 @@ VulkanInstance::VulkanInstance(VulkanInstance&& other) noexcept
     , instance_(other.instance_)
     , debugMessenger_(other.debugMessenger_)
     , initialized_(other.initialized_)
-    , validationEnabled_(other.validationEnabled_) {
+    , hasLayers_(other.hasLayers_) {
     other.instance_ = nullptr;
     other.debugMessenger_ = nullptr;
     other.initialized_ = false;
@@ -53,7 +54,7 @@ VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept {
         instance_ = other.instance_;
         debugMessenger_ = other.debugMessenger_;
         initialized_ = other.initialized_;
-        validationEnabled_ = other.validationEnabled_;
+        hasLayers_ = other.hasLayers_;
         other.instance_ = nullptr;
         other.debugMessenger_ = nullptr;
         other.initialized_ = false;
@@ -75,22 +76,23 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
     }
     VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
-    // Check validation layer support
-    validationEnabled_ = config.enableValidation;
+    // Check instance layer support and add supported layers
     std::vector<const char*> enabledLayers;
-    if (validationEnabled_) {
-        auto unsupported = checkLayerSupport(config.validationLayers);
+    if (!config.instanceLayers.empty()) {
+        auto unsupportedList = checkLayerSupport(config.instanceLayers);
+        std::unordered_set<std::string> unsupported(unsupportedList.begin(), unsupportedList.end());
         if (!unsupported.empty()) {
-            std::cerr << "[VulkanInstance] Unsupported validation layers:" << std::endl;
-            for (const auto& layer : unsupported) {
+            std::cerr << "[VulkanInstance] Skipping unsupported instance layers:" << std::endl;
+            for (const auto& layer : unsupportedList) {
                 std::cerr << "  - " << layer << std::endl;
             }
-            validationEnabled_ = false;
-        } else {
-            for (const auto& layer : config.validationLayers) {
+        }
+        for (const auto& layer : config.instanceLayers) {
+            if (unsupported.find(layer) == unsupported.end()) {
                 enabledLayers.push_back(layer.c_str());
             }
         }
+        hasLayers_ = !enabledLayers.empty();
     }
 
     // Check extension support
@@ -109,9 +111,9 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
         enabledExtensions.push_back(ext.c_str());
     }
 
-    // Add debug extension if validation is enabled
-    if (validationEnabled_) {
-        enabledExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    // Add debug extension if layers are enabled (for debug messenger)
+    if (hasLayers_) {
+        enabledExtensions.push_back(vk::EXTDebugUtilsExtensionName);
     }
 
     // Create application info
@@ -131,9 +133,9 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
         enabledExtensions
     };
 
-    // Add debug messenger create info if validation enabled
+    // Add debug messenger create info if layers enabled
     vk::DebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-    if (validationEnabled_) {
+    if (hasLayers_) {
         debugCreateInfo.messageSeverity =
             vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
             vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
@@ -157,7 +159,7 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
     VULKAN_HPP_DEFAULT_DISPATCHER.init(instance_);
 
     // Setup debug messenger
-    if (validationEnabled_) {
+    if (hasLayers_) {
         if (!setupDebugMessenger()) {
             std::cerr << "[VulkanInstance] Failed to setup debug messenger" << std::endl;
             // Continue anyway, not critical
@@ -182,7 +184,7 @@ void VulkanInstance::shutdown() {
     }
 
     initialized_ = false;
-    validationEnabled_ = false;
+    hasLayers_ = false;
     std::cout << "[VulkanInstance] Shutdown complete" << std::endl;
 }
 

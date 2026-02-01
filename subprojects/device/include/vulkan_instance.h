@@ -20,12 +20,7 @@ struct DEVICE_API VulkanInstanceConfig {
     uint32_t apiVersion = VK_API_VERSION_1_3;
 
     std::vector<std::string> requiredExtensions;
-    std::vector<std::string> validationLayers; // Validation layers to enable (typically only used in debug builds)
-#ifdef ENGINE_DEBUG
-    bool enableValidation = true;  // Validation enabled by default in debug
-#else
-    bool enableValidation = false; // Validation disabled in release
-#endif
+    std::vector<std::string> instanceLayers; // Instance layers (validation layers in debug builds)
 };
 
 /**
@@ -80,10 +75,10 @@ public:
     [[nodiscard]] const vk::detail::DynamicLoader& getDynamicLoader() const { return dynamicLoader_; }
 
     /**
-     * @brief Check if validation layers are enabled
-     * @return true if validation is enabled
+     * @brief Check if instance layers are enabled (has any layers)
+     * @return true if layers are enabled
      */
-    [[nodiscard]] bool isValidationEnabled() const { return validationEnabled_; }
+    [[nodiscard]] bool hasInstanceLayers() const { return hasLayers_; }
 
     /**
      * @brief Get list of available instance extensions
@@ -92,7 +87,7 @@ public:
     static std::vector<std::string> getAvailableExtensions();
 
     /**
-     * @brief Get list of available validation layers
+     * @brief Get list of available instance layers
      * @return Vector of layer names
      */
     static std::vector<std::string> getAvailableLayers();
@@ -122,7 +117,7 @@ private:
     vk::DebugUtilsMessengerEXT debugMessenger_;
     
     bool initialized_ = false;
-    bool validationEnabled_ = false;
+    bool hasLayers_ = false;
 };
 
 } // namespace device

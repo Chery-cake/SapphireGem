@@ -21,18 +21,12 @@ using ConfigChangeCallback = std::function<void()>;
 struct CORE_API VulkanConfig {
   std::vector<std::string> instanceExtensions;
   std::vector<std::string> deviceExtensions;
-  std::vector<std::string> validationLayers; // Validation layers to enable (typically only populated in debug builds)
-#ifdef ENGINE_DEBUG
-  bool enableValidation = true;  // Validation enabled by default in debug
-#else
-  bool enableValidation = false; // Validation disabled in release
-#endif
+  std::vector<std::string> instanceLayers; // Instance layers (validation layers added in debug builds)
 
   bool operator==(const VulkanConfig &other) const {
     return instanceExtensions == other.instanceExtensions &&
            deviceExtensions == other.deviceExtensions &&
-           validationLayers == other.validationLayers &&
-           enableValidation == other.enableValidation;
+           instanceLayers == other.instanceLayers;
   }
 
   bool operator!=(const VulkanConfig &other) const { return !(*this == other); }
@@ -178,10 +172,10 @@ public:
   void addDeviceExtension(const std::string &extension);
 
   /**
-   * @brief Add a Vulkan validation layer
+   * @brief Add a Vulkan instance layer
    * @param layer Layer name to add
    */
-  void addValidationLayer(const std::string &layer);
+  void addInstanceLayer(const std::string &layer);
 
   /**
    * @brief Remove a Vulkan instance extension
@@ -198,17 +192,11 @@ public:
   bool removeDeviceExtension(const std::string &extension);
 
   /**
-   * @brief Remove a Vulkan validation layer
+   * @brief Remove a Vulkan instance layer
    * @param layer Layer name to remove
    * @return true if layer was removed
    */
-  bool removeValidationLayer(const std::string &layer);
-
-  /**
-   * @brief Enable or disable Vulkan validation
-   * @param enable Whether to enable validation
-   */
-  void setValidationEnabled(bool enable);
+  bool removeInstanceLayer(const std::string &layer);
 
   // ========== Thread Pool Configuration ==========
 
