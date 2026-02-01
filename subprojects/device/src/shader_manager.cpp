@@ -178,6 +178,18 @@ ShaderCompileResult ShaderManager::compile(const ShaderCompileRequest& request) 
         fullPath = shaderBasePath_ + "/" + request.sourcePath;
     }
 
+    // Validate path to prevent directory traversal attacks
+    auto normalizedPath = std::filesystem::path(fullPath).lexically_normal();
+    auto basePath = std::filesystem::path(shaderBasePath_).lexically_normal();
+    std::string normalizedStr = normalizedPath.string();
+    std::string baseStr = basePath.string();
+    if (normalizedStr.length() < baseStr.length() ||
+        normalizedStr.compare(0, baseStr.length(), baseStr) != 0) {
+        result.errorMessage = "Invalid shader path: access denied (path traversal attempt)";
+        return result;
+    }
+    fullPath = normalizedStr;
+
     // Check if file exists
     if (!std::filesystem::exists(fullPath)) {
         result.errorMessage = "Shader file not found: " + fullPath;
@@ -237,6 +249,13 @@ ShaderCompileResult ShaderManager::compile(const ShaderCompileRequest& request) 
     const void* code = spGetEntryPointCode(slangRequest, 0, &codeSize);
     if (!code || codeSize == 0) {
         result.errorMessage = "Failed to get SPIR-V code";
+        spDestroyCompileRequest(slangRequest);
+        return result;
+    }
+
+    // Validate SPIR-V code size alignment (SPIR-V is 32-bit word-based)
+    if (codeSize % sizeof(uint32_t) != 0) {
+        result.errorMessage = "Invalid SPIR-V code size: not 4-byte aligned";
         spDestroyCompileRequest(slangRequest);
         return result;
     }

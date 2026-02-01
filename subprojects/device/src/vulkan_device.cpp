@@ -236,6 +236,13 @@ bool VulkanDeviceManager::initialize(VulkanInstance& instance, const VulkanDevic
     for (size_t i = 0; i < selectedDevices.size(); ++i) {
         uint32_t gpuIndex = selectedDevices[i];
 
+        // Validate GPU index bounds (device may have been hot-unplugged)
+        if (gpuIndex >= physicalDevices.size()) {
+            std::cerr << "[VulkanDeviceManager] GPU index " << gpuIndex 
+                      << " out of range (device may have been removed)" << std::endl;
+            continue;
+        }
+
         // Find GPU info
         auto it = std::find_if(availableGPUs_.begin(), availableGPUs_.end(),
             [gpuIndex](const GPUInfo& info) { return info.index == gpuIndex; });
