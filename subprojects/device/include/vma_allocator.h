@@ -9,6 +9,7 @@
 #include <string>
 #include <unordered_map>
 #include <vk_mem_alloc.hpp>
+#include <vk_mem_alloc_raii.hpp>
 #include <vulkan/vulkan.hpp>
 
 namespace device {
