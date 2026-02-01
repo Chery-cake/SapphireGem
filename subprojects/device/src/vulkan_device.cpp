@@ -15,47 +15,46 @@ GPUDevice::~GPUDevice() {
 }
 
 GPUDevice::GPUDevice(GPUDevice&& other) noexcept
-    : physicalDevice_(other.physicalDevice_)
-    , device_(other.device_)
+    : physicalDevice_(std::move(other.physicalDevice_))
+    , device_(std::move(other.device_))
     , info_(std::move(other.info_))
     , graphicsQueue_(other.graphicsQueue_)
     , computeQueue_(other.computeQueue_)
     , transferQueue_(other.transferQueue_)
     , presentQueue_(other.presentQueue_)
     , initialized_(other.initialized_) {
-    other.device_ = nullptr;
     other.initialized_ = false;
 }
 
 GPUDevice& GPUDevice::operator=(GPUDevice&& other) noexcept {
     if (this != &other) {
         shutdown();
-        physicalDevice_ = other.physicalDevice_;
-        device_ = other.device_;
+        physicalDevice_ = std::move(other.physicalDevice_);
+        device_ = std::move(other.device_);
         info_ = std::move(other.info_);
         graphicsQueue_ = other.graphicsQueue_;
         computeQueue_ = other.computeQueue_;
         transferQueue_ = other.transferQueue_;
         presentQueue_ = other.presentQueue_;
         initialized_ = other.initialized_;
-        other.device_ = nullptr;
         other.initialized_ = false;
     }
     return *this;
 }
 
-bool GPUDevice::initialize(vk::Instance instance,
-                           vk::PhysicalDevice physicalDevice,
+bool GPUDevice::initialize(const vk::raii::Instance& instance,
+                           vk::PhysicalDevice physicalDeviceHandle,
                            const GPUInfo& info,
                            const VulkanDeviceConfig& config) {
-    (void)instance;
     if (initialized_) {
         std::cerr << "[GPUDevice] Already initialized" << std::endl;
         return false;
     }
 
-    physicalDevice_ = physicalDevice;
     info_ = info;
+
+    // Create RAII physical device wrapper
+    physicalDevice_ = std::make_unique<vk::raii::PhysicalDevice>(instance, physicalDeviceHandle);
 
     // Collect unique queue families
     std::set<uint32_t> uniqueQueueFamilies;
@@ -100,7 +99,7 @@ bool GPUDevice::initialize(vk::Instance instance,
     }
 
     // Check optional extensions
-    auto availableExtensions = physicalDevice_.enumerateDeviceExtensionProperties();
+    auto availableExtensions = physicalDevice_->enumerateDeviceExtensionProperties();
     for (const auto& optExt : config.optionalExtensions) {
         auto it = std::find_if(availableExtensions.begin(), availableExtensions.end(),
             [&optExt](const vk::ExtensionProperties& props) {
@@ -121,27 +120,24 @@ bool GPUDevice::initialize(vk::Instance instance,
     };
 
     try {
-        device_ = physicalDevice_.createDevice(createInfo);
+        device_ = std::make_unique<vk::raii::Device>(*physicalDevice_, createInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[GPUDevice] Failed to create logical device: " << e.what() << std::endl;
         return false;
     }
 
-    // Initialize dispatch loader with device
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(device_);
-
-    // Get queues
+    // Get queues (raw handles from RAII device)
     if (info.queueFamilies.graphicsFamily.has_value()) {
-        graphicsQueue_ = device_.getQueue(info.queueFamilies.graphicsFamily.value(), 0);
+        graphicsQueue_ = device_->getQueue(info.queueFamilies.graphicsFamily.value(), 0);
     }
     if (info.queueFamilies.presentFamily.has_value()) {
-        presentQueue_ = device_.getQueue(info.queueFamilies.presentFamily.value(), 0);
+        presentQueue_ = device_->getQueue(info.queueFamilies.presentFamily.value(), 0);
     }
     if (info.queueFamilies.computeFamily.has_value()) {
-        computeQueue_ = device_.getQueue(info.queueFamilies.computeFamily.value(), 0);
+        computeQueue_ = device_->getQueue(info.queueFamilies.computeFamily.value(), 0);
     }
     if (info.queueFamilies.transferFamily.has_value()) {
-        transferQueue_ = device_.getQueue(info.queueFamilies.transferFamily.value(), 0);
+        transferQueue_ = device_->getQueue(info.queueFamilies.transferFamily.value(), 0);
     }
 
     initialized_ = true;
@@ -155,10 +151,12 @@ void GPUDevice::shutdown() {
     }
 
     if (device_) {
-        device_.waitIdle();
-        device_.destroy();
-        device_ = nullptr;
+        device_->waitIdle();
     }
+
+    // RAII handles cleanup - destroy in reverse order
+    device_.reset();
+    physicalDevice_.reset();
 
     initialized_ = false;
     std::cout << "[GPUDevice] Shutdown: " << info_.name << std::endl;
@@ -166,7 +164,7 @@ void GPUDevice::shutdown() {
 
 void GPUDevice::waitIdle() const {
     if (device_) {
-        device_.waitIdle();
+        device_->waitIdle();
     }
 }
 
@@ -191,8 +189,10 @@ bool VulkanDeviceManager::initialize(VulkanInstance& instance, const VulkanDevic
         return false;
     }
 
+    vulkanInstance_ = &instance;
+
     // Enumerate physical devices
-    enumeratePhysicalDevices(instance.getInstance(), config.surface);
+    enumeratePhysicalDevices(instance.getRaiiInstance(), config.surface);
 
     if (availableGPUs_.empty()) {
         std::cerr << "[VulkanDeviceManager] No suitable GPUs found" << std::endl;
@@ -230,7 +230,7 @@ bool VulkanDeviceManager::initialize(VulkanInstance& instance, const VulkanDevic
     }
 
     // Get physical devices from instance
-    auto physicalDevices = instance.getInstance().enumeratePhysicalDevices();
+    auto physicalDevices = instance.getRaiiInstance().enumeratePhysicalDevices();
 
     // Create logical devices for selected GPUs
     for (size_t i = 0; i < selectedDevices.size(); ++i) {
@@ -252,7 +252,7 @@ bool VulkanDeviceManager::initialize(VulkanInstance& instance, const VulkanDevic
         }
 
         auto device = std::make_unique<GPUDevice>();
-        if (device->initialize(instance.getInstance(), physicalDevices[gpuIndex], *it, config)) {
+        if (device->initialize(instance.getRaiiInstance(), *physicalDevices[gpuIndex], *it, config)) {
             if (i == 0) {
                 primaryDeviceIndex_ = static_cast<uint32_t>(devices_.size());
             }
@@ -281,17 +281,18 @@ void VulkanDeviceManager::shutdown() {
     }
     devices_.clear();
     availableGPUs_.clear();
+    vulkanInstance_ = nullptr;
 
     initialized_ = false;
     std::cout << "[VulkanDeviceManager] Shutdown complete" << std::endl;
 }
 
-void VulkanDeviceManager::enumeratePhysicalDevices(vk::Instance instance, vk::SurfaceKHR surface) {
+void VulkanDeviceManager::enumeratePhysicalDevices(const vk::raii::Instance& instance, vk::SurfaceKHR surface) {
     auto physicalDevices = instance.enumeratePhysicalDevices();
 
     availableGPUs_.clear();
     for (uint32_t i = 0; i < physicalDevices.size(); ++i) {
-        auto info = queryDeviceInfo(physicalDevices[i], i, surface);
+        auto info = queryDeviceInfo(*physicalDevices[i], i, surface);
         availableGPUs_.push_back(info);
 
         std::cout << "[VulkanDeviceManager] Found GPU " << i << ": " << info.name

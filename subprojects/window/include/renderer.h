@@ -9,6 +9,7 @@
 #include <mutex>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 // Forward declare device types
 namespace device {
@@ -25,13 +26,13 @@ namespace window {
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 /**
- * @brief Per-frame synchronization resources
+ * @brief Per-frame synchronization resources using RAII
  */
 struct WINDOW_API FrameSyncObjects {
-    vk::Semaphore imageAvailableSemaphore;
-    vk::Semaphore renderFinishedSemaphore;
-    vk::Fence inFlightFence;
-    vk::CommandBuffer commandBuffer;
+    std::unique_ptr<vk::raii::Semaphore> imageAvailableSemaphore;
+    std::unique_ptr<vk::raii::Semaphore> renderFinishedSemaphore;
+    std::unique_ptr<vk::raii::Fence> inFlightFence;
+    vk::CommandBuffer commandBuffer;  // Owned by command pool
     uint32_t frameIndex = 0;
 };
 
@@ -54,8 +55,9 @@ struct WINDOW_API RenderPassConfig {
 using RenderCallback = std::function<void(vk::CommandBuffer cmd, uint32_t imageIndex)>;
 
 /**
- * @brief Manages rendering to a window with synchronization
+ * @brief Manages rendering to a window with synchronization using RAII
  *
+ * Uses vk::raii wrappers for automatic resource management.
  * Features:
  * - Frame synchronization with semaphores and fences
  * - Command buffer management
@@ -119,7 +121,7 @@ public:
     bool handleSwapchainRecreation();
 
     // Getters
-    [[nodiscard]] vk::RenderPass getRenderPass() const { return renderPass_; }
+    [[nodiscard]] vk::RenderPass getRenderPass() const { return renderPass_ ? *renderPass_ : vk::RenderPass{}; }
     [[nodiscard]] uint32_t getCurrentFrame() const { return currentFrame_; }
     [[nodiscard]] uint32_t getFrameCount() const { return MAX_FRAMES_IN_FLIGHT; }
 
@@ -173,13 +175,12 @@ private:
     bool createDepthResources();
     void destroyDepthResources();
 
-    vk::Device device_;
     device::GPUDevice* gpuDevice_ = nullptr;
     Swapchain* swapchain_ = nullptr;
     device::VMAAllocator* allocator_ = nullptr;
 
-    vk::RenderPass renderPass_;
-    vk::CommandPool commandPool_;
+    std::unique_ptr<vk::raii::RenderPass> renderPass_;
+    std::unique_ptr<vk::raii::CommandPool> commandPool_;
     std::vector<FrameSyncObjects> frameSyncObjects_;
 
     // Depth buffer

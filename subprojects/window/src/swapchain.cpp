@@ -12,37 +12,33 @@ Swapchain::~Swapchain() {
 }
 
 Swapchain::Swapchain(Swapchain&& other) noexcept
-    : device_(other.device_)
-    , physicalDevice_(other.physicalDevice_)
+    : gpuDevice_(other.gpuDevice_)
     , surface_(other.surface_)
     , presentQueue_(other.presentQueue_)
     , presentQueueFamily_(other.presentQueueFamily_)
-    , swapchain_(other.swapchain_)
+    , swapchain_(std::move(other.swapchain_))
     , format_(other.format_)
     , extent_(other.extent_)
     , frames_(std::move(other.frames_))
     , config_(other.config_)
     , needsRecreation_(other.needsRecreation_) {
-    other.swapchain_ = nullptr;
-    other.device_ = nullptr;
+    other.gpuDevice_ = nullptr;
 }
 
 Swapchain& Swapchain::operator=(Swapchain&& other) noexcept {
     if (this != &other) {
         destroy();
-        device_ = other.device_;
-        physicalDevice_ = other.physicalDevice_;
+        gpuDevice_ = other.gpuDevice_;
         surface_ = other.surface_;
         presentQueue_ = other.presentQueue_;
         presentQueueFamily_ = other.presentQueueFamily_;
-        swapchain_ = other.swapchain_;
+        swapchain_ = std::move(other.swapchain_);
         format_ = other.format_;
         extent_ = other.extent_;
         frames_ = std::move(other.frames_);
         config_ = other.config_;
         needsRecreation_ = other.needsRecreation_;
-        other.swapchain_ = nullptr;
-        other.device_ = nullptr;
+        other.gpuDevice_ = nullptr;
     }
     return *this;
 }
@@ -53,17 +49,18 @@ bool Swapchain::create(device::GPUDevice& device, vk::SurfaceKHR surface, const 
         return false;
     }
 
-    device_ = device.getDevice();
-    physicalDevice_ = device.getPhysicalDevice();
+    gpuDevice_ = &device;
     surface_ = surface;
     presentQueue_ = device.getPresentQueue();
     presentQueueFamily_ = device.getQueueFamilies().presentFamily.value_or(0);
     config_ = config;
 
+    vk::PhysicalDevice physicalDevice = device.getPhysicalDevice();
+
     // Query swapchain support
-    auto capabilities = physicalDevice_.getSurfaceCapabilitiesKHR(surface_);
-    auto formats = physicalDevice_.getSurfaceFormatsKHR(surface_);
-    auto presentModes = physicalDevice_.getSurfacePresentModesKHR(surface_);
+    auto capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface_);
+    auto formats = physicalDevice.getSurfaceFormatsKHR(surface_);
+    auto presentModes = physicalDevice.getSurfacePresentModesKHR(surface_);
 
     if (formats.empty() || presentModes.empty()) {
         std::cerr << "[Swapchain] Inadequate swapchain support" << std::endl;
@@ -103,22 +100,22 @@ bool Swapchain::create(device::GPUDevice& device, vk::SurfaceKHR surface, const 
 
     // Handle multiple queue families
     uint32_t graphicsFamily = device.getQueueFamilies().graphicsFamily.value_or(0);
+    std::array<uint32_t, 2> queueFamilyIndices = {graphicsFamily, presentQueueFamily_};
     if (graphicsFamily != presentQueueFamily_) {
-        std::array<uint32_t, 2> queueFamilyIndices = {graphicsFamily, presentQueueFamily_};
         createInfo.imageSharingMode = vk::SharingMode::eConcurrent;
         createInfo.queueFamilyIndexCount = 2;
         createInfo.pQueueFamilyIndices = queueFamilyIndices.data();
     }
 
     try {
-        swapchain_ = device_.createSwapchainKHR(createInfo);
+        swapchain_ = std::make_unique<vk::raii::SwapchainKHR>(device.getRaiiDevice(), createInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[Swapchain] Failed to create swapchain: " << e.what() << std::endl;
         return false;
     }
 
     // Get swapchain images and create views
-    auto images = device_.getSwapchainImagesKHR(swapchain_);
+    auto images = swapchain_->getImages();
     frames_.resize(images.size());
     for (size_t i = 0; i < images.size(); ++i) {
         frames_[i].image = images[i];
@@ -134,21 +131,21 @@ bool Swapchain::create(device::GPUDevice& device, vk::SurfaceKHR surface, const 
 }
 
 void Swapchain::destroy() {
-    if (!device_) {
+    if (!gpuDevice_) {
         return;
     }
 
-    device_.waitIdle();
+    gpuDevice_->waitIdle();
 
+    // RAII handles cleanup - destroy framebuffers and image views
     destroyFramebuffers();
     destroyImageViews();
 
-    if (swapchain_) {
-        device_.destroySwapchainKHR(swapchain_);
-        swapchain_ = nullptr;
-    }
+    // RAII handles swapchain destruction
+    swapchain_.reset();
 
     frames_.clear();
+    gpuDevice_ = nullptr;
     std::cout << "[Swapchain] Destroyed" << std::endl;
 }
 
@@ -157,15 +154,21 @@ bool Swapchain::recreate(uint32_t newWidth, uint32_t newHeight) {
         return false;  // Window minimized
     }
 
-    device_.waitIdle();
+    if (!gpuDevice_) {
+        return false;
+    }
 
-    // Store old swapchain
-    vk::SwapchainKHR oldSwapchain = swapchain_;
+    gpuDevice_->waitIdle();
+
+    vk::PhysicalDevice physicalDevice = gpuDevice_->getPhysicalDevice();
+
+    // Store old swapchain for handoff
+    vk::SwapchainKHR oldSwapchainHandle = swapchain_ ? *swapchain_ : vk::SwapchainKHR{};
 
     // Query updated capabilities
-    auto capabilities = physicalDevice_.getSurfaceCapabilitiesKHR(surface_);
-    auto formats = physicalDevice_.getSurfaceFormatsKHR(surface_);
-    auto presentModes = physicalDevice_.getSurfacePresentModesKHR(surface_);
+    auto capabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface_);
+    auto formats = physicalDevice.getSurfaceFormatsKHR(surface_);
+    auto presentModes = physicalDevice.getSurfacePresentModesKHR(surface_);
 
     auto surfaceFormat = chooseSurfaceFormat(formats, config_);
     auto presentMode = choosePresentMode(presentModes, config_);
@@ -192,32 +195,28 @@ bool Swapchain::recreate(uint32_t newWidth, uint32_t newHeight) {
         vk::CompositeAlphaFlagBitsKHR::eOpaque,
         presentMode,
         VK_TRUE,
-        oldSwapchain
+        oldSwapchainHandle
     };
 
     // Destroy old image views first
     destroyImageViews();
 
     try {
-        swapchain_ = device_.createSwapchainKHR(createInfo);
+        auto newSwapchain = std::make_unique<vk::raii::SwapchainKHR>(gpuDevice_->getRaiiDevice(), createInfo);
+        // Old swapchain will be destroyed when we reset
+        swapchain_ = std::move(newSwapchain);
     } catch (const vk::SystemError& e) {
         std::cerr << "[Swapchain] Failed to recreate swapchain: " << e.what() << std::endl;
-        swapchain_ = oldSwapchain;  // Restore old
         return false;
     }
 
-    // Destroy old swapchain
-    if (oldSwapchain) {
-        device_.destroySwapchainKHR(oldSwapchain);
-    }
-
     // Get new images
-    auto images = device_.getSwapchainImagesKHR(swapchain_);
+    auto images = swapchain_->getImages();
     frames_.resize(images.size());
     for (size_t i = 0; i < images.size(); ++i) {
         frames_[i].image = images[i];
         frames_[i].index = static_cast<uint32_t>(i);
-        frames_[i].framebuffer = nullptr;  // Needs recreation
+        frames_[i].framebuffer.reset();  // Needs recreation
     }
 
     createImageViews();
@@ -228,8 +227,12 @@ bool Swapchain::recreate(uint32_t newWidth, uint32_t newHeight) {
 }
 
 uint32_t Swapchain::acquireNextImage(vk::Semaphore semaphore, vk::Fence fence, uint64_t timeout) {
+    if (!swapchain_) {
+        return UINT32_MAX;
+    }
+
     try {
-        auto [result, imageIndex] = device_.acquireNextImageKHR(swapchain_, timeout, semaphore, fence);
+        auto [result, imageIndex] = swapchain_->acquireNextImage(timeout, semaphore, fence);
 
         if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
             needsRecreation_ = true;
@@ -249,9 +252,14 @@ uint32_t Swapchain::acquireNextImage(vk::Semaphore semaphore, vk::Fence fence, u
 }
 
 bool Swapchain::present(uint32_t imageIndex, const std::vector<vk::Semaphore>& waitSemaphores) {
+    if (!swapchain_) {
+        return false;
+    }
+
+    vk::SwapchainKHR swapchainHandle = *swapchain_;
     vk::PresentInfoKHR presentInfo{
         waitSemaphores,
-        swapchain_,
+        swapchainHandle,
         imageIndex
     };
 
@@ -271,8 +279,15 @@ bool Swapchain::present(uint32_t imageIndex, const std::vector<vk::Semaphore>& w
 }
 
 bool Swapchain::createFramebuffers(vk::RenderPass renderPass, vk::ImageView depthView) {
+    if (!gpuDevice_) {
+        return false;
+    }
+
     for (auto& frame : frames_) {
-        std::vector<vk::ImageView> attachments = {frame.imageView};
+        std::vector<vk::ImageView> attachments;
+        if (frame.imageView) {
+            attachments.push_back(*frame.imageView);
+        }
         if (depthView) {
             attachments.push_back(depthView);
         }
@@ -287,7 +302,7 @@ bool Swapchain::createFramebuffers(vk::RenderPass renderPass, vk::ImageView dept
         };
 
         try {
-            frame.framebuffer = device_.createFramebuffer(framebufferInfo);
+            frame.framebuffer = std::make_unique<vk::raii::Framebuffer>(gpuDevice_->getRaiiDevice(), framebufferInfo);
         } catch (const vk::SystemError& e) {
             std::cerr << "[Swapchain] Failed to create framebuffer: " << e.what() << std::endl;
             return false;
@@ -300,10 +315,7 @@ bool Swapchain::createFramebuffers(vk::RenderPass renderPass, vk::ImageView dept
 
 void Swapchain::destroyFramebuffers() {
     for (auto& frame : frames_) {
-        if (frame.framebuffer) {
-            device_.destroyFramebuffer(frame.framebuffer);
-            frame.framebuffer = nullptr;
-        }
+        frame.framebuffer.reset();  // RAII handles destruction
     }
 }
 
@@ -366,6 +378,10 @@ vk::Extent2D Swapchain::chooseExtent(const vk::SurfaceCapabilitiesKHR& capabilit
 }
 
 void Swapchain::createImageViews() {
+    if (!gpuDevice_) {
+        return;
+    }
+
     for (auto& frame : frames_) {
         vk::ImageViewCreateInfo viewInfo{
             {},
@@ -377,7 +393,7 @@ void Swapchain::createImageViews() {
         };
 
         try {
-            frame.imageView = device_.createImageView(viewInfo);
+            frame.imageView = std::make_unique<vk::raii::ImageView>(gpuDevice_->getRaiiDevice(), viewInfo);
         } catch (const vk::SystemError& e) {
             std::cerr << "[Swapchain] Failed to create image view: " << e.what() << std::endl;
         }
@@ -386,10 +402,7 @@ void Swapchain::createImageViews() {
 
 void Swapchain::destroyImageViews() {
     for (auto& frame : frames_) {
-        if (frame.imageView) {
-            device_.destroyImageView(frame.imageView);
-            frame.imageView = nullptr;
-        }
+        frame.imageView.reset();  // RAII handles destruction
     }
 }
 

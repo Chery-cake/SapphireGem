@@ -37,27 +37,25 @@ VulkanInstance::~VulkanInstance() {
 }
 
 VulkanInstance::VulkanInstance(VulkanInstance&& other) noexcept
-    : dynamicLoader_(std::move(other.dynamicLoader_))
-    , instance_(other.instance_)
-    , debugMessenger_(other.debugMessenger_)
+    : context_(std::move(other.context_))
+    , instance_(std::move(other.instance_))
+    , debugMessenger_(std::move(other.debugMessenger_))
     , initialized_(other.initialized_)
     , hasLayers_(other.hasLayers_) {
-    other.instance_ = nullptr;
-    other.debugMessenger_ = nullptr;
     other.initialized_ = false;
+    other.hasLayers_ = false;
 }
 
 VulkanInstance& VulkanInstance::operator=(VulkanInstance&& other) noexcept {
     if (this != &other) {
         shutdown();
-        dynamicLoader_ = std::move(other.dynamicLoader_);
-        instance_ = other.instance_;
-        debugMessenger_ = other.debugMessenger_;
+        context_ = std::move(other.context_);
+        instance_ = std::move(other.instance_);
+        debugMessenger_ = std::move(other.debugMessenger_);
         initialized_ = other.initialized_;
         hasLayers_ = other.hasLayers_;
-        other.instance_ = nullptr;
-        other.debugMessenger_ = nullptr;
         other.initialized_ = false;
+        other.hasLayers_ = false;
     }
     return *this;
 }
@@ -68,13 +66,13 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
         return false;
     }
 
-    // Initialize the dynamic dispatch loader
-    auto vkGetInstanceProcAddr = dynamicLoader_.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-    if (!vkGetInstanceProcAddr) {
-        std::cerr << "[VulkanInstance] Failed to load vkGetInstanceProcAddr" << std::endl;
+    try {
+        // Create RAII context (loads Vulkan library)
+        context_ = std::make_unique<vk::raii::Context>();
+    } catch (const vk::SystemError& e) {
+        std::cerr << "[VulkanInstance] Failed to create context: " << e.what() << std::endl;
         return false;
     }
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 
     // Check instance layer support and add supported layers
     std::vector<const char*> enabledLayers;
@@ -149,16 +147,13 @@ bool VulkanInstance::initialize(const VulkanInstanceConfig& config) {
     }
 
     try {
-        instance_ = vk::createInstance(createInfo);
+        instance_ = std::make_unique<vk::raii::Instance>(*context_, createInfo);
     } catch (const vk::SystemError& e) {
         std::cerr << "[VulkanInstance] Failed to create instance: " << e.what() << std::endl;
         return false;
     }
 
-    // Initialize dispatch loader with instance
-    VULKAN_HPP_DEFAULT_DISPATCHER.init(instance_);
-
-    // Setup debug messenger
+    // Setup debug messenger (RAII handles cleanup automatically)
     if (hasLayers_) {
         if (!setupDebugMessenger()) {
             std::cerr << "[VulkanInstance] Failed to setup debug messenger" << std::endl;
@@ -176,12 +171,10 @@ void VulkanInstance::shutdown() {
         return;
     }
 
-    destroyDebugMessenger();
-
-    if (instance_) {
-        instance_.destroy();
-        instance_ = nullptr;
-    }
+    // RAII handles cleanup - destroy in reverse order
+    debugMessenger_.reset();
+    instance_.reset();
+    context_.reset();
 
     initialized_ = false;
     hasLayers_ = false;
@@ -189,6 +182,10 @@ void VulkanInstance::shutdown() {
 }
 
 bool VulkanInstance::setupDebugMessenger() {
+    if (!instance_) {
+        return false;
+    }
+
     vk::DebugUtilsMessengerCreateInfoEXT createInfo{
         {},
         vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
@@ -201,7 +198,7 @@ bool VulkanInstance::setupDebugMessenger() {
     };
 
     try {
-        debugMessenger_ = instance_.createDebugUtilsMessengerEXT(createInfo);
+        debugMessenger_ = std::make_unique<vk::raii::DebugUtilsMessengerEXT>(*instance_, createInfo);
         return true;
     } catch (const vk::SystemError& e) {
         std::cerr << "[VulkanInstance] Failed to create debug messenger: " << e.what() << std::endl;
@@ -209,15 +206,10 @@ bool VulkanInstance::setupDebugMessenger() {
     }
 }
 
-void VulkanInstance::destroyDebugMessenger() {
-    if (debugMessenger_ && instance_) {
-        instance_.destroyDebugUtilsMessengerEXT(debugMessenger_);
-        debugMessenger_ = nullptr;
-    }
-}
-
 std::vector<std::string> VulkanInstance::getAvailableExtensions() {
-    auto extensions = vk::enumerateInstanceExtensionProperties();
+    // Use temporary context for static query
+    vk::raii::Context tempContext;
+    auto extensions = tempContext.enumerateInstanceExtensionProperties();
     std::vector<std::string> result;
     result.reserve(extensions.size());
     for (const auto& ext : extensions) {
@@ -227,7 +219,9 @@ std::vector<std::string> VulkanInstance::getAvailableExtensions() {
 }
 
 std::vector<std::string> VulkanInstance::getAvailableLayers() {
-    auto layers = vk::enumerateInstanceLayerProperties();
+    // Use temporary context for static query
+    vk::raii::Context tempContext;
+    auto layers = tempContext.enumerateInstanceLayerProperties();
     std::vector<std::string> result;
     result.reserve(layers.size());
     for (const auto& layer : layers) {

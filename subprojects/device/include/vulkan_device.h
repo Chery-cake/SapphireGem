@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace device {
 
@@ -61,7 +62,9 @@ struct DEVICE_API VulkanDeviceConfig {
 };
 
 /**
- * @brief Represents a single GPU device with its logical device and queues
+ * @brief Represents a single GPU device with its logical device and queues using RAII
+ *
+ * Uses vk::raii wrappers for automatic resource management.
  */
 class DEVICE_API GPUDevice {
 public:
@@ -78,13 +81,13 @@ public:
 
     /**
      * @brief Initialize this GPU device
-     * @param instance The Vulkan instance
+     * @param instance The Vulkan RAII instance
      * @param physicalDevice The physical device to use
      * @param info GPU information
      * @param config Device configuration
      * @return true if initialization succeeded
      */
-    bool initialize(vk::Instance instance, 
+    bool initialize(const vk::raii::Instance& instance, 
                     vk::PhysicalDevice physicalDevice,
                     const GPUInfo& info,
                     const VulkanDeviceConfig& config);
@@ -96,8 +99,10 @@ public:
 
     [[nodiscard]] bool isInitialized() const { return initialized_; }
     [[nodiscard]] const GPUInfo& getInfo() const { return info_; }
-    [[nodiscard]] vk::PhysicalDevice getPhysicalDevice() const { return physicalDevice_; }
-    [[nodiscard]] vk::Device getDevice() const { return device_; }
+    [[nodiscard]] vk::PhysicalDevice getPhysicalDevice() const { return physicalDevice_ ? *physicalDevice_ : vk::PhysicalDevice{}; }
+    [[nodiscard]] vk::Device getDevice() const { return device_ ? *device_ : vk::Device{}; }
+    [[nodiscard]] const vk::raii::Device& getRaiiDevice() const { return *device_; }
+    [[nodiscard]] const vk::raii::PhysicalDevice& getRaiiPhysicalDevice() const { return *physicalDevice_; }
     [[nodiscard]] vk::Queue getGraphicsQueue() const { return graphicsQueue_; }
     [[nodiscard]] vk::Queue getComputeQueue() const { return computeQueue_; }
     [[nodiscard]] vk::Queue getTransferQueue() const { return transferQueue_; }
@@ -110,8 +115,8 @@ public:
     void waitIdle() const;
 
 private:
-    vk::PhysicalDevice physicalDevice_;
-    vk::Device device_;
+    std::unique_ptr<vk::raii::PhysicalDevice> physicalDevice_;
+    std::unique_ptr<vk::raii::Device> device_;
     GPUInfo info_;
 
     vk::Queue graphicsQueue_;
@@ -201,13 +206,14 @@ public:
     void forEachDevice(const std::function<void(GPUDevice&, size_t)>& func);
 
 private:
-    void enumeratePhysicalDevices(vk::Instance instance, vk::SurfaceKHR surface);
+    void enumeratePhysicalDevices(const vk::raii::Instance& instance, vk::SurfaceKHR surface);
     GPUInfo queryDeviceInfo(vk::PhysicalDevice device, uint32_t index, vk::SurfaceKHR surface);
     QueueFamilyIndices findQueueFamilies(vk::PhysicalDevice device, vk::SurfaceKHR surface);
     int scoreDevice(const GPUInfo& info);
 
     std::vector<GPUInfo> availableGPUs_;
     std::vector<std::unique_ptr<GPUDevice>> devices_;
+    VulkanInstance* vulkanInstance_ = nullptr;
     uint32_t primaryDeviceIndex_ = 0;
     bool initialized_ = false;
     mutable std::mutex deviceMutex_;

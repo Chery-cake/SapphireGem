@@ -4,8 +4,10 @@
 #include "window_export.h"
 #include "window.h"
 #include <cstdint>
+#include <memory>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 // Forward declare device types
 namespace device {
@@ -26,18 +28,19 @@ struct WINDOW_API SwapchainConfig {
 };
 
 /**
- * @brief Swapchain image resources
+ * @brief Swapchain image resources using RAII
  */
 struct WINDOW_API SwapchainFrame {
-    vk::Image image;
-    vk::ImageView imageView;
-    vk::Framebuffer framebuffer;
+    vk::Image image;                                  // Owned by swapchain
+    std::unique_ptr<vk::raii::ImageView> imageView;
+    std::unique_ptr<vk::raii::Framebuffer> framebuffer;
     uint32_t index = 0;
 };
 
 /**
- * @brief Manages Vulkan swapchain for a window
+ * @brief Manages Vulkan swapchain for a window using RAII
  *
+ * Uses vk::raii wrappers for automatic resource management.
  * Handles:
  * - Swapchain creation and recreation
  * - Image acquisition and presentation
@@ -114,7 +117,7 @@ public:
     bool present(uint32_t imageIndex, const std::vector<vk::Semaphore>& waitSemaphores);
 
     // Getters
-    [[nodiscard]] vk::SwapchainKHR getSwapchain() const { return swapchain_; }
+    [[nodiscard]] vk::SwapchainKHR getSwapchain() const { return swapchain_ ? *swapchain_ : vk::SwapchainKHR{}; }
     [[nodiscard]] vk::Format getFormat() const { return format_; }
     [[nodiscard]] vk::Extent2D getExtent() const { return extent_; }
     [[nodiscard]] uint32_t getImageCount() const { return static_cast<uint32_t>(frames_.size()); }
@@ -145,13 +148,12 @@ private:
     void createImageViews();
     void destroyImageViews();
 
-    vk::Device device_;
-    vk::PhysicalDevice physicalDevice_;
+    device::GPUDevice* gpuDevice_ = nullptr;
     vk::SurfaceKHR surface_;
     vk::Queue presentQueue_;
     uint32_t presentQueueFamily_ = 0;
 
-    vk::SwapchainKHR swapchain_;
+    std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;
     vk::Format format_ = vk::Format::eUndefined;
     vk::Extent2D extent_ = {0, 0};
 

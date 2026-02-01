@@ -17,7 +17,6 @@ bool Renderer::initialize(device::GPUDevice& device, Swapchain& swapchain, devic
         return false;
     }
 
-    device_ = device.getDevice();
     gpuDevice_ = &device;
     swapchain_ = &swapchain;
     allocator_ = &allocator;
@@ -61,7 +60,7 @@ bool Renderer::initialize(device::GPUDevice& device, Swapchain& swapchain, devic
 
     // Create framebuffers
     vk::ImageView depthView = depthImage_ ? depthImage_->view : nullptr;
-    if (!swapchain_->createFramebuffers(renderPass_, depthView)) {
+    if (!swapchain_->createFramebuffers(getRenderPass(), depthView)) {
         destroyDepthResources();
         destroySyncObjects();
         destroyCommandBuffers();
@@ -92,7 +91,6 @@ void Renderer::shutdown() {
     destroyCommandPool();
     destroyRenderPass();
 
-    device_ = nullptr;
     gpuDevice_ = nullptr;
     swapchain_ = nullptr;
     allocator_ = nullptr;
@@ -102,6 +100,10 @@ void Renderer::shutdown() {
 }
 
 bool Renderer::createRenderPass(const RenderPassConfig& config) {
+    if (!gpuDevice_) {
+        return false;
+    }
+
     // Color attachment
     vk::AttachmentDescription colorAttachment{
         {},
@@ -163,7 +165,7 @@ bool Renderer::createRenderPass(const RenderPassConfig& config) {
     };
 
     try {
-        renderPass_ = device_.createRenderPass(renderPassInfo);
+        renderPass_ = std::make_unique<vk::raii::RenderPass>(gpuDevice_->getRaiiDevice(), renderPassInfo);
         return true;
     } catch (const vk::SystemError& e) {
         std::cerr << "[Renderer] Failed to create render pass: " << e.what() << std::endl;
@@ -172,20 +174,21 @@ bool Renderer::createRenderPass(const RenderPassConfig& config) {
 }
 
 void Renderer::destroyRenderPass() {
-    if (renderPass_) {
-        device_.destroyRenderPass(renderPass_);
-        renderPass_ = nullptr;
-    }
+    renderPass_.reset();  // RAII handles destruction
 }
 
 bool Renderer::createCommandPool() {
+    if (!gpuDevice_) {
+        return false;
+    }
+
     vk::CommandPoolCreateInfo poolInfo{
         vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
         gpuDevice_->getQueueFamilies().graphicsFamily.value_or(0)
     };
 
     try {
-        commandPool_ = device_.createCommandPool(poolInfo);
+        commandPool_ = std::make_unique<vk::raii::CommandPool>(gpuDevice_->getRaiiDevice(), poolInfo);
         return true;
     } catch (const vk::SystemError& e) {
         std::cerr << "[Renderer] Failed to create command pool: " << e.what() << std::endl;
@@ -194,21 +197,23 @@ bool Renderer::createCommandPool() {
 }
 
 void Renderer::destroyCommandPool() {
-    if (commandPool_) {
-        device_.destroyCommandPool(commandPool_);
-        commandPool_ = nullptr;
-    }
+    commandPool_.reset();  // RAII handles destruction
 }
 
 bool Renderer::createCommandBuffers() {
+    if (!gpuDevice_ || !commandPool_) {
+        return false;
+    }
+
     vk::CommandBufferAllocateInfo allocInfo{
-        commandPool_,
+        *commandPool_,
         vk::CommandBufferLevel::ePrimary,
         MAX_FRAMES_IN_FLIGHT
     };
 
     try {
-        auto commandBuffers = device_.allocateCommandBuffers(allocInfo);
+        // Use raw device for allocation since command buffers are managed by pool
+        auto commandBuffers = gpuDevice_->getDevice().allocateCommandBuffers(allocInfo);
         frameSyncObjects_.resize(MAX_FRAMES_IN_FLIGHT);
         for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
             frameSyncObjects_[i].commandBuffer = commandBuffers[i];
@@ -227,14 +232,18 @@ void Renderer::destroyCommandBuffers() {
 }
 
 bool Renderer::createSyncObjects() {
+    if (!gpuDevice_) {
+        return false;
+    }
+
     vk::SemaphoreCreateInfo semaphoreInfo{};
     vk::FenceCreateInfo fenceInfo{vk::FenceCreateFlagBits::eSignaled};
 
     try {
         for (auto& sync : frameSyncObjects_) {
-            sync.imageAvailableSemaphore = device_.createSemaphore(semaphoreInfo);
-            sync.renderFinishedSemaphore = device_.createSemaphore(semaphoreInfo);
-            sync.inFlightFence = device_.createFence(fenceInfo);
+            sync.imageAvailableSemaphore = std::make_unique<vk::raii::Semaphore>(gpuDevice_->getRaiiDevice(), semaphoreInfo);
+            sync.renderFinishedSemaphore = std::make_unique<vk::raii::Semaphore>(gpuDevice_->getRaiiDevice(), semaphoreInfo);
+            sync.inFlightFence = std::make_unique<vk::raii::Fence>(gpuDevice_->getRaiiDevice(), fenceInfo);
         }
         return true;
     } catch (const vk::SystemError& e) {
@@ -245,15 +254,9 @@ bool Renderer::createSyncObjects() {
 
 void Renderer::destroySyncObjects() {
     for (auto& sync : frameSyncObjects_) {
-        if (sync.imageAvailableSemaphore) {
-            device_.destroySemaphore(sync.imageAvailableSemaphore);
-        }
-        if (sync.renderFinishedSemaphore) {
-            device_.destroySemaphore(sync.renderFinishedSemaphore);
-        }
-        if (sync.inFlightFence) {
-            device_.destroyFence(sync.inFlightFence);
-        }
+        sync.imageAvailableSemaphore.reset();  // RAII handles destruction
+        sync.renderFinishedSemaphore.reset();
+        sync.inFlightFence.reset();
     }
 }
 
@@ -300,24 +303,28 @@ void Renderer::destroyDepthResources() {
 FrameSyncObjects* Renderer::beginFrame() {
     std::lock_guard<std::mutex> lock(renderMutex_);
 
+    if (!gpuDevice_ || frameSyncObjects_.empty()) {
+        return nullptr;
+    }
+
     auto& sync = frameSyncObjects_[currentFrame_];
 
     // Wait for this frame's fence
-    auto result = device_.waitForFences(sync.inFlightFence, VK_TRUE, UINT64_MAX);
+    auto result = gpuDevice_->getDevice().waitForFences(*sync.inFlightFence, VK_TRUE, UINT64_MAX);
     if (result != vk::Result::eSuccess) {
         std::cerr << "[Renderer] Failed to wait for fence" << std::endl;
         return nullptr;
     }
 
     // Acquire next image
-    currentImageIndex_ = swapchain_->acquireNextImage(sync.imageAvailableSemaphore);
+    currentImageIndex_ = swapchain_->acquireNextImage(*sync.imageAvailableSemaphore);
     if (currentImageIndex_ == UINT32_MAX) {
         // Swapchain needs recreation
         return nullptr;
     }
 
     // Reset fence only after successful acquire
-    device_.resetFences(sync.inFlightFence);
+    gpuDevice_->getDevice().resetFences(*sync.inFlightFence);
 
     // Reset and begin command buffer
     sync.commandBuffer.reset();
@@ -330,13 +337,19 @@ FrameSyncObjects* Renderer::beginFrame() {
 bool Renderer::endFrame(FrameSyncObjects& syncObjects, uint32_t imageIndex) {
     std::lock_guard<std::mutex> lock(renderMutex_);
 
+    if (!gpuDevice_) {
+        return false;
+    }
+
     // End command buffer
     syncObjects.commandBuffer.end();
 
     // Submit command buffer
-    std::vector<vk::Semaphore> waitSemaphores = {syncObjects.imageAvailableSemaphore};
+    vk::Semaphore waitSemaphore = *syncObjects.imageAvailableSemaphore;
+    vk::Semaphore signalSemaphore = *syncObjects.renderFinishedSemaphore;
+    std::vector<vk::Semaphore> waitSemaphores = {waitSemaphore};
     std::vector<vk::PipelineStageFlags> waitStages = {vk::PipelineStageFlagBits::eColorAttachmentOutput};
-    std::vector<vk::Semaphore> signalSemaphores = {syncObjects.renderFinishedSemaphore};
+    std::vector<vk::Semaphore> signalSemaphores = {signalSemaphore};
 
     vk::SubmitInfo submitInfo{
         waitSemaphores,
@@ -346,7 +359,7 @@ bool Renderer::endFrame(FrameSyncObjects& syncObjects, uint32_t imageIndex) {
     };
 
     try {
-        gpuDevice_->getGraphicsQueue().submit(submitInfo, syncObjects.inFlightFence);
+        gpuDevice_->getGraphicsQueue().submit(submitInfo, *syncObjects.inFlightFence);
     } catch (const vk::SystemError& e) {
         std::cerr << "[Renderer] Failed to submit command buffer: " << e.what() << std::endl;
         return false;
@@ -371,8 +384,8 @@ void Renderer::recordCommands(const RenderCallback& callback) {
 }
 
 void Renderer::waitIdle() {
-    if (device_) {
-        device_.waitIdle();
+    if (gpuDevice_) {
+        gpuDevice_->waitIdle();
     }
 }
 
@@ -390,7 +403,7 @@ bool Renderer::handleSwapchainRecreation() {
 
     // Recreate framebuffers
     vk::ImageView depthView = depthImage_ ? depthImage_->view : nullptr;
-    return swapchain_->createFramebuffers(renderPass_, depthView);
+    return swapchain_->createFramebuffers(getRenderPass(), depthView);
 }
 
 vk::CommandBuffer Renderer::getCurrentCommandBuffer() const {
@@ -405,6 +418,10 @@ void Renderer::submitCommandBuffer(vk::CommandBuffer commandBuffer,
                                    const std::vector<vk::Semaphore>& signalSemaphores,
                                    const std::vector<vk::PipelineStageFlags>& waitStages,
                                    vk::Fence fence) {
+    if (!gpuDevice_) {
+        return;
+    }
+
     vk::SubmitInfo submitInfo{
         waitSemaphores,
         waitStages,

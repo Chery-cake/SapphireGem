@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace device {
 
@@ -24,8 +25,9 @@ struct DEVICE_API VulkanInstanceConfig {
 };
 
 /**
- * @brief Manages Vulkan instance and validation layers
+ * @brief Manages Vulkan instance and validation layers using RAII
  *
+ * Uses vk::raii wrappers for automatic resource management.
  * Responsible for:
  * - Creating and destroying Vulkan instance
  * - Managing validation layers (debug builds)
@@ -63,16 +65,22 @@ public:
     [[nodiscard]] bool isInitialized() const { return initialized_; }
 
     /**
-     * @brief Get the Vulkan instance handle
+     * @brief Get the Vulkan instance handle (raw handle for interop)
      * @return Vulkan instance
      */
-    [[nodiscard]] vk::Instance getInstance() const { return instance_; }
+    [[nodiscard]] vk::Instance getInstance() const { return instance_ ? *instance_ : vk::Instance{}; }
 
     /**
-     * @brief Get the dynamic dispatch loader
-     * @return Reference to the dispatch loader
+     * @brief Get the RAII instance reference
+     * @return Reference to the RAII instance
      */
-    [[nodiscard]] const vk::detail::DynamicLoader& getDynamicLoader() const { return dynamicLoader_; }
+    [[nodiscard]] const vk::raii::Instance& getRaiiInstance() const { return *instance_; }
+
+    /**
+     * @brief Get the RAII context reference
+     * @return Reference to the RAII context
+     */
+    [[nodiscard]] const vk::raii::Context& getContext() const { return *context_; }
 
     /**
      * @brief Check if instance layers are enabled (has any layers)
@@ -110,11 +118,10 @@ public:
 
 private:
     bool setupDebugMessenger();
-    void destroyDebugMessenger();
 
-    vk::detail::DynamicLoader dynamicLoader_;
-    vk::Instance instance_;
-    vk::DebugUtilsMessengerEXT debugMessenger_;
+    std::unique_ptr<vk::raii::Context> context_;
+    std::unique_ptr<vk::raii::Instance> instance_;
+    std::unique_ptr<vk::raii::DebugUtilsMessengerEXT> debugMessenger_;
     
     bool initialized_ = false;
     bool hasLayers_ = false;
