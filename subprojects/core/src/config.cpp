@@ -29,10 +29,16 @@ Config *Config::getInstance() { return g_configInstance; }
 
 Config::Config() {
   // Initialize with sensible defaults
+#ifdef ENGINE_DEBUG
+  // Validation layers only in debug builds
   vulkanConfig_.enableValidation = true;
 
-  // Default validation layers
+  // Default validation layers (debug only)
   vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+#else
+  // Validation disabled in release builds
+  vulkanConfig_.enableValidation = false;
+#endif
 
   // Common instance extensions
   vulkanConfig_.instanceExtensions.push_back(vk::KHRSurfaceExtensionName);
@@ -80,8 +86,14 @@ void Config::resetToDefaults() {
     std::lock_guard<std::mutex> lock(configMutex_);
 
     vulkanConfig_ = VulkanConfig{};
+#ifdef ENGINE_DEBUG
+    // Validation layers only in debug builds
     vulkanConfig_.enableValidation = true;
     vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+#else
+    // Validation disabled in release builds
+    vulkanConfig_.enableValidation = false;
+#endif
     vulkanConfig_.instanceExtensions.push_back(vk::KHRSurfaceExtensionName);
 
     // Add platform-specific instance extensions

@@ -20,8 +20,12 @@ struct DEVICE_API VulkanInstanceConfig {
     uint32_t apiVersion = VK_API_VERSION_1_3;
 
     std::vector<std::string> requiredExtensions;
-    std::vector<std::string> validationLayers;
-    bool enableValidation = true;
+    std::vector<std::string> validationLayers; // Validation layers to enable (typically only used in debug builds)
+#ifdef ENGINE_DEBUG
+    bool enableValidation = true;  // Validation enabled by default in debug
+#else
+    bool enableValidation = false; // Validation disabled in release
+#endif
 };
 
 /**

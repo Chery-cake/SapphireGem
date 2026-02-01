@@ -21,10 +21,12 @@ using ConfigChangeCallback = std::function<void()>;
 struct CORE_API VulkanConfig {
   std::vector<std::string> instanceExtensions;
   std::vector<std::string> deviceExtensions;
-  std::vector<std::string>
-      validationLayers; // TODO add validation layer by defauld on debug mode,
-                        // and ignore it on release
-  bool enableValidation = true;
+  std::vector<std::string> validationLayers; // Validation layers to enable (typically only populated in debug builds)
+#ifdef ENGINE_DEBUG
+  bool enableValidation = true;  // Validation enabled by default in debug
+#else
+  bool enableValidation = false; // Validation disabled in release
+#endif
 
   bool operator==(const VulkanConfig &other) const {
     return instanceExtensions == other.instanceExtensions &&
