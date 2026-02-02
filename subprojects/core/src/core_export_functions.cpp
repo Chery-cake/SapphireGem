@@ -70,6 +70,40 @@ CORE_API void lib_on_reload(void *data) {
   }
 }
 
+CORE_API void lib_on_destroy(void *data) {
+  std::print("[Core] Library being destroyed - cleaning up singletons...\n");
+
+  coreState *state = static_cast<coreState *>(data);
+  if (state) {
+    // Shutdown and delete each singleton, then clear the global pointer
+    // to prevent dangling pointer access
+    if (state->thread) {
+      state->thread->shutdown();
+      delete state->thread;
+      core::ThreadManager::setInstance(nullptr);
+      state->thread = nullptr;
+    }
+
+    if (state->memory) {
+      state->memory->shutdown();
+      delete state->memory;
+      core::MemoryManager::setInstance(nullptr);
+      state->memory = nullptr;
+    }
+
+    if (state->config) {
+      state->config->shutdown();
+      delete state->config;
+      core::Config::setInstance(nullptr);
+      state->config = nullptr;
+    }
+
+    // Delete the coreState itself
+    delete state;
+    std::print("[Core] Singleton cleanup complete\n");
+  }
+}
+
 // Your actual plugin functions
 CORE_API void test_print() {
   // Demonstrate using the memory manager
