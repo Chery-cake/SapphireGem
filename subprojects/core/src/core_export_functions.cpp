@@ -71,12 +71,17 @@ CORE_API void lib_on_reload(void *data) {
 }
 
 CORE_API void lib_on_destroy(void *data) {
+  // Final cleanup when the hot reload system is being destroyed.
+  // This function is called while the library is still loaded but
+  // after all activity has stopped (single-threaded context).
   std::print("[Core] Library being destroyed - cleaning up singletons...\n");
 
   coreState *state = static_cast<coreState *>(data);
   if (state) {
     // Shutdown and delete each singleton, then clear the global pointer
-    // to prevent dangling pointer access
+    // to prevent dangling pointer access after cleanup.
+    // Note: The hot reload system ensures no other threads are accessing
+    // these singletons during destruction.
     if (state->thread) {
       state->thread->shutdown();
       delete state->thread;

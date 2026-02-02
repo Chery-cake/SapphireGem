@@ -55,14 +55,17 @@ int main(int argc, char *argv[]) {
 
   // Register a destroy callback to be executed only when core is destroyed
   // This handles final cleanup of singleton resources by calling into the
-  // library's cleanup function, which properly clears global singleton pointers
+  // library's cleanup function, which properly clears global singleton pointers.
+  // Note: This callback runs while the library is still loaded (before unload()),
+  // and the hot reload system ensures single-threaded access during cleanup.
   core.registerDestroyCallback("core_cleanup", [&core](void *data) {
     std::print("[Main] Core library cleanup\n");
 
     // Call the library's destroy function which handles singleton cleanup
     // This ensures global pointers are cleared after deletion
-    auto lib_on_destroy_func = (void (*)(void *))core.getSymbol("lib_on_destroy");
-    if (lib_on_destroy_func) {
+    void *symbol = core.getSymbol("lib_on_destroy");
+    if (symbol) {
+      auto lib_on_destroy_func = reinterpret_cast<void (*)(void *)>(symbol);
       lib_on_destroy_func(data);
     } else {
       std::print(stderr,
@@ -85,10 +88,8 @@ int main(int argc, char *argv[]) {
         delete state;
       }
     }
-
-    // Clear the HotReload data pointer since the coreState has been deleted
-    // This is done via the callback parameter, so we set it to null
-    // Note: The HotReload object handles this internally
+    // Note: The coreState is deleted by lib_on_destroy, so the HotReload data
+    // pointer is now invalid. This is the final cleanup before the library unloads.
   });
 
   // Register reload callback
