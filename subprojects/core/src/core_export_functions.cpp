@@ -115,25 +115,5 @@ CORE_API void lib_on_destroy(void *data) {
     std::print("[Core] Singleton cleanup complete\n");
   }
 }
-
-// Your actual plugin functions
-CORE_API void test_print() {
-  // Demonstrate using the memory manager
-  auto &memMgr = core::MemoryManager::instance();
-  std::print("[Core] Hello from hot-reloaded library!\n");
-  std::print("[Core] Persistent memory: {}/{} bytes\n",
-             memMgr.getPersistentBytesAllocated("core"),
-             memMgr.getPersistentAllocator("core").capacity());
-  std::print("[Core] Frame memory: {}/{} bytes\n",
-             memMgr.getFrameBytesAllocated("core"),
-             memMgr.getFrameAllocator("core").capacity());
-}
-
-CORE_API int change(int x) { return (x + 5) % 2; }
-
-// Frame management function
-CORE_API void begin_frame() {
-  core::MemoryManager::instance().resetAllFrameAllocators();
-}
 }
 #endif

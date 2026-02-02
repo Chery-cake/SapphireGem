@@ -1,7 +1,7 @@
-#include "vulkan_instance.h"
-#include <cstdio>
+#include "thread_manager.h"
+#include <chrono>
 #include <cstdlib>
-#include <memory>
+#include <stop_token>
 #ifdef ENGINE_DEBUG
 #include "core_export_struct.h"
 #include "hot_reload.h"
@@ -54,11 +54,6 @@ int main(int argc, char *argv[]) {
   });
 
   // Register a destroy callback to be executed only when core is destroyed
-  // This handles final cleanup of singleton resources by calling into the
-  // library's cleanup function, which properly clears global singleton
-  // pointers. Note: This callback runs while the library is still loaded
-  // (before unload()), and the hot reload system ensures single-threaded
-  // access during cleanup.
   core.registerDestroyCallback("core_cleanup", [&core](void *data) {
     std::print("[Main] Core library cleanup\n");
 
@@ -89,9 +84,7 @@ int main(int argc, char *argv[]) {
         delete state;
       }
     }
-    // Clear the HotReload data pointer since the coreState has been
-    // deleted. This prevents lib_on_unload from accessing freed memory when
-    // unload() is called after this destroy callback completes.
+    // Clear the HotReload data pointer
     core.setData(nullptr);
   });
 
@@ -110,64 +103,52 @@ int main(int argc, char *argv[]) {
   if (!core.load()) {
     std::print(stderr, "Failed to load core library!\n");
     // Cleanup on failure
-    coreState *s = static_cast<coreState *>(core.getData());
-    if (s->memory) {
-      delete s->memory;
+    coreState *state = static_cast<coreState *>(core.getData());
+    if (state) {
+      if (state->thread) {
+        delete state->thread;
+      }
+      if (state->memory) {
+        delete state->memory;
+      }
+      if (state->config) {
+        delete state->config;
+      }
+      delete state;
+      return EXIT_FAILURE;
     }
-    if (s->thread) {
-      delete s->thread;
-    }
-    if (s->config) {
-      delete s->config;
-    }
-    delete s;
-    return 1;
   }
 
-  std::print("\n=== Starting Hot Reload Loop ===\n\n");
-#else
-  std::print("\n=== Starting Main Loop (Hot Reload Disabled) ===\n\n");
-  // In release mode, you would initialize the core library directly
-  // For now, just run without hot reload
-#endif // ENGINE_DEBUG
+  std::print("\n=== Starting Hot Reload Loop ===\n");
 
-  std::unique_ptr<device::VulkanInstance> inst;
-  inst = std::make_unique<device::VulkanInstance>();
-  inst->initialize();
-
-  int frame = 0;
-  while (frame < 2) {
-#ifdef ENGINE_DEBUG
+  auto funcReloadCheck = [&core]() {
     // Check for library changes and reload if needed
     if (core.checkAndReloadIfNeeded()) {
       std::print(">>> Core library reloaded! <<<\n\n");
     }
+  };
 
-    // Call frame begin function to reset frame allocator
-    auto begin_frame_func = (void (*)())core.getSymbol("begin_frame");
-    if (begin_frame_func) {
-      begin_frame_func();
+  std::jthread hotReload;
+  hotReload = std::jthread([&funcReloadCheck](std::stop_token stoken) {
+    while (!stoken.stop_requested()) {
+      funcReloadCheck();
+      std::this_thread::sleep_for(std::chrono::seconds(5));
     }
-
-    // Call test functions from core library
-    auto print_func = (void (*)())core.getSymbol("test_print");
-    auto change = (int (*)(int))core.getSymbol("change");
-
-    if (print_func) {
-      print_func();
-    }
-
-    if (change) {
-      int sum = change(2);
-      std::print("(2+5)%2={}\n", sum);
-    }
+  });
 #endif // ENGINE_DEBUG
 
+  int frame = 0;
+  while (frame < 2) {
     std::print("Frame {}\n", frame);
     std::print("\n");
     frame++;
-    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
+
+#ifdef ENGINE_DEBUG
+  hotReload.request_stop();
+  hotReload.join();
+#endif
 
   return EXIT_SUCCESS;
 }

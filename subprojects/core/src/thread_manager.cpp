@@ -42,6 +42,7 @@ ThreadManager::~ThreadManager() { shutdown(); }
 
 void ThreadManager::shutdown() {
   std::lock_guard<std::mutex> lock(threadMutex_);
+  running_ = false;
   for (auto &[name, poolEntry] : threadPools_) {
     if (poolEntry.pool) {
       poolEntry.pool->wait();

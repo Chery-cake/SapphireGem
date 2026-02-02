@@ -17,9 +17,9 @@ namespace core {
  * @brief Pool type for specialized thread pools
  */
 enum class PoolType : uint8_t {
-  Worker,   // General worker pool for tasks
-  MainLoop, // Pool for main loop callbacks (SDL, Steamworks, draw frame)
-  GPU       // Pool reserved for GPU operations
+  Worker, // General worker pool for tasks
+  Loop,   // Pool for loop callbacks (SDL, Steamworks, draw frame)
+  GPU     // Pool reserved for GPU operations
 };
 
 /**
@@ -44,7 +44,7 @@ struct CORE_API ThreadPoolConfig {
  */
 struct CORE_API ThreadManagerConfig {
   uint32_t totalThreads = 0; // 0 = auto-detect
-  uint32_t loopThreads = 1;  // Thread budget for main loop pools
+  uint32_t loopThreads = 1;  // Thread budget for loop pools
   uint32_t gpuThreads = 0;   // Thread budget for GPU operation pools
 };
 
@@ -54,7 +54,7 @@ struct CORE_API ThreadManagerConfig {
  * Manages worker threads and task distribution across the engine.
  * Supports dedicated thread pools for different purposes:
  * - Worker pools for general task distribution
- * - MainLoop pools for SDL, Steamworks, draw frame callbacks
+ * - Loop pools for SDL, Steamworks, draw frame callbacks
  * - GPU pools for GPU-specific operations
  */
 class CORE_API ThreadManager {
@@ -213,6 +213,12 @@ public:
    */
   [[nodiscard]] uint32_t totalThreadCount() const;
 
+  /**
+   *@brief Check if the thread should continue running
+   *@return Bool
+   */
+  [[nodiscard]] const bool &run() const { return running_; }
+
 #ifdef ENGINE_DEBUG
   // Hot reload support: set/get the singleton instance
   static void setInstance(ThreadManager *inst);
@@ -235,6 +241,7 @@ private:
 
   // Named pools registry
   std::unordered_map<std::string, PoolEntry> threadPools_;
+  bool running_ = true;
 
   // Current configuration
   ThreadManagerConfig currentConfig_;
