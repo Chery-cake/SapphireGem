@@ -5,26 +5,35 @@
 namespace core {
 
 #ifdef ENGINE_DEBUG
+// In debug mode, use a dynamically allocated singleton for hot reload support
 static Config *g_configInstance = nullptr;
-#endif
+static std::mutex g_configMutex;
 
 Config &Config::instance() {
-#ifdef ENGINE_DEBUG
-  if (g_configInstance) {
-    return *g_configInstance;
+  std::lock_guard<std::mutex> lock(g_configMutex);
+  if (!g_configInstance) {
+    // Dynamically allocate in debug mode so it can be managed externally
+    g_configInstance = new Config();
   }
-#endif
-  static Config instance;
-#ifdef ENGINE_DEBUG
-  g_configInstance = &instance;
-#endif
-  return instance;
+  return *g_configInstance;
 }
 
-#ifdef ENGINE_DEBUG
-void Config::setInstance(Config *inst) { g_configInstance = inst; }
+void Config::setInstance(Config *inst) {
+  std::lock_guard<std::mutex> lock(g_configMutex);
+  g_configInstance = inst;
+}
 
-Config *Config::getInstance() { return g_configInstance; }
+Config *Config::getInstance() {
+  std::lock_guard<std::mutex> lock(g_configMutex);
+  return g_configInstance;
+}
+
+#else
+// In release mode, use classic static local variable singleton
+Config &Config::instance() {
+  static Config instance;
+  return instance;
+}
 #endif
 
 Config::Config() {

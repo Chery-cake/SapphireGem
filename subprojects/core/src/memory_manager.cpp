@@ -5,28 +5,35 @@
 namespace core {
 
 #ifdef ENGINE_DEBUG
+// In debug mode, use a dynamically allocated singleton for hot reload support
 static MemoryManager *g_memoryManagerInstance = nullptr;
-#endif
+static std::mutex g_memoryManagerMutex;
 
 MemoryManager &MemoryManager::instance() {
-#ifdef ENGINE_DEBUG
-  if (g_memoryManagerInstance) {
-    return *g_memoryManagerInstance;
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
+  if (!g_memoryManagerInstance) {
+    // Dynamically allocate in debug mode so it can be managed externally
+    g_memoryManagerInstance = new MemoryManager();
   }
-#endif
-  static MemoryManager instance;
-#ifdef ENGINE_DEBUG
-  g_memoryManagerInstance = &instance;
-#endif
-  return instance;
+  return *g_memoryManagerInstance;
 }
 
-#ifdef ENGINE_DEBUG
 void MemoryManager::setInstance(MemoryManager *inst) {
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
   g_memoryManagerInstance = inst;
 }
 
-MemoryManager *MemoryManager::getInstance() { return g_memoryManagerInstance; }
+MemoryManager *MemoryManager::getInstance() {
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
+  return g_memoryManagerInstance;
+}
+
+#else
+// In release mode, use classic static local variable singleton
+MemoryManager &MemoryManager::instance() {
+  static MemoryManager instance;
+  return instance;
+}
 #endif
 
 BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,

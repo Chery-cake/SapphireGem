@@ -9,28 +9,35 @@
 namespace core {
 
 #ifdef ENGINE_DEBUG
+// In debug mode, use a dynamically allocated singleton for hot reload support
 static ThreadManager *g_threadManagerInstance = nullptr;
-#endif
+static std::mutex g_threadManagerMutex;
 
 ThreadManager &ThreadManager::instance() {
-#ifdef ENGINE_DEBUG
-  if (g_threadManagerInstance) {
-    return *g_threadManagerInstance;
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
+  if (!g_threadManagerInstance) {
+    // Dynamically allocate in debug mode so it can be managed externally
+    g_threadManagerInstance = new ThreadManager();
   }
-#endif
-  static ThreadManager instance;
-#ifdef ENGINE_DEBUG
-  g_threadManagerInstance = &instance;
-#endif
-  return instance;
+  return *g_threadManagerInstance;
 }
 
-#ifdef ENGINE_DEBUG
 void ThreadManager::setInstance(ThreadManager *inst) {
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
   g_threadManagerInstance = inst;
 }
 
-ThreadManager *ThreadManager::getInstance() { return g_threadManagerInstance; }
+ThreadManager *ThreadManager::getInstance() {
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
+  return g_threadManagerInstance;
+}
+
+#else
+// In release mode, use classic static local variable singleton
+ThreadManager &ThreadManager::instance() {
+  static ThreadManager instance;
+  return instance;
+}
 #endif
 
 ThreadManager::ThreadManager() = default;

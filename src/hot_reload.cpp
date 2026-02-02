@@ -1,4 +1,7 @@
 #include "hot_reload.h"
+
+#ifdef ENGINE_DEBUG
+
 #include <chrono>
 #include <csignal>
 #include <fstream>
@@ -214,3 +217,5 @@ void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
     }
   }
 }
+
+#endif // ENGINE_DEBUG
