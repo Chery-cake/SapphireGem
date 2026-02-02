@@ -86,6 +86,8 @@ target_link_libraries(vma PUBLIC
 )
 target_compile_definitions(vma PRIVATE
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+    VMA_STATIC_VULKAN_FUNCTIONS=0
+    VMA_DYNAMIC_VULKAN_FUNCTIONS=1
 )
 set_target_properties(vma PROPERTIES
     POSITION_INDEPENDENT_CODE ON

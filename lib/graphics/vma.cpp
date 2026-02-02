@@ -4,7 +4,7 @@
 // Uses vulkan.hpp dynamic dispatch loader for Vulkan function loading.
 
 // Include vulkan.hpp first with dynamic dispatch enabled
-//#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.hpp>
 
 // Provide VMA implementation
 #pragma clang diagnostic push
