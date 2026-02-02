@@ -1,24 +1,24 @@
 # ==============================================================================
-# Core Engine Module
+# Device Module 
 # ==============================================================================
 
 cmake_minimum_required(VERSION 3.25)
 
-project(core
+project(device
     VERSION 0.1.0
-    DESCRIPTION "Core engine module - Threading, memory management, asset registry"
+    DESCRIPTION "Device module - Vulkan instance, logical devices management, VMA memory, and shader management"
     LANGUAGES CXX C
 )
 
 # ==============================================================================
 # Source Files
 # ==============================================================================
-file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE DEVICE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
 
-file(GLOB_RECURSE CORE_HEADERS CONFIGURE_DEPENDS
+file(GLOB_RECURSE DEVICE_HEADERS CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
 )
@@ -26,11 +26,11 @@ file(GLOB_RECURSE CORE_HEADERS CONFIGURE_DEPENDS
 # ==============================================================================
 # Library Target (Shared)
 # ==============================================================================
-add_library(${PROJECT_NAME} SHARED ${CORE_SOURCES} ${CORE_HEADERS})
+add_library(${PROJECT_NAME} SHARED ${DEVICE_SOURCES} ${DEVICE_HEADERS})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
-        $<BUILD_INTERFACE: ${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -41,9 +41,10 @@ target_include_directories(${PROJECT_NAME}
 # ==============================================================================
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
-        nlohmann_json::nlohmann_json
-        thread_pool
         vulkan
+        vma
+        slang
+        core
 )
 
 # ==============================================================================
@@ -56,7 +57,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
-        CORE_EXPORTS
+        DEVICE_EXPORTS
         $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 
@@ -91,4 +92,4 @@ if(COMMAND target_configure_rpath)
     target_configure_rpath(${PROJECT_NAME})
 endif()
 
-message(STATUS "Configured:  ${PROJECT_NAME} v${PROJECT_VERSION}")
+message(STATUS "Configured: ${PROJECT_NAME} v${PROJECT_VERSION}")

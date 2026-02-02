@@ -95,7 +95,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     core
-    #device
+    device
     #window
     #render
     #audio
