@@ -5,8 +5,16 @@
 namespace core {
 
 #ifdef ENGINE_DEBUG
-// In debug mode, use a dynamically allocated singleton for hot reload support
+// In debug mode, use a dynamically allocated singleton for hot reload support.
 // The singleton can be swapped via setInstance() during hot reload.
+//
+// Memory management: The singleton is deleted by the hot reload system's
+// destroy callback (see main.cpp core_cleanup callback). The hot reload
+// system owns the singleton lifetime and coordinates:
+// 1. Initial creation: call_once ensures thread-safe first allocation
+// 2. Reload: setInstance() swaps to preserved instance (caller manages old)
+// 3. Shutdown: destroy callback deletes via the coreState pointers
+//
 // Thread safety: call_once ensures thread-safe initialization.
 // The hot reload system coordinates access - it stops all activity before
 // swapping instances, so we don't need mutex protection on every access.
@@ -22,8 +30,8 @@ MemoryManager &MemoryManager::instance() {
 }
 
 void MemoryManager::setInstance(MemoryManager *inst) {
-  // Called by hot reload system when coordinating instance swap
-  // The hot reload system ensures no threads are using the old instance
+  // Called by hot reload system when coordinating instance swap.
+  // Caller is responsible for managing the old instance's lifetime.
   g_memoryManagerInstance = inst;
 }
 
