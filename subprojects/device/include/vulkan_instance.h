@@ -8,15 +8,6 @@
 #include <vulkan/vulkan_raii.hpp>
 
 namespace device {
-
-/**
- * @brief Requirements for Vulkan instance creation
- */
-struct DEVICE_API VulkanRequirements {
-  std::vector<std::string> requiredExtensions;
-  std::vector<std::string> requiredLayers;
-};
-
 /**
  * @brief Manages Vulkan instance
  *
@@ -40,10 +31,14 @@ public:
 
   /**
    * @brief Initialize the Vulkan instance
-   * @param requirements Requirements for instance creation
    * @return true if initialization succeeded
    */
-  bool initialize(const VulkanRequirements &requirements);
+  bool initialize();
+
+  /**
+   * @brief Shutdown and cleanup Vulkan resources
+   */
+  void shutdown();
 
   /**
    * @brief Check if the instance is initialized

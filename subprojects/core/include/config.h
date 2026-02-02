@@ -41,6 +41,11 @@ struct CORE_API VulkanConfig {
   std::vector<std::string> deviceExtensions;
   std::vector<std::string> instanceLayers;
 
+  // TODO functions to add and remove optional extensions and layer
+  std::vector<std::string> optionalInstanceExtensions;
+  std::vector<std::string> optionalDeviceExtensions;
+  std::vector<std::string> optionalInstanceLayers;
+
   std::string engineName = "SapphireEngine";
   uint32_t engineVersion = VK_MAKE_VERSION(0, 1, 0);
   uint32_t minApiVersion = VK_API_VERSION_1_3;
@@ -49,6 +54,9 @@ struct CORE_API VulkanConfig {
     return instanceExtensions == other.instanceExtensions &&
            deviceExtensions == other.deviceExtensions &&
            instanceLayers == other.instanceLayers &&
+           optionalInstanceExtensions == other.optionalInstanceExtensions &&
+           optionalDeviceExtensions == other.optionalDeviceExtensions &&
+           optionalInstanceLayers == other.optionalInstanceLayers &&
            engineName == other.engineName &&
            engineVersion == other.engineVersion &&
            minApiVersion == other.minApiVersion;
@@ -180,7 +188,7 @@ public:
    * @brief Get current Application configuration
    * @return Current Application configuration
    */
-  ApplicationConfig getApplicationConfig() const;
+  const ApplicationConfig &getApplicationConfig() const;
 
   // ========== Vulkan Configuration ==========
 
@@ -196,7 +204,7 @@ public:
    * @brief Get current Vulkan configuration
    * @return Current Vulkan configuration
    */
-  VulkanConfig getVulkanConfig() const;
+  const VulkanConfig &getVulkanConfig() const;
 
   /**
    * @brief Add a Vulkan instance extension

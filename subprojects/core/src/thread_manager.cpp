@@ -1,7 +1,9 @@
 #include "thread_manager.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <mutex>
+#include <print>
 #include <stdexcept>
 
 namespace core {
@@ -37,10 +39,10 @@ ThreadManager::~ThreadManager() { shutdown(); }
 
 void ThreadManager::shutdown() {
   std::lock_guard<std::mutex> lock(threadMutex_);
-  for (auto &pair : threadPools_) {
-    if (pair.second.pool) {
-      pair.second.pool->wait();
-      pair.second.pool.reset();
+  for (auto &[name, poolEntry] : threadPools_) {
+    if (poolEntry.pool) {
+      poolEntry.pool->wait();
+      poolEntry.pool.reset();
     }
   }
   threadPools_.clear();

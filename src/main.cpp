@@ -1,5 +1,7 @@
+#include "vulkan_instance.h"
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #ifdef ENGINE_DEBUG
 #include "core_export_struct.h"
 #include "hot_reload.h"
@@ -56,20 +58,29 @@ int main(int argc, char *argv[]) {
   core.registerDestroyCallback("core_cleanup", [](void *data) {
     std::print("[Main] Core library cleanup\n");
     coreState *state = static_cast<coreState *>(data);
+    std::println("test0");
     if (state) {
+      std::println("test1");
       if (state->thread) {
+        std::println("test10");
         state->thread->shutdown();
+        std::println("test11");
         delete state->thread;
+        std::println("test12");
       }
+      std::println("test2");
       if (state->memory) {
         state->memory->shutdown();
         delete state->memory;
       }
+      std::println("test3");
       if (state->config) {
         state->config->shutdown();
         delete state->config;
       }
+      std::println("test4");
       delete state;
+      std::println("test5");
     }
   });
 
@@ -109,8 +120,12 @@ int main(int argc, char *argv[]) {
   // For now, just run without hot reload
 #endif // ENGINE_DEBUG
 
+  std::unique_ptr<device::VulkanInstance> inst;
+  inst = std::make_unique<device::VulkanInstance>();
+  inst->initialize();
+
   int frame = 0;
-  while (true) {
+  while (frame < 2) {
 #ifdef ENGINE_DEBUG
     // Check for library changes and reload if needed
     if (core.checkAndReloadIfNeeded()) {
