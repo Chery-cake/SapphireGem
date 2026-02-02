@@ -49,6 +49,14 @@ set_target_properties(vulkan PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
+if(WIN32)
+  target_compile_definitions(vulkan PUBLIC VK_USE_PLATFORM_WIN32_KHR)
+elseif(APPLE)
+  target_compile_definitions(vulkan PUBLIC VK_USE_PLATFORM_METAL_EXT)
+elseif(UNIX)
+  target_compile_definitions(vulkan PUBLIC VK_USE_PLATFORM_XCB_KHR VK_USE_PLATFORM_WAYLAND_KHR)
+endif()
+
 # ==============================================================================
 # VMA - Vulkan Memory Allocator
 # ==============================================================================

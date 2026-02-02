@@ -2,6 +2,7 @@
 #define CONFIG_H_
 
 #include "core_export.h"
+#include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -16,21 +17,41 @@ namespace core {
 using ConfigChangeCallback = std::function<void()>;
 
 /**
+ *@brief Application specific configuration settings
+ */
+struct CORE_API ApplicationConfig {
+  std::string applicationName = "SapphireEngine Tests";
+  uint32_t applicationVersion = VK_MAKE_VERSION(0, 1, 0);
+
+  bool operator==(const ApplicationConfig &other) const {
+    return applicationName == other.applicationName &&
+           applicationVersion == other.applicationVersion;
+  }
+
+  bool operator!=(const ApplicationConfig &other) const {
+    return !(*this == other);
+  }
+};
+
+/**
  * @brief Vulkan-specific configuration settings
  */
 struct CORE_API VulkanConfig {
   std::vector<std::string> instanceExtensions;
   std::vector<std::string> deviceExtensions;
-  std::vector<std::string>
-      validationLayers; // TODO add validation layer by defauld on debug mode,
-                        // and ignore it on release
-  bool enableValidation = true;
+  std::vector<std::string> instanceLayers;
+
+  std::string engineName = "SapphireEngine";
+  uint32_t engineVersion = VK_MAKE_VERSION(0, 1, 0);
+  uint32_t minApiVersion = VK_API_VERSION_1_3;
 
   bool operator==(const VulkanConfig &other) const {
     return instanceExtensions == other.instanceExtensions &&
            deviceExtensions == other.deviceExtensions &&
-           validationLayers == other.validationLayers &&
-           enableValidation == other.enableValidation;
+           instanceLayers == other.instanceLayers &&
+           engineName == other.engineName &&
+           engineVersion == other.engineVersion &&
+           minApiVersion == other.minApiVersion;
   }
 
   bool operator!=(const VulkanConfig &other) const { return !(*this == other); }
@@ -150,6 +171,20 @@ public:
   // ========== Vulkan Configuration ==========
 
   /**
+   * @brief Set Application configuration
+   * @param config New Application configuration
+   */
+  void setApplicationConfig(const ApplicationConfig &config);
+
+  /**
+   * @brief Get current Application configuration
+   * @return Current Application configuration
+   */
+  ApplicationConfig getApplicationConfig() const;
+
+  // ========== Vulkan Configuration ==========
+
+  /**
    * @brief Set Vulkan configuration
    * @param config New Vulkan configuration
    *
@@ -176,10 +211,10 @@ public:
   void addDeviceExtension(const std::string &extension);
 
   /**
-   * @brief Add a Vulkan validation layer
+   * @brief Add a Vulkan instance layer
    * @param layer Layer name to add
    */
-  void addValidationLayer(const std::string &layer);
+  void addInstanceLayer(const std::string &layer);
 
   /**
    * @brief Remove a Vulkan instance extension
@@ -196,17 +231,11 @@ public:
   bool removeDeviceExtension(const std::string &extension);
 
   /**
-   * @brief Remove a Vulkan validation layer
+   * @brief Remove a Vulkan instance layer
    * @param layer Layer name to remove
    * @return true if layer was removed
    */
-  bool removeValidationLayer(const std::string &layer);
-
-  /**
-   * @brief Enable or disable Vulkan validation
-   * @param enable Whether to enable validation
-   */
-  void setValidationEnabled(bool enable);
+  bool removeInstanceLayer(const std::string &layer);
 
   // ========== Thread Pool Configuration ==========
 
@@ -347,6 +376,7 @@ private:
   };
 
   // Configuration data
+  ApplicationConfig applicationConfig_;
   VulkanConfig vulkanConfig_;
   ThreadPoolAllocation threadPoolAllocation_;
   GPUConfig gpuConfig_;

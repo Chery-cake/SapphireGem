@@ -13,5 +13,9 @@
 
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.hpp>
+#include <vk_mem_alloc_raii.hpp>
+
+#include <vk_mem_alloc_imported.hpp>
+#include <vk_mem_alloc_static_assertions.hpp>
 
 #pragma clang diagnostic pop

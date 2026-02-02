@@ -31,6 +31,6 @@ FetchContent_Declare(
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
 set(EIGEN_BUILD_PKGCONFIG OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(eigen)
+#FetchContent_MakeAvailable(eigen)
 
 message(STATUS "Math dependencies configured")

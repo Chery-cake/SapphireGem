@@ -29,20 +29,21 @@ Config *Config::getInstance() { return g_configInstance; }
 
 Config::Config() {
   // Initialize with sensible defaults
-  vulkanConfig_.enableValidation = true;
-
-  // Default validation layers
-  vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+#ifdef ENGINE_DEBUG
+  // Add validation layer in debug builds
+  vulkanConfig_.instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
+#endif
 
   // Common instance extensions
   vulkanConfig_.instanceExtensions.push_back(vk::KHRSurfaceExtensionName);
 #ifdef _WIN32
-  vulkanConfig_.instanceExtensions.push_back("VK_KHR_win32_surface");
+  vulkanConfig_.instanceExtensions.push_back(vk::KHRWin32SurfaceExtensionName);
 #elif defined(__linux__)
-  vulkanConfig_.instanceExtensions.push_back("VK_KHR_xcb_surface");
-  vulkanConfig_.instanceExtensions.push_back("VK_KHR_wayland_surface");
+  vulkanConfig_.instanceExtensions.push_back(vk::KHRXcbSurfaceExtensionName);
+  vulkanConfig_.instanceExtensions.push_back(
+      vk::KHRWaylandSurfaceExtensionName);
 #elif defined(__APPLE__)
-  vulkanConfig_.instanceExtensions.push_back("VK_EXT_metal_surface");
+  vulkanConfig_.instanceExtensions.push_back(vk::EXTMetalSurfaceExtensionName);
 #endif
 
   // Common device extensions
@@ -52,7 +53,7 @@ Config::Config() {
   threadPoolAllocation_.workerThreads =
       0; // Will be calculated based on hardware
   threadPoolAllocation_.loopThreads = 1;
-  threadPoolAllocation_.gpuThreads = 0;
+  threadPoolAllocation_.gpuThreads = 1;
 
   // Default GPU config
   gpuConfig_.gpuCount = 1;
@@ -80,18 +81,23 @@ void Config::resetToDefaults() {
     std::lock_guard<std::mutex> lock(configMutex_);
 
     vulkanConfig_ = VulkanConfig{};
-    vulkanConfig_.enableValidation = true;
-    vulkanConfig_.validationLayers.push_back("VK_LAYER_KHRONOS_validation");
+#ifdef ENGINE_DEBUG
+    // Add validation layer in debug builds
+    vulkanConfig_.instanceLayers.push_back("VK_LAYER_KHRONOS_validation");
+#endif
     vulkanConfig_.instanceExtensions.push_back(vk::KHRSurfaceExtensionName);
 
     // Add platform-specific instance extensions
 #ifdef _WIN32
-    vulkanConfig_.instanceExtensions.push_back("VK_KHR_win32_surface");
+    vulkanConfig_.instanceExtensions.push_back(
+        vk::KHRWin32SurfaceExtensionName);
 #elif defined(__linux__)
-    vulkanConfig_.instanceExtensions.push_back("VK_KHR_xcb_surface");
-    vulkanConfig_.instanceExtensions.push_back("VK_KHR_wayland_surface");
+    vulkanConfig_.instanceExtensions.push_back(vk::KHRXcbSurfaceExtensionName);
+    vulkanConfig_.instanceExtensions.push_back(
+        vk::KHRWaylandSurfaceExtensionName);
 #elif defined(__APPLE__)
-    vulkanConfig_.instanceExtensions.push_back("VK_EXT_metal_surface");
+    vulkanConfig_.instanceExtensions.push_back(
+        vk::EXTMetalSurfaceExtensionName);
 #endif
 
     vulkanConfig_.deviceExtensions.push_back(vk::KHRSwapchainExtensionName);
@@ -116,6 +122,20 @@ void Config::resetToDefaults() {
   for (const auto &entry : callbacksToNotify) {
     entry.callback();
   }
+}
+
+// ========== Application Configuration ==========
+
+void Config::setApplicationConfig(const ApplicationConfig &config) {
+  std::lock_guard<std::mutex> lock(configMutex_);
+  if (applicationConfig_ != config) {
+    applicationConfig_ = config;
+  }
+}
+
+ApplicationConfig Config::getApplicationConfig() const {
+  std::lock_guard<std::mutex> lock(configMutex_);
+  return applicationConfig_;
 }
 
 // ========== Vulkan Configuration ==========
@@ -217,16 +237,16 @@ void Config::addDeviceExtension(const std::string &extension) {
   }
 }
 
-void Config::addValidationLayer(const std::string &layer) {
+void Config::addInstanceLayer(const std::string &layer) {
   bool changed = false;
   std::vector<CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configMutex_);
-    auto it = std::find(vulkanConfig_.validationLayers.begin(),
-                        vulkanConfig_.validationLayers.end(), layer);
-    if (it == vulkanConfig_.validationLayers.end()) {
-      vulkanConfig_.validationLayers.push_back(layer);
+    auto it = std::find(vulkanConfig_.instanceLayers.begin(),
+                        vulkanConfig_.instanceLayers.end(), layer);
+    if (it == vulkanConfig_.instanceLayers.end()) {
+      vulkanConfig_.instanceLayers.push_back(layer);
       changed = true;
 
       if (immediateMode_) {
@@ -314,16 +334,16 @@ bool Config::removeDeviceExtension(const std::string &extension) {
   return removed;
 }
 
-bool Config::removeValidationLayer(const std::string &layer) {
+bool Config::removeInstanceLayer(const std::string &layer) {
   bool removed = false;
   std::vector<CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configMutex_);
-    auto it = std::find(vulkanConfig_.validationLayers.begin(),
-                        vulkanConfig_.validationLayers.end(), layer);
-    if (it != vulkanConfig_.validationLayers.end()) {
-      vulkanConfig_.validationLayers.erase(it);
+    auto it = std::find(vulkanConfig_.instanceLayers.begin(),
+                        vulkanConfig_.instanceLayers.end(), layer);
+    if (it != vulkanConfig_.instanceLayers.end()) {
+      vulkanConfig_.instanceLayers.erase(it);
       removed = true;
 
       if (immediateMode_) {
@@ -345,35 +365,6 @@ bool Config::removeValidationLayer(const std::string &layer) {
   }
 
   return removed;
-}
-
-void Config::setValidationEnabled(bool enable) {
-  bool changed = false;
-  std::vector<CallbackEntry> callbacksToNotify;
-
-  {
-    std::lock_guard<std::mutex> lock(configMutex_);
-    if (vulkanConfig_.enableValidation != enable) {
-      vulkanConfig_.enableValidation = enable;
-      changed = true;
-
-      if (immediateMode_) {
-        for (const auto &entry : callbacks_) {
-          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
-            callbacksToNotify.push_back(entry);
-          }
-        }
-      } else {
-        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
-      }
-    }
-  }
-
-  if (changed && immediateMode_) {
-    for (const auto &entry : callbacksToNotify) {
-      entry.callback();
-    }
-  }
 }
 
 // ========== Thread Pool Configuration ==========
