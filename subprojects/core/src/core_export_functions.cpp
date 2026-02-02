@@ -44,9 +44,15 @@ CORE_API void lib_on_load(void *data) {
 CORE_API void lib_on_unload(void *data) {
   std::print("[Core] Library unloading!\n");
 
+  // During destruction, data may be nullptr if lib_on_destroy already cleaned up
+  if (!data) {
+    std::print("[Core] No state to preserve (already cleaned up)\n");
+    return;
+  }
+
   coreState *state = static_cast<coreState *>(data);
 
-  if (state && state->memory) {
+  if (state->memory) {
     std::print("[Core] Persistent memory used: {} bytes\n",
                state->memory->getPersistentBytesAllocated("core"));
   }

@@ -88,8 +88,11 @@ int main(int argc, char *argv[]) {
         delete state;
       }
     }
-    // Note: The coreState is deleted by lib_on_destroy, so the HotReload data
-    // pointer is now invalid. This is the final cleanup before the library unloads.
+
+    // Clear the HotReload data pointer since the coreState has been deleted.
+    // This prevents lib_on_unload from accessing freed memory when unload()
+    // is called after this destroy callback completes.
+    core.setData(nullptr);
   });
 
   // Register reload callback
