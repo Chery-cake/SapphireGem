@@ -6,28 +6,28 @@ namespace core {
 
 #ifdef ENGINE_DEBUG
 // In debug mode, use a dynamically allocated singleton for hot reload support
+// The singleton can be swapped via setInstance() during hot reload.
+// Thread safety: call_once ensures thread-safe initialization.
+// The hot reload system coordinates access - it stops all activity before
+// swapping instances, so we don't need mutex protection on every access.
 static Config *g_configInstance = nullptr;
 static std::once_flag g_configOnce;
-static std::mutex g_configMutex;
 
 Config &Config::instance() {
-  // Use call_once for initial creation to avoid re-entrancy issues
+  // Use call_once for thread-safe initial creation
   std::call_once(g_configOnce, []() {
     g_configInstance = new Config();
   });
-
-  // Return the current instance (may have been swapped via setInstance)
-  std::lock_guard<std::mutex> lock(g_configMutex);
   return *g_configInstance;
 }
 
 void Config::setInstance(Config *inst) {
-  std::lock_guard<std::mutex> lock(g_configMutex);
+  // Called by hot reload system when coordinating instance swap
+  // The hot reload system ensures no threads are using the old instance
   g_configInstance = inst;
 }
 
 Config *Config::getInstance() {
-  std::lock_guard<std::mutex> lock(g_configMutex);
   return g_configInstance;
 }
 
