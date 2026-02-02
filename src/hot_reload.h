@@ -1,5 +1,6 @@
 #ifndef HOT_RELOAD_H_
 #define HOT_RELOAD_H_
+#ifdef ENGINE_DEBUG
 
 #include <ctime>
 #include <functional>
@@ -78,4 +79,5 @@ private:
 #endif
 };
 
+#endif // ENGINE_DEBUG
 #endif // HOT_RELOAD_H_

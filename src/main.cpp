@@ -54,34 +54,45 @@ int main(int argc, char *argv[]) {
   });
 
   // Register a destroy callback to be executed only when core is destroyed
-  // This handles final cleanup of singleton resources
-  core.registerDestroyCallback("core_cleanup", [](void *data) {
+  // This handles final cleanup of singleton resources by calling into the
+  // library's cleanup function, which properly clears global singleton
+  // pointers. Note: This callback runs while the library is still loaded
+  // (before unload()), and the hot reload system ensures single-threaded
+  // access during cleanup.
+  core.registerDestroyCallback("core_cleanup", [&core](void *data) {
     std::print("[Main] Core library cleanup\n");
-    coreState *state = static_cast<coreState *>(data);
-    std::println("test0");
-    if (state) {
-      std::println("test1");
-      if (state->thread) {
-        std::println("test10");
-        state->thread->shutdown();
-        std::println("test11");
-        delete state->thread;
-        std::println("test12");
+
+    // Call the library's destroy function which handles singleton cleanup
+    // This ensures global pointers are cleared after deletion
+    void *symbol = core.getSymbol("lib_on_destroy");
+    if (symbol) {
+      auto lib_on_destroy_func = reinterpret_cast<void (*)(void *)>(symbol);
+      lib_on_destroy_func(data);
+    } else {
+      std::print(stderr,
+                 "[Main] Warning: lib_on_destroy not found, manual cleanup\n");
+      // Fallback: manual cleanup if symbol not found (shouldn't happen)
+      coreState *state = static_cast<coreState *>(data);
+      if (state) {
+        if (state->thread) {
+          state->thread->shutdown();
+          delete state->thread;
+        }
+        if (state->memory) {
+          state->memory->shutdown();
+          delete state->memory;
+        }
+        if (state->config) {
+          state->config->shutdown();
+          delete state->config;
+        }
+        delete state;
       }
-      std::println("test2");
-      if (state->memory) {
-        state->memory->shutdown();
-        delete state->memory;
-      }
-      std::println("test3");
-      if (state->config) {
-        state->config->shutdown();
-        delete state->config;
-      }
-      std::println("test4");
-      delete state;
-      std::println("test5");
     }
+    // Clear the HotReload data pointer since the coreState has been
+    // deleted. This prevents lib_on_unload from accessing freed memory when
+    // unload() is called after this destroy callback completes.
+    core.setData(nullptr);
   });
 
   // Register reload callback

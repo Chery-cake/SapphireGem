@@ -1,30 +1,34 @@
 #include "config.h"
 #include "vulkan/vulkan.hpp"
+#include <mutex>
 #include <thread>
 
 namespace core {
 
 #ifdef ENGINE_DEBUG
 static Config *g_configInstance = nullptr;
-#endif
+static std::once_flag g_configOnce;
 
 Config &Config::instance() {
-#ifdef ENGINE_DEBUG
-  if (g_configInstance) {
-    return *g_configInstance;
-  }
-#endif
-  static Config instance;
-#ifdef ENGINE_DEBUG
-  g_configInstance = &instance;
-#endif
-  return instance;
+  // Use call_once for thread-safe initial creation
+  std::call_once(g_configOnce, []() { g_configInstance = new Config(); });
+  return *g_configInstance;
 }
 
-#ifdef ENGINE_DEBUG
-void Config::setInstance(Config *inst) { g_configInstance = inst; }
+void Config::setInstance(Config *inst) {
+  // Called by hot reload system when coordinating instance swap.
+  // Caller is responsible for managing the old instance's lifetime.
+  g_configInstance = inst;
+}
 
 Config *Config::getInstance() { return g_configInstance; }
+
+#else
+// In release mode, use classic static local variable singleton
+Config &Config::instance() {
+  static Config instance;
+  return instance;
+}
 #endif
 
 Config::Config() {

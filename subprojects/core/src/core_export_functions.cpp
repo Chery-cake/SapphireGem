@@ -44,9 +44,16 @@ CORE_API void lib_on_load(void *data) {
 CORE_API void lib_on_unload(void *data) {
   std::print("[Core] Library unloading!\n");
 
+  // During destruction, data may be nullptr if lib_on_destroy already cleaned
+  // up
+  if (!data) {
+    std::print("[Core] No state to preserve (already cleaned up)\n");
+    return;
+  }
+
   coreState *state = static_cast<coreState *>(data);
 
-  if (state && state->memory) {
+  if (state->memory) {
     std::print("[Core] Persistent memory used: {} bytes\n",
                state->memory->getPersistentBytesAllocated("core"));
   }
@@ -67,6 +74,45 @@ CORE_API void lib_on_reload(void *data) {
     state->memory = core::MemoryManager::getInstance();
     state->config = core::Config::getInstance();
     std::print("[Core] Saved singleton pointers for reload\n");
+  }
+}
+
+CORE_API void lib_on_destroy(void *data) {
+  // Final cleanup when the hot reload system is being destroyed.
+  // This function is called while the library is still loaded but
+  // after all activity has stopped (single-threaded context).
+  std::print("[Core] Library being destroyed - cleaning up singletons...\n");
+
+  coreState *state = static_cast<coreState *>(data);
+  if (state) {
+    // Shutdown and delete each singleton, then clear the global pointer
+    // to prevent dangling pointer access after cleanup.
+    // Note: The hot reload system ensures no other threads are accessing
+    // these singletons during destruction.
+    if (state->thread) {
+      state->thread->shutdown();
+      delete state->thread;
+      core::ThreadManager::setInstance(nullptr);
+      state->thread = nullptr;
+    }
+
+    if (state->memory) {
+      state->memory->shutdown();
+      delete state->memory;
+      core::MemoryManager::setInstance(nullptr);
+      state->memory = nullptr;
+    }
+
+    if (state->config) {
+      state->config->shutdown();
+      delete state->config;
+      core::Config::setInstance(nullptr);
+      state->config = nullptr;
+    }
+
+    // Delete the coreState itself
+    delete state;
+    std::print("[Core] Singleton cleanup complete\n");
   }
 }
 
