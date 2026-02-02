@@ -403,6 +403,8 @@ bool GPUManager::createVMAAllocator(LogicalDevice &device,
                                     const vk::raii::Instance &instance,
                                     const GPUInfo &gpuInfo) {
   // VMA requires Vulkan function pointers when using dynamic loading
+  // NOTE: This function assumes VULKAN_HPP_DEFAULT_DISPATCHER has been initialized
+  // by VulkanInstance::initialize() with both global and instance-level functions
   VmaVulkanFunctions vulkanFunctions = {};
   vulkanFunctions.vkGetInstanceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetInstanceProcAddr;
   vulkanFunctions.vkGetDeviceProcAddr = VULKAN_HPP_DEFAULT_DISPATCHER.vkGetDeviceProcAddr;
@@ -565,7 +567,8 @@ bool VulkanInstance::initialize(const VulkanRequirements &requirements) {
     // Create context and load base Vulkan functions
     context_ = std::make_unique<vk::raii::Context>();
 
-    // Initialize the dynamic dispatcher with vkGetInstanceProcAddr
+    // First initialization: Load global Vulkan functions (vkEnumerateInstanceExtensionProperties, etc.)
+    // These are needed before instance creation for extension/layer enumeration
     VULKAN_HPP_DEFAULT_DISPATCHER.init(context_->getDispatcher()->vkGetInstanceProcAddr);
 
     // Get configuration
@@ -659,7 +662,8 @@ bool VulkanInstance::initialize(const VulkanRequirements &requirements) {
     // Create instance
     instance_ = std::make_unique<vk::raii::Instance>(*context_, createInfo);
 
-    // Initialize dispatcher with instance - use raw VkInstance
+    // Second initialization: Load instance-level functions (vkCreateDevice, etc.)
+    // This extends the dispatcher with functions that require a valid VkInstance
     VULKAN_HPP_DEFAULT_DISPATCHER.init(static_cast<VkInstance>(**instance_),
                                         context_->getDispatcher()->vkGetInstanceProcAddr);
 

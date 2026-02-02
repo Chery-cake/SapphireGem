@@ -84,6 +84,9 @@ target_include_directories(vma PUBLIC
 target_link_libraries(vma PUBLIC
   vulkan
 )
+# VMA configuration macros MUST be PUBLIC to ensure ODR compliance:
+# All translation units that include VMA headers must have the same settings
+# to avoid runtime issues from mismatched function definitions
 target_compile_definitions(vma PUBLIC
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
     VMA_STATIC_VULKAN_FUNCTIONS=0
