@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <new>
-#include <print>
 
 // ============================================================================
 // BumpAllocator Implementation
@@ -30,9 +29,9 @@ void *BumpAllocator::allocate(size_t size, size_t alignment) {
   padding = aligned - current;
 
   if (offset + padding + size > total_size) {
-    std::print(stderr,
-               "[BumpAllocator] Out of memory! Requested: {}, Available: {}\n",
-               size, total_size - offset);
+    fprintf(stderr,
+            "[BumpAllocator] Out of memory! Requested: %zu, Available: %zu\n",
+            size, total_size - offset);
     return nullptr;
   }
 

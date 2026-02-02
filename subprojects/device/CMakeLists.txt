@@ -43,9 +43,13 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC
         vulkan
         vma
-        slang
         core
 )
+
+# Add slang if available (built via ExternalProject)
+if(TARGET slang)
+    target_link_libraries(${PROJECT_NAME} PUBLIC slang)
+endif()
 
 # ==============================================================================
 # Compiler Options

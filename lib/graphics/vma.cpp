@@ -3,8 +3,13 @@
 //
 // Uses vulkan.hpp dynamic dispatch loader for Vulkan function loading.
 
+// Configure VMA to use dynamic Vulkan functions (no static linking)
+// This must be defined BEFORE including any VMA headers
+#define VMA_STATIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
+
 // Include vulkan.hpp first with dynamic dispatch enabled
-//#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan.hpp>
 
 // Provide VMA implementation
 #pragma clang diagnostic push
