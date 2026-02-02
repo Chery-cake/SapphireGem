@@ -7,14 +7,17 @@ namespace core {
 #ifdef ENGINE_DEBUG
 // In debug mode, use a dynamically allocated singleton for hot reload support
 static Config *g_configInstance = nullptr;
+static std::once_flag g_configOnce;
 static std::mutex g_configMutex;
 
 Config &Config::instance() {
-  std::lock_guard<std::mutex> lock(g_configMutex);
-  if (!g_configInstance) {
-    // Dynamically allocate in debug mode so it can be managed externally
+  // Use call_once for initial creation to avoid re-entrancy issues
+  std::call_once(g_configOnce, []() {
     g_configInstance = new Config();
-  }
+  });
+
+  // Return the current instance (may have been swapped via setInstance)
+  std::lock_guard<std::mutex> lock(g_configMutex);
   return *g_configInstance;
 }
 
