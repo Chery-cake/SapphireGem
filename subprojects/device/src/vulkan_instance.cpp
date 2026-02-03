@@ -1,6 +1,8 @@
 #include "vulkan_instance.h"
 #include "config.h"
 #include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_core.h"
+#include "vulkan/vulkan_hpp_macros.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include <memory>
 #include <print>
@@ -76,6 +78,16 @@ bool VulkanInstance::initialize() {
     std::println(stderr, "[VulkanInstance] Already initialized");
     return false;
   }
+
+  vk::detail::DynamicLoader dl;
+  auto instanceProc =
+      dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+  if (!instanceProc) {
+    std::println(stderr,
+                 "[VulkanInstance] Failed to get vkGetInstanceProcAddr");
+    return false;
+  }
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(instanceProc);
 
   try {
     context_ = std::make_unique<vk::raii::Context>();
@@ -163,6 +175,8 @@ bool VulkanInstance::initialize() {
                  e.what());
     return false;
   }
+
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(**instance_, instanceProc);
 
   // Setup debug messenger (RAII handles cleanup automatically)
 #ifdef ENGINE_DEBUG

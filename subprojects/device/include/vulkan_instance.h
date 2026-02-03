@@ -51,7 +51,7 @@ public:
    * @return Vulkan instance
    */
   [[nodiscard]] vk::Instance getInstance() const {
-    return instance_ ? *instance_ : vk::Instance{};
+    return instance_ ? **instance_ : vk::Instance{};
   }
 
   /**

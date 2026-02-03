@@ -1,4 +1,5 @@
 #include "thread_manager.h"
+#include "vulkan_instance.h"
 #include <chrono>
 #include <cstdlib>
 #include <stop_token>
@@ -136,6 +137,9 @@ int main(int argc, char *argv[]) {
     }
   });
 #endif // ENGINE_DEBUG
+
+  device::VulkanInstance inst;
+  inst.initialize();
 
   int frame = 0;
   while (frame < 2) {
