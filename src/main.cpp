@@ -1,4 +1,5 @@
 #include "thread_manager.h"
+#include "vulkan_device.h"
 #include "vulkan_instance.h"
 #include <chrono>
 #include <cstdlib>
@@ -140,6 +141,9 @@ int main(int argc, char *argv[]) {
 
   device::VulkanInstance inst;
   inst.initialize();
+
+  device::DeviceManager dMan;
+  dMan.initialize(inst, {nullptr, false, 0});
 
   int frame = 0;
   while (frame < 2) {

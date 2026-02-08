@@ -371,6 +371,202 @@ bool Config::removeInstanceLayer(const std::string &layer) {
   return removed;
 }
 
+void Config::addOptionalInstanceExtension(const std::string &extension) {
+  bool changed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it =
+        std::find(vulkanConfig_.optionalInstanceExtensions.begin(),
+                  vulkanConfig_.optionalInstanceExtensions.end(), extension);
+    if (it == vulkanConfig_.optionalInstanceExtensions.end()) {
+      vulkanConfig_.optionalInstanceExtensions.push_back(extension);
+      changed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (changed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+}
+
+void Config::addOptionalDeviceExtension(const std::string &extension) {
+  bool changed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it =
+        std::find(vulkanConfig_.optionalDeviceExtensions.begin(),
+                  vulkanConfig_.optionalDeviceExtensions.end(), extension);
+    if (it == vulkanConfig_.optionalDeviceExtensions.end()) {
+      vulkanConfig_.optionalDeviceExtensions.push_back(extension);
+      changed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (changed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+}
+
+void Config::addOptionalInstanceLayer(const std::string &layer) {
+  bool changed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it = std::find(vulkanConfig_.optionalInstanceLayers.begin(),
+                        vulkanConfig_.optionalInstanceLayers.end(), layer);
+    if (it == vulkanConfig_.optionalInstanceLayers.end()) {
+      vulkanConfig_.optionalInstanceLayers.push_back(layer);
+      changed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (changed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+}
+
+bool Config::removeOptionalInstanceExtension(const std::string &extension) {
+  bool removed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it =
+        std::find(vulkanConfig_.optionalInstanceExtensions.begin(),
+                  vulkanConfig_.optionalInstanceExtensions.end(), extension);
+    if (it != vulkanConfig_.optionalInstanceExtensions.end()) {
+      vulkanConfig_.optionalInstanceExtensions.erase(it);
+      removed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (removed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+
+  return removed;
+}
+
+bool Config::removeOptionalDeviceExtension(const std::string &extension) {
+  bool removed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it =
+        std::find(vulkanConfig_.optionalDeviceExtensions.begin(),
+                  vulkanConfig_.optionalDeviceExtensions.end(), extension);
+    if (it != vulkanConfig_.optionalDeviceExtensions.end()) {
+      vulkanConfig_.optionalDeviceExtensions.erase(it);
+      removed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (removed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+
+  return removed;
+}
+
+bool Config::removeOptionalInstanceLayer(const std::string &layer) {
+  bool removed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    auto it = std::find(vulkanConfig_.optionalInstanceLayers.begin(),
+                        vulkanConfig_.optionalInstanceLayers.end(), layer);
+    if (it != vulkanConfig_.optionalInstanceLayers.end()) {
+      vulkanConfig_.optionalInstanceLayers.erase(it);
+      removed = true;
+
+      if (immediateMode_) {
+        for (const auto &entry : callbacks_) {
+          if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
+            callbacksToNotify.push_back(entry);
+          }
+        }
+      } else {
+        pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
+      }
+    }
+  }
+
+  if (removed && immediateMode_) {
+    for (const auto &entry : callbacksToNotify) {
+      entry.callback();
+    }
+  }
+
+  return removed;
+}
+
 // ========== Thread Pool Configuration ==========
 
 void Config::setThreadPoolAllocation(const ThreadPoolAllocation &allocation) {

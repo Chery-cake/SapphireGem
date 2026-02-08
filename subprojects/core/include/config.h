@@ -41,7 +41,8 @@ struct CORE_API VulkanConfig {
   std::vector<std::string> deviceExtensions;
   std::vector<std::string> instanceLayers;
 
-  // TODO functions to add and remove optional extensions and layer
+  // TODO check functions to add and remove optional extensions and layer work
+  // properly
   std::vector<std::string> optionalInstanceExtensions;
   std::vector<std::string> optionalDeviceExtensions;
   std::vector<std::string> optionalInstanceLayers;
@@ -244,6 +245,45 @@ public:
    * @return true if layer was removed
    */
   bool removeInstanceLayer(const std::string &layer);
+
+  /**
+   * @brief Add a optional Vulkan instance extension
+   * @param extension Extension name to add
+   */
+  void addOptionalInstanceExtension(const std::string &extension);
+
+  /**
+   * @brief Add a optional Vulkan device extension
+   * @param extension Extension name to add
+   */
+  void addOptionalDeviceExtension(const std::string &extension);
+
+  /**
+   * @brief Add a optional Vulkan instance layer
+   * @param layer Layer name to add
+   */
+  void addOptionalInstanceLayer(const std::string &layer);
+
+  /**
+   * @brief Remove a optional Vulkan instance extension
+   * @param extension Extension name to remove
+   * @return true if extension was removed
+   */
+  bool removeOptionalInstanceExtension(const std::string &extension);
+
+  /**
+   * @brief Remove a optional Vulkan device extension
+   * @param extension Extension name to remove
+   * @return true if extension was removed
+   */
+  bool removeOptionalDeviceExtension(const std::string &extension);
+
+  /**
+   * @brief Remove a optional Vulkan instance layer
+   * @param layer Layer name to remove
+   * @return true if layer was removed
+   */
+  bool removeOptionalInstanceLayer(const std::string &layer);
 
   // ========== Thread Pool Configuration ==========
 
