@@ -1,6 +1,7 @@
 #include "thread_manager.h"
 #include "vulkan_device.h"
 #include "vulkan_instance.h"
+#include "window.h"
 #include <chrono>
 #include <cstdlib>
 #include <stop_token>
@@ -20,8 +21,14 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef ENGINE_DEBUG
+
+  // Get the directory containing the executable
+  std::string exe_path = argv[0];
+  std::string exe_dir = exe_path.substr(0, exe_path.find_last_of("/\\"));
+  std::string core_path = exe_dir + "/lib/libcored.so";
+
   // Initialize hot reload system for core library
-  HotReload core("core", "lib/libcored.so");
+  HotReload core("core", core_path);
 
   // Create and store the coreState in the HotReload object's data
   core.setData(new coreState{nullptr, nullptr, nullptr});
@@ -84,6 +91,7 @@ int main(int argc, char *argv[]) {
           delete state->config;
         }
         delete state;
+        core.setData(nullptr);
       }
     }
     // Clear the HotReload data pointer
@@ -117,8 +125,9 @@ int main(int argc, char *argv[]) {
         delete state->config;
       }
       delete state;
-      return EXIT_FAILURE;
+      core.setData(nullptr);
     }
+    return EXIT_FAILURE;
   }
 
   std::print("\n=== Starting Hot Reload Loop ===\n");
@@ -145,10 +154,19 @@ int main(int argc, char *argv[]) {
   device::DeviceManager dMan;
   dMan.initialize(inst, {nullptr, false, 0});
 
+  window::WindowManager wMan;
+  wMan.initialize();
+
+  wMan.createWindow({"Test1"});
+  wMan.createWindow({"Test2"});
+
   int frame = 0;
   while (frame < 2) {
     std::print("Frame {}\n", frame);
     std::print("\n");
+
+    wMan.pollAllEvents();
+
     frame++;
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }

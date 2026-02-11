@@ -4,6 +4,7 @@
 
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.30)
+enable_testing()
 
 project(SapphireEngine
     VERSION 0.1.0
@@ -96,7 +97,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     core
     device
-    #window
+    window
     #render
     #audio
     #physics

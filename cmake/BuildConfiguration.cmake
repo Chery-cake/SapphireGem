@@ -313,7 +313,7 @@ option(ENGINE_FAST_MATH "Enable fast-math (breaks IEEE 754 compliance - use with
 if(ENGINE_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     # Create sanitizer options for runtime
     set(ASAN_OPTIONS "detect_leaks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1")
-    
+
     if(EXISTS "${LSAN_SUPPRESSION_FILE}")
         set(LSAN_OPTIONS "suppressions=${LSAN_SUPPRESSION_FILE}:print_suppressions=0")
         message(STATUS "Using LSan suppression file: ${LSAN_SUPPRESSION_FILE}")
@@ -325,6 +325,11 @@ if(ENGINE_ENABLE_SANITIZERS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     # Export for use in test/run scripts
     set(ENGINE_ASAN_OPTIONS "${ASAN_OPTIONS}" CACHE STRING "ASan runtime options")
     set(ENGINE_LSAN_OPTIONS "${LSAN_OPTIONS}" CACHE STRING "LSan runtime options")
+
+    add_test(NAME SanitizersTest COMMAND ${OUTPUT_DIR}/${PROJECT_NAME})
+    set_tests_properties(SanitizersTest PROPERTIES
+        ENVIRONMENT "LSAN_OPTIONS=${ENGINE_LSAN_OPTIONS};ASAN_OPTIONS=${ENGINE_ASAN_OPTIONS}"
+    )
 endif()
 
 # ==============================================================================
