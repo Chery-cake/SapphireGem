@@ -359,9 +359,9 @@ function(target_configure_sanitizer_suppressions TARGET_NAME)
         set(LSAN_OPTIONS "print_suppressions=0")
     endif()
 
-    # Export for use in test/run scripts
-    set(ENGINE_ASAN_OPTIONS "${ASAN_OPTIONS}" CACHE STRING "ASan runtime options" FORCE)
-    set(ENGINE_LSAN_OPTIONS "${LSAN_OPTIONS}" CACHE STRING "LSan runtime options" FORCE)
+    # Export for use in test/run scripts (set without FORCE to allow user overrides)
+    set(ENGINE_ASAN_OPTIONS "${ASAN_OPTIONS}" CACHE STRING "ASan runtime options")
+    set(ENGINE_LSAN_OPTIONS "${LSAN_OPTIONS}" CACHE STRING "LSan runtime options")
 
     # Generate launcher script that sets environment variables
     # Use relative paths in the script so it's portable
@@ -389,9 +389,9 @@ exec \"\${SCRIPT_DIR}/${TARGET_NAME}\" \"$@\"
     )
     message(STATUS "Generated sanitizer launcher script: ${LAUNCHER_SCRIPT}")
 
-    # Configure ctest with the same options (use absolute paths for ctest)
-    add_test(NAME SanitizersTest COMMAND ${TARGET_RUNTIME_DIR}/${TARGET_NAME})
-    set_tests_properties(SanitizersTest PROPERTIES
+    # Configure ctest with target-specific test name to avoid conflicts
+    add_test(NAME SanitizersTest_${TARGET_NAME} COMMAND ${TARGET_RUNTIME_DIR}/${TARGET_NAME})
+    set_tests_properties(SanitizersTest_${TARGET_NAME} PROPERTIES
         ENVIRONMENT "LSAN_OPTIONS=${LSAN_OPTIONS};ASAN_OPTIONS=${ASAN_OPTIONS}"
     )
 
