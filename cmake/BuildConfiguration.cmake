@@ -311,7 +311,7 @@ option(ENGINE_FAST_MATH "Enable fast-math (breaks IEEE 754 compliance - use with
 # Function to configure sanitizer suppressions for a target
 # ==============================================================================
 # This function:
-# 1. Copies suppression files to the build output directory
+# 1. Configures sanitizer options with suppression file paths
 # 2. Generates a launcher script with environment variables set
 # 3. Configures ctest to use the same suppression files
 # ==============================================================================
@@ -330,31 +330,16 @@ function(target_configure_sanitizer_suppressions TARGET_NAME)
         set(TARGET_RUNTIME_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
     endif()
 
-    # Create sanitizers subdirectory in output
-    set(SANITIZER_OUTPUT_DIR "${TARGET_RUNTIME_DIR}/sanitizers")
-    file(MAKE_DIRECTORY "${SANITIZER_OUTPUT_DIR}")
-
-    # Copy suppression files to output directory
-    if(EXISTS "${LSAN_SUPPRESSION_FILE}")
-        configure_file("${LSAN_SUPPRESSION_FILE}" "${SANITIZER_OUTPUT_DIR}/lsan.supp" COPYONLY)
-        set(LSAN_SUPP_PATH "${SANITIZER_OUTPUT_DIR}/lsan.supp")
-        message(STATUS "LSan suppression file copied to: ${LSAN_SUPP_PATH}")
-    endif()
-
-    if(EXISTS "${ASAN_SUPPRESSION_FILE}")
-        configure_file("${ASAN_SUPPRESSION_FILE}" "${SANITIZER_OUTPUT_DIR}/asan.supp" COPYONLY)
-        set(ASAN_SUPP_PATH "${SANITIZER_OUTPUT_DIR}/asan.supp")
-        message(STATUS "ASan suppression file copied to: ${ASAN_SUPP_PATH}")
-    endif()
-
-    # Build sanitizer options with suppression file paths
+    # Build sanitizer options with suppression file paths (using original source files)
     set(ASAN_OPTIONS "detect_leaks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1")
-    if(ASAN_SUPP_PATH)
-        set(ASAN_OPTIONS "${ASAN_OPTIONS}:suppressions=${ASAN_SUPP_PATH}")
+    if(EXISTS "${ASAN_SUPPRESSION_FILE}")
+        set(ASAN_OPTIONS "${ASAN_OPTIONS}:suppressions=${ASAN_SUPPRESSION_FILE}")
+        message(STATUS "Using ASan suppression file: ${ASAN_SUPPRESSION_FILE}")
     endif()
 
-    if(LSAN_SUPP_PATH)
-        set(LSAN_OPTIONS "suppressions=${LSAN_SUPP_PATH}:print_suppressions=0")
+    if(EXISTS "${LSAN_SUPPRESSION_FILE}")
+        set(LSAN_OPTIONS "suppressions=${LSAN_SUPPRESSION_FILE}:print_suppressions=0")
+        message(STATUS "Using LSan suppression file: ${LSAN_SUPPRESSION_FILE}")
     else()
         set(LSAN_OPTIONS "print_suppressions=0")
     endif()
@@ -364,7 +349,7 @@ function(target_configure_sanitizer_suppressions TARGET_NAME)
     set(ENGINE_LSAN_OPTIONS "${LSAN_OPTIONS}" CACHE STRING "LSan runtime options")
 
     # Generate launcher script that sets environment variables
-    # Use relative paths in the script so it's portable
+    # Uses CMake-configured paths directly
     set(LAUNCHER_SCRIPT "${TARGET_RUNTIME_DIR}/run_${TARGET_NAME}.sh")
     file(WRITE "${LAUNCHER_SCRIPT}"
 "#!/bin/bash
@@ -375,9 +360,9 @@ function(target_configure_sanitizer_suppressions TARGET_NAME)
 
 SCRIPT_DIR=\"$(cd \"$(dirname \"\${BASH_SOURCE[0]}\")\" && pwd)\"
 
-# Set sanitizer options with suppression files relative to script location
-export ASAN_OPTIONS=\"detect_leaks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:suppressions=\${SCRIPT_DIR}/sanitizers/asan.supp\"
-export LSAN_OPTIONS=\"suppressions=\${SCRIPT_DIR}/sanitizers/lsan.supp:print_suppressions=0\"
+# Set sanitizer options (configured by CMake)
+export ASAN_OPTIONS=\"${ASAN_OPTIONS}\"
+export LSAN_OPTIONS=\"${LSAN_OPTIONS}\"
 
 exec \"\${SCRIPT_DIR}/${TARGET_NAME}\" \"$@\"
 ")
