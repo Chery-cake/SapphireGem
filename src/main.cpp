@@ -161,6 +161,7 @@ int main(int argc, char *argv[]) {
   wMan.createWindow({"Test2"});
 
   int frame = 0;
+  // while (!wMan.checkWindowsVectorEmpty()) { TODO check for close action
   while (frame < 2) {
     std::print("Frame {}\n", frame);
     std::print("\n");

@@ -267,6 +267,14 @@ public:
   [[nodiscard]] size_t getWindowCount() const { return windows_.size(); }
 
   /**
+   * @brief Check if windows vector is empty
+   * @return Bool true if empty
+   */
+  [[nodiscard]] bool checkWindowsVectorEmpty() const {
+    return windows_.empty();
+  }
+
+  /**
    * @brief Poll events for all windows
    * Uses main loop thread pool if available.
    */
