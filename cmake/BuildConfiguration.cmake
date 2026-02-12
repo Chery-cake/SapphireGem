@@ -349,7 +349,9 @@ function(target_configure_sanitizer_suppressions TARGET_NAME)
     set(ENGINE_LSAN_OPTIONS "${LSAN_OPTIONS}" CACHE STRING "LSan runtime options")
 
     # Generate launcher script that sets environment variables
-    # Uses CMake-configured paths directly
+    # NOTE: Paths are expanded at configure time and will contain absolute paths
+    # to the source suppression files. This avoids file duplication but means
+    # the build directory cannot be relocated without reconfiguring.
     set(LAUNCHER_SCRIPT "${TARGET_RUNTIME_DIR}/run_${TARGET_NAME}.sh")
     file(WRITE "${LAUNCHER_SCRIPT}"
 "#!/bin/bash
