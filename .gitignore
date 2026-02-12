@@ -101,6 +101,7 @@ CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
 build/
+out/
 .cache
 
 # files to not be ignored
