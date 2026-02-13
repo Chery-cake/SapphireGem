@@ -20,7 +20,8 @@ Swapchain::Swapchain(Swapchain &&other) noexcept
       surface_(std::move(other.surface_)),
       presentQueue_(std::move(other.presentQueue_)),
       presentQueueFamily_(other.presentQueueFamily_),
-      swapchain_(std::move(other.swapchain_)), format_(other.format_),
+      swapchain_(std::move(other.swapchain_)),
+      offscreenImages_(std::move(other.offscreenImages_)), format_(other.format_),
       extent_(other.extent_), frames_(std::move(other.frames_)),
       config_(other.config_), needsRecreation_(other.needsRecreation_) {
   other.mainGPUDevice_ = nullptr;
@@ -36,6 +37,7 @@ Swapchain &Swapchain::operator=(Swapchain &&other) noexcept {
     presentQueue_ = std::move(other.presentQueue_);
     presentQueueFamily_ = other.presentQueueFamily_;
     swapchain_ = std::move(other.swapchain_);
+    offscreenImages_ = std::move(other.offscreenImages_);
     format_ = other.format_;
     extent_ = other.extent_;
     frames_ = std::move(other.frames_);
@@ -63,8 +65,10 @@ void Swapchain::destroy() {
   destroyFramebuffers();
   destroyImageViews();
 
+  // Destroy offscreen images for secondary GPUs
+  destroyOffscreenImages();
+
   // RAII handles swapchain destruction
-  offscreenImages_.clear();
   swapchain_.reset();
 
   frames_.clear();
@@ -164,6 +168,17 @@ bool Swapchain::create(device::GPUDevice *device,
   }
 
   createImageViews();
+
+  // Create offscreen images for secondary GPUs if any
+  if (!secondaryGPUDevices_.empty()) {
+    if (!createOffscreenImagesForSecondaryGPUs()) {
+      std::println(stderr,
+                   "[Swapchain] Warning: Failed to create offscreen images for "
+                   "secondary GPUs");
+      // Continue anyway - multi-GPU rendering won't work but single GPU will
+    }
+  }
+
   needsRecreation_ = false;
 
   std::println("[Swapchain] Created: {}x{} ({} images)", extent_.width,
@@ -250,6 +265,16 @@ bool Swapchain::recreate(uint32_t newWidth, uint32_t newHeight) {
   }
 
   createImageViews();
+
+  // Recreate offscreen images for secondary GPUs if any
+  if (!secondaryGPUDevices_.empty()) {
+    if (!createOffscreenImagesForSecondaryGPUs()) {
+      std::println(stderr,
+                   "[Swapchain] Warning: Failed to recreate offscreen images "
+                   "for secondary GPUs");
+    }
+  }
+
   needsRecreation_ = false;
 
   std::println("[Swapchain] Recreated: {}x{}", extent_.width, extent_.height);
@@ -437,6 +462,73 @@ void Swapchain::destroyImageViews() {
   for (auto &frame : frames_) {
     frame.imageView.reset(); // RAII handles destruction
   }
+}
+
+bool Swapchain::createOffscreenImagesForSecondaryGPUs() {
+  if (secondaryGPUDevices_.empty()) {
+    return true; // No secondary GPUs, nothing to create
+  }
+
+  if (extent_.width == 0 || extent_.height == 0) {
+    std::println(stderr,
+                 "[Swapchain] Cannot create offscreen images: invalid extent");
+    return false;
+  }
+
+  // Clear any existing offscreen images
+  destroyOffscreenImages();
+
+  for (const auto *gpu : secondaryGPUDevices_) {
+    if (!gpu || !gpu->isInitialized()) {
+      continue;
+    }
+
+    // Create an offscreen image on this secondary GPU matching swapchain format
+    vk::ImageCreateInfo imageInfo{
+        {},
+        vk::ImageType::e2D,
+        format_,
+        vk::Extent3D{extent_.width, extent_.height, 1},
+        1, // mipLevels
+        1, // arrayLayers
+        vk::SampleCountFlagBits::e1,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment |
+            vk::ImageUsageFlagBits::eTransferSrc,
+        vk::SharingMode::eExclusive,
+        {},
+        vk::ImageLayout::eUndefined};
+
+    try {
+      auto image = std::make_unique<vk::raii::Image>(gpu->getRaiiDevice(),
+                                                     imageInfo);
+      uint32_t gpuIndex = gpu->getInfo().index;
+      offscreenImages_[gpuIndex] = std::move(image);
+      std::println("[Swapchain] Created offscreen image for GPU {}: {}",
+                   gpuIndex, gpu->getInfo().name);
+    } catch (const vk::SystemError &e) {
+      std::println(stderr,
+                   "[Swapchain] Failed to create offscreen image for GPU {}: {}",
+                   gpu->getInfo().name, e.what());
+      return false;
+    }
+  }
+
+  std::println("[Swapchain] Created {} offscreen images for secondary GPUs",
+               offscreenImages_.size());
+  return true;
+}
+
+void Swapchain::destroyOffscreenImages() {
+  offscreenImages_.clear(); // RAII handles destruction
+}
+
+const vk::raii::Image *Swapchain::getOffscreenImage(uint32_t gpuIndex) const {
+  auto it = offscreenImages_.find(gpuIndex);
+  if (it != offscreenImages_.end()) {
+    return it->second.get();
+  }
+  return nullptr;
 }
 
 } // namespace window

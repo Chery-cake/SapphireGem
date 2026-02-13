@@ -150,6 +150,45 @@ public:
    */
   void destroyFramebuffers();
 
+  /**
+   * @brief Create offscreen images for secondary GPUs
+   *
+   * Creates images on secondary GPUs that can be used for rendering
+   * and later transferred/composed to the main swapchain for presentation.
+   *
+   * @return true if creation succeeded
+   */
+  bool createOffscreenImagesForSecondaryGPUs();
+
+  /**
+   * @brief Destroy all offscreen images
+   */
+  void destroyOffscreenImages();
+
+  /**
+   * @brief Get offscreen image for a specific secondary GPU
+   * @param gpuIndex Index of the secondary GPU
+   * @return Pointer to the offscreen image, or nullptr if not found
+   */
+  [[nodiscard]] const vk::raii::Image *
+  getOffscreenImage(uint32_t gpuIndex) const;
+
+  /**
+   * @brief Check if offscreen images exist for secondary GPUs
+   * @return true if offscreen images have been created
+   */
+  [[nodiscard]] bool hasOffscreenImages() const {
+    return !offscreenImages_.empty();
+  }
+
+  /**
+   * @brief Get count of offscreen images
+   * @return Number of offscreen images
+   */
+  [[nodiscard]] size_t getOffscreenImageCount() const {
+    return offscreenImages_.size();
+  }
+
 private:
   static vk::SurfaceFormatKHR
   chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &formats,
@@ -175,8 +214,11 @@ private:
   uint32_t presentQueueFamily_ = 0;
 
   std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;
+  // Maps secondary GPU index to offscreen image for multi-GPU rendering.
+  // Secondary GPUs render to these offscreen images, which are then
+  // transferred/composed to the main swapchain for presentation.
   std::unordered_map<uint32_t, std::unique_ptr<vk::raii::Image>>
-      offscreenImages_; // TODO implement the use of secondary GPUs
+      offscreenImages_;
 
   vk::Format format_ = vk::Format::eUndefined;
   vk::Extent2D extent_ = {0, 0};
