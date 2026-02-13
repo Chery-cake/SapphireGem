@@ -478,12 +478,22 @@ bool Swapchain::createOffscreenImagesForSecondaryGPUs() {
   // Clear any existing offscreen images
   destroyOffscreenImages();
 
+  // Note: secondaryGPUDevices_ contains non-owning pointers to GPUDevice objects.
+  // These must remain valid for the lifetime of this Swapchain.
+  // The caller (typically Window) is responsible for ensuring this.
   for (const auto *gpu : secondaryGPUDevices_) {
     if (!gpu || !gpu->isInitialized()) {
       continue;
     }
 
-    // Create an offscreen image on this secondary GPU matching swapchain format
+    uint32_t gpuIndex = gpu->getInfo().index;
+    const auto &gpuName = gpu->getInfo().name;
+
+    // Create an offscreen image on this secondary GPU matching swapchain format.
+    // Note: This creates only the VkImage handle. For actual use in rendering,
+    // the caller must allocate and bind device memory to this image (typically
+    // using VMA or vkAllocateMemory/vkBindImageMemory). This is intentionally
+    // left to the caller to allow flexible memory management strategies.
     vk::ImageCreateInfo imageInfo{
         {},
         vk::ImageType::e2D,
@@ -502,14 +512,13 @@ bool Swapchain::createOffscreenImagesForSecondaryGPUs() {
     try {
       auto image = std::make_unique<vk::raii::Image>(gpu->getRaiiDevice(),
                                                      imageInfo);
-      uint32_t gpuIndex = gpu->getInfo().index;
       offscreenImages_[gpuIndex] = std::move(image);
       std::println("[Swapchain] Created offscreen image for GPU {}: {}",
-                   gpuIndex, gpu->getInfo().name);
+                   gpuIndex, gpuName);
     } catch (const vk::SystemError &e) {
       std::println(stderr,
                    "[Swapchain] Failed to create offscreen image for GPU {}: {}",
-                   gpu->getInfo().name, e.what());
+                   gpuIndex, e.what());
       return false;
     }
   }

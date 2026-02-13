@@ -153,8 +153,14 @@ public:
   /**
    * @brief Create offscreen images for secondary GPUs
    *
-   * Creates images on secondary GPUs that can be used for rendering
-   * and later transferred/composed to the main swapchain for presentation.
+   * Creates VkImage handles on secondary GPUs matching the swapchain format
+   * and extent. These images can be used for multi-GPU rendering where
+   * secondary GPUs render to offscreen images that are later transferred
+   * and composed to the main swapchain for presentation.
+   *
+   * @note This only creates the image handles. The caller is responsible
+   *       for allocating and binding device memory to these images before
+   *       use (typically via VMA or vkAllocateMemory/vkBindImageMemory).
    *
    * @return true if creation succeeded
    */
