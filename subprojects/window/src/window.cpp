@@ -24,27 +24,25 @@ Window::Window() = default;
 Window::~Window() { destroy(); }
 
 Window::Window(Window &&other) noexcept
-    : window_(other.window_), windowId_(other.windowId_), width_(other.width_),
+    : window_(std::exchange(other.window_, nullptr)),
+      windowId_(std::exchange(other.windowId_, 0)), width_(other.width_),
       height_(other.height_), title_(std::move(other.title_)),
-      mainGPU(other.mainGPU), secondaryGPUs(std::move(other.secondaryGPUs)),
+      mainGPU(std::exchange(other.mainGPU, nullptr)),
+      secondaryGPUs(std::move(other.secondaryGPUs)),
       swapchain_(std::move(other.swapchain_)),
       shouldClose_(other.shouldClose_), minimized_(other.minimized_),
       focused_(other.focused_), fullscreen_(other.fullscreen_),
-      eventCallback_(std::move(other.eventCallback_)) {
-  other.window_ = nullptr;
-  other.windowId_ = 0;
-  other.mainGPU = nullptr;
-}
+      eventCallback_(std::move(other.eventCallback_)) {}
 
 Window &Window::operator=(Window &&other) noexcept {
   if (this != &other) {
     destroy();
-    window_ = other.window_;
-    windowId_ = other.windowId_;
+    window_ = std::exchange(other.window_, nullptr);
+    windowId_ = std::exchange(other.windowId_, 0);
     width_ = other.width_;
     height_ = other.height_;
     title_ = std::move(other.title_);
-    mainGPU = other.mainGPU;
+    mainGPU = std::exchange(other.mainGPU, nullptr);
     secondaryGPUs = std::move(other.secondaryGPUs);
     swapchain_ = std::move(other.swapchain_);
     shouldClose_ = other.shouldClose_;
@@ -52,9 +50,6 @@ Window &Window::operator=(Window &&other) noexcept {
     focused_ = other.focused_;
     fullscreen_ = other.fullscreen_;
     eventCallback_ = std::move(other.eventCallback_);
-    other.window_ = nullptr;
-    other.windowId_ = 0;
-    other.mainGPU = nullptr;
   }
   return *this;
 }
