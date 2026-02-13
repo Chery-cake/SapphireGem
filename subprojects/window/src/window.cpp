@@ -1,12 +1,15 @@
 #include "window.h"
-#include "BS_thread_pool.hpp"
 #include "SDL3/SDL_error.h"
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_version.h"
 #include "SDL3/SDL_video.h"
 #include "SDL3/SDL_vulkan.h"
-#include "thread_manager.h"
+#include "swapchain.h"
+#include "vulkan/vulkan.hpp"
+#include "vulkan_device.h"
+#include <memory>
+#include <mutex>
 #include <print>
 #include <utility>
 
@@ -64,6 +67,9 @@ bool Window::create(const WindowConfig &config) {
     return false;
   }
 
+  mainGPU = config.mainGPU;
+  secondaryGPUs = config.secondaryGPUs;
+
   // Build window flags
   SDL_WindowFlags flags = SDL_WINDOW_VULKAN;
   if (config.fullscreen) {
@@ -108,7 +114,15 @@ bool Window::create(const WindowConfig &config) {
   SDL_GetWindowSize(window_, &width_, &height_);
 
   std::println("[Window] Created: {} ({}x{})", title_, width_, height_);
+
   return true;
+}
+
+bool Window::createSwap(const vk::raii::Instance &instance,
+                        const SwapchainConfig &config) {
+  swapchain_ = std::make_unique<Swapchain>();
+  auto surface = createVulkanSurface(instance);
+  return swapchain_->create(mainGPU, secondaryGPUs, surface, config);
 }
 
 bool Window::pollEvents() {
@@ -174,12 +188,23 @@ bool Window::pollEvents() {
         windowEvent.type = WindowEventType::MouseLeave;
         break;
 
+      case SDL_EVENT_KEY_DOWN:
+        windowEvent.type = WindowEventType::KeyDown;
+        break;
+
+      case SDL_EVENT_KEY_UP:
+        windowEvent.type = WindowEventType::KeyUp;
+        break;
+
+      case SDL_EVENT_TEXT_INPUT:
+        windowEvent.type = WindowEventType::TextInput;
+        break;
+
       default:
         continue;
       }
 
-      if (eventCallback_.find(windowEvent.type) != eventCallback_.end() &&
-          windowEvent.type != WindowEventType::None) {
+      if (eventCallback_.find(windowEvent.type) != eventCallback_.end()) {
         for (const auto &func : eventCallback_[windowEvent.type]) {
           func(windowEvent);
         }
@@ -207,21 +232,22 @@ void Window::setEventCallback(WindowEventCallback callback,
   eventCallback_[eventType].push_back(std::move(callback));
 }
 
-vk::SurfaceKHR Window::createVulkanSurface(vk::Instance instance) {
+vk::raii::SurfaceKHR
+Window::createVulkanSurface(const vk::raii::Instance &instance) {
   if (!window_) {
     std::println(stderr, "[Window] Cannot create surface: window not created");
     return nullptr;
   }
 
   VkSurfaceKHR surface = VK_NULL_HANDLE;
-  if (!SDL_Vulkan_CreateSurface(window_, static_cast<VkInstance>(instance),
+  if (!SDL_Vulkan_CreateSurface(window_, static_cast<VkInstance>(*instance),
                                 nullptr, &surface)) {
     std::println(stderr, "[Window] Failed to create Vulkan surface: {}",
                  SDL_GetError());
     return nullptr;
   }
 
-  return vk::SurfaceKHR(surface);
+  return vk::raii::SurfaceKHR(instance, surface);
 }
 
 std::vector<std::string> Window::getRequiredVulkanExtensions() {
@@ -259,6 +285,18 @@ void Window::setFullscreen(bool fullscreen) {
     SDL_SetWindowFullscreen(window_, fullscreen);
     fullscreen_ = fullscreen;
   }
+}
+
+void Window::setMainGPU(device::GPUDevice *device) {
+  std::lock_guard<std::mutex> lock(windowMutex_);
+  mainGPU = device;
+  // TODO update swapchain
+}
+
+void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
+  std::lock_guard<std::mutex> lock(windowMutex_);
+  secondaryGPUs = devices;
+  // TODO update swapchain
 }
 
 // ============================================================================

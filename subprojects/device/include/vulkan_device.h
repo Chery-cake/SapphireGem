@@ -181,8 +181,12 @@ public:
    * @brief Get the primary GPU device
    * @return Reference to the primary device
    */
-  [[nodiscard]] GPUDevice &getPrimaryDevice();
-  [[nodiscard]] const GPUDevice &getPrimaryDevice() const;
+  [[nodiscard]] GPUDevice &getPrimaryDevice() {
+    return *devices_[primaryDeviceIndex_];
+  }
+  [[nodiscard]] const GPUDevice &getPrimaryDevice() const {
+    return *devices_[primaryDeviceIndex_];
+  }
 
   /**
    * @brief Get a specific GPU device by index

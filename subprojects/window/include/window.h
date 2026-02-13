@@ -1,7 +1,9 @@
 #ifndef WINDOW_H_
 #define WINDOW_H_
 
+#include "swapchain.h"
 #include "vulkan/vulkan.hpp"
+#include "vulkan_device.h"
 #include "window_export.h"
 #include <cstdint>
 #include <functional>
@@ -9,11 +11,20 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 // Forward declare SDL types to avoid including SDL.h in header
 struct SDL_Window;
 
+// Forward declare device types
+namespace device {
+class GPUDevice;
+}
+
 namespace window {
+
+// Forward declare swapchain config
+struct SwapchainConfig;
 
 /**
  * @brief Window creation configuration
@@ -30,6 +41,8 @@ struct WINDOW_API WindowConfig {
   bool maximized = false;
   bool vsync = true;
   bool highDPI = true;
+  device::GPUDevice *mainGPU;
+  std::vector<device::GPUDevice *> secondaryGPUs = {};
 };
 
 /**
@@ -91,6 +104,15 @@ public:
   bool create(const WindowConfig &config);
 
   /**
+   *@brief Create the window surface and swapchain
+   *@param instance for surface creation
+   *@param config Swapchain configuration
+   *@return tru if creation succeeded
+   */
+  bool createSwap(const vk::raii::Instance &instance,
+                  const SwapchainConfig &config);
+
+  /**
    * @brief Destroy the window
    */
   void destroy();
@@ -136,7 +158,7 @@ public:
    * @param instance Vulkan instance
    * @return Vulkan surface
    */
-  vk::SurfaceKHR createVulkanSurface(vk::Instance instance);
+  vk::raii::SurfaceKHR createVulkanSurface(const vk::raii::Instance &instance);
 
   /**
    * @brief Get required Vulkan instance extensions for windowing
@@ -181,12 +203,45 @@ public:
    */
   [[nodiscard]] uint32_t getWindowId() const { return windowId_; }
 
+  /**
+   * @brief Get main GPU index
+   * @return GPU index on DeviceManager vector
+   */
+  [[nodiscard]] const device::GPUDevice &getMainGPU() const { return *mainGPU; }
+  /**
+   * @brief Set main GPU index
+   */
+  void setMainGPU(device::GPUDevice *device);
+
+  /**
+   * @brief Get secondary GPUs indexes
+   * @return GPU index on DeviceManager vector
+   */
+  [[nodiscard]] const std::vector<device::GPUDevice *> &
+  getSecondaryGPUs() const {
+    return secondaryGPUs;
+  }
+  /**
+   * @brief Set secondary GPUs indexes
+   */
+  void setSecondaryGPUs(std::vector<device::GPUDevice *> &devices);
+
+  /**
+   *@brief Get swapchain
+   *@return Swapchain object
+   */
+  const Swapchain &getSwapchain() const { return *swapchain_; }
+
 private:
   SDL_Window *window_ = nullptr;
   uint32_t windowId_ = 0;
   int32_t width_ = 0;
   int32_t height_ = 0;
   std::string title_;
+
+  device::GPUDevice *mainGPU = nullptr;
+  std::vector<device::GPUDevice *> secondaryGPUs = {};
+  std::unique_ptr<Swapchain> swapchain_;
 
   bool shouldClose_ = false;
   bool minimized_ = false;
@@ -195,6 +250,8 @@ private:
 
   std::unordered_map<WindowEventType, std::vector<WindowEventCallback>>
       eventCallback_;
+
+  // TODO add swapchain variable
 
   mutable std::mutex windowMutex_;
 };

@@ -1,3 +1,4 @@
+#include "swapchain.h"
 #include "thread_manager.h"
 #include "vulkan_device.h"
 #include "vulkan_instance.h"
@@ -157,8 +158,17 @@ int main(int argc, char *argv[]) {
   window::WindowManager wMan;
   wMan.initialize();
 
-  wMan.createWindow({"Test1"});
-  wMan.createWindow({"Test2"});
+  window::WindowConfig wConf;
+  wConf.mainGPU = &dMan.getPrimaryDevice();
+  wConf.title = "Test1";
+  wMan.createWindow(wConf);
+  wConf.title = "Test2";
+  wMan.createWindow(wConf);
+
+  for (const auto &win : wMan.getWindows()) {
+    window::SwapchainConfig sConf;
+    win->createSwap(inst.getRaiiInstance(), sConf);
+  }
 
   int frame = 0;
   // while (!wMan.checkWindowsVectorEmpty()) { TODO check for close action
