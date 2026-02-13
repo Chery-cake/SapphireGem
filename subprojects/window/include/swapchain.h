@@ -167,8 +167,11 @@ private:
   device::GPUDevice *mainGPUDevice_ = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUDevices_;
   std::unique_ptr<vk::raii::SurfaceKHR> surface_;
-  vk::Queue presentQueue_; // TODO check if can be changed to
-                           // std::unique_prt<vk::raii::Queue>
+  // Note: vk::Queue is a handle that doesn't own the underlying resource.
+  // Queues are managed by the VkDevice and don't need explicit destruction.
+  // Using raw vk::Queue is correct here; std::unique_ptr<vk::raii::Queue>
+  // would be unnecessary since vk::raii::Queue is also a non-owning wrapper.
+  vk::Queue presentQueue_;
   uint32_t presentQueueFamily_ = 0;
 
   std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;

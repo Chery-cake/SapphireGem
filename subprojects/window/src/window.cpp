@@ -26,11 +26,14 @@ Window::~Window() { destroy(); }
 Window::Window(Window &&other) noexcept
     : window_(other.window_), windowId_(other.windowId_), width_(other.width_),
       height_(other.height_), title_(std::move(other.title_)),
+      mainGPU(other.mainGPU), secondaryGPUs(std::move(other.secondaryGPUs)),
+      swapchain_(std::move(other.swapchain_)),
       shouldClose_(other.shouldClose_), minimized_(other.minimized_),
       focused_(other.focused_), fullscreen_(other.fullscreen_),
       eventCallback_(std::move(other.eventCallback_)) {
   other.window_ = nullptr;
   other.windowId_ = 0;
+  other.mainGPU = nullptr;
 }
 
 Window &Window::operator=(Window &&other) noexcept {
@@ -41,6 +44,9 @@ Window &Window::operator=(Window &&other) noexcept {
     width_ = other.width_;
     height_ = other.height_;
     title_ = std::move(other.title_);
+    mainGPU = other.mainGPU;
+    secondaryGPUs = std::move(other.secondaryGPUs);
+    swapchain_ = std::move(other.swapchain_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
     focused_ = other.focused_;
@@ -48,17 +54,27 @@ Window &Window::operator=(Window &&other) noexcept {
     eventCallback_ = std::move(other.eventCallback_);
     other.window_ = nullptr;
     other.windowId_ = 0;
+    other.mainGPU = nullptr;
   }
   return *this;
 }
 
 void Window::destroy() {
+  // Destroy swapchain first (it depends on the surface which depends on the window)
+  if (swapchain_) {
+    swapchain_->destroy();
+    swapchain_.reset();
+  }
+
   if (window_) {
     SDL_DestroyWindow(window_);
     window_ = nullptr;
     windowId_ = 0;
     std::println("[Window] Destroyed: {}", title_);
   }
+
+  mainGPU = nullptr;
+  secondaryGPUs.clear();
 }
 
 bool Window::create(const WindowConfig &config) {
@@ -290,13 +306,19 @@ void Window::setFullscreen(bool fullscreen) {
 void Window::setMainGPU(device::GPUDevice *device) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   mainGPU = device;
-  // TODO update swapchain
+  // Mark swapchain for recreation if it exists
+  if (swapchain_) {
+    swapchain_->markForRecreation();
+  }
 }
 
 void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   secondaryGPUs = devices;
-  // TODO update swapchain
+  // Mark swapchain for recreation if it exists
+  if (swapchain_) {
+    swapchain_->markForRecreation();
+  }
 }
 
 // ============================================================================
