@@ -186,7 +186,7 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
         -DSLANG_ENABLE_SLANGD=OFF
         -DSLANG_ENABLE_SLANGC=ON
         -DSLANG_ENABLE_SLANGI=OFF
-        -DSLANG_ENABLE_SLANGRT=OFF
+        -DSLANG_ENABLE_SLANGRT=ON
         -DSLANG_EXCLUDE_DAWN=ON
         -DSLANG_EXCLUDE_TINT=ON
         -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
@@ -194,27 +194,22 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 
-ExternalProject_Get_Property(_slang source_dir)
-ExternalProject_Get_Property(_slang binary_dir)
-
-add_library(slang SHARED IMPORTED)
+add_library(slang INTERFACE)
+add_dependencies(slang _slang)
+target_link_libraries(slang INTERFACE _slang)
+target_include_directories(slang INTERFACE
+    "${SLANG_INSTALL_DIR}/include"
+)
+# Link the actual library
 if(WIN32)
-    set_target_properties(slang PROPERTIES
-        IMPORTED_LOCATION "${SLANG_INSTALL_DIR}/bin/slang.dll"
-        IMPORTED_IMPLIB "${SLANG_INSTALL_DIR}/lib/slang.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "${SLANG_INSTALL_DIR}/include"
+    target_link_libraries(slang INTERFACE
+        "${SLANG_INSTALL_DIR}/lib/slang.lib"
+        "${SLANG_INSTALL_DIR}/bin/slang.dll"
     )
 else()
-    # Unix or Mac
-    set(SLANG_SO "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}")
-    set_target_properties(slang PROPERTIES
-        IMPORTED_LOCATION "${SLANG_SO}"
-        INTERFACE_INCLUDE_DIRECTORIES "${SLANG_INSTALL_DIR}/include"
+    target_link_libraries(slang INTERFACE
+        "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
     )
 endif()
-set_target_properties(slang PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${SLANG_INSTALL_DIR}/include"
-)
-add_dependencies(slang _slang)
 
 message(STATUS "Graphics dependencies configured")
