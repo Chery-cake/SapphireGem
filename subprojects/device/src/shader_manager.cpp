@@ -1,11 +1,14 @@
 #include "shader_manager.h"
 #include "BS_thread_pool.hpp"
-#include "slang-deprecated.h"
+#include "slang-com-ptr.h"
+#include "slang.h"
 #include "thread_manager.h"
+#include "vulkan_device.h"
 #include <filesystem>
 #include <fstream>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <print>
 #include <sstream>
 
@@ -40,10 +43,22 @@ vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
 }
 
 // ============================================================================
+// PIMPL for Slang state - keeps Slang headers out of the public header
+// ============================================================================
+
+struct ShaderManager::SlangState {
+  Slang::ComPtr<slang::IGlobalSession> globalSession;
+
+  // Session description for creating compile sessions
+  slang::SessionDesc sessionDesc{};
+  slang::TargetDesc targetDesc{};
+};
+
+// ============================================================================
 // ShaderManager Implementation
 // ============================================================================
 
-ShaderManager::ShaderManager() = default;
+ShaderManager::ShaderManager() : slangState_(std::make_unique<SlangState>()) {};
 
 ShaderManager::~ShaderManager() { shutdown(); }
 
@@ -53,7 +68,7 @@ bool ShaderManager::initialize(GPUDevice &device) {
     return false;
   }
 
-  device_ = device.getDevice();
+  device_ = &device.getRaiiDevice();
 
   if (!initializeSlang()) {
     std::println(stderr, "[ShaderManager] Failed to initialize Slang");
@@ -83,22 +98,33 @@ void ShaderManager::shutdown() {
 }
 
 bool ShaderManager::initializeSlang() {
-  slangSession_ = spCreateSession(nullptr);
-  if (!slangSession_) {
-    std::println(stderr, "[ShaderManager] Failed to create Slang session");
+  std::lock_guard<std::mutex> lock(slangMutex_);
+  // Create global session using C++ API
+  SlangResult result =
+      slang::createGlobalSession(slangState_->globalSession.writeRef());
+
+  if (SLANG_FAILED(result) || !slangState_->globalSession) {
+    std::println(stderr,
+                 "[ShaderManager] Failed to create Slang global session");
     return false;
   }
+
+  // Configure target for SPIR-V 1.5
+  slangState_->targetDesc.format = SLANG_SPIRV;
+  slangState_->targetDesc.profile =
+      slangState_->globalSession->findProfile("spirv_1_5");
+  slangState_->targetDesc.flags = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
+
   return true;
 }
 
 void ShaderManager::shutdownSlang() {
-  if (slangSession_) {
-    spDestroySession(slangSession_);
-    slangSession_ = nullptr;
-  }
+  std::lock_guard<std::mutex> lock(slangMutex_);
+  slangState_->globalSession.setNull();
 }
 
 void ShaderManager::setShaderBasePath(const std::string &basePath) {
+  std::lock_guard<std::mutex> lock(slangMutex_);
   shaderBasePath_ = basePath;
   // Update default include path
   if (!includePaths_.empty()) {
@@ -107,7 +133,36 @@ void ShaderManager::setShaderBasePath(const std::string &basePath) {
 }
 
 void ShaderManager::addIncludePath(const std::string &includePath) {
+  std::lock_guard<std::mutex> lock(slangMutex_);
   includePaths_.push_back(includePath);
+}
+
+slang::ISession *ShaderManager::createCompileSession() {
+  // Build search paths array
+  std::vector<const char *> searchPathPtrs;
+  searchPathPtrs.reserve(includePaths_.size());
+  for (const auto &path : includePaths_) {
+    searchPathPtrs.push_back(path.c_str());
+  }
+
+  // Configure session
+  slang::SessionDesc sessionDesc{};
+  sessionDesc.targets = &slangState_->targetDesc;
+  sessionDesc.targetCount = 1;
+  sessionDesc.searchPaths = searchPathPtrs.data();
+  sessionDesc.searchPathCount = static_cast<SlangInt>(searchPathPtrs.size());
+  sessionDesc.defaultMatrixLayoutMode = SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
+
+  Slang::ComPtr<slang::ISession> session;
+  SlangResult result = slangState_->globalSession->createSession(
+      sessionDesc, session.writeRef());
+
+  if (SLANG_FAILED(result)) {
+    return nullptr;
+  }
+
+  // Return raw pointer - caller manages lifetime through ComPtr
+  return session.detach();
 }
 
 std::string ShaderManager::computeFileHash(const std::string &filePath) {
@@ -160,22 +215,22 @@ std::string ShaderManager::stageToSlangTarget(ShaderStage stage) {
   }
 }
 
-int ShaderManager::stageToSlangStage(ShaderStage stage) {
+SlangStage ShaderManager::stageToSlangStage(ShaderStage stage) {
   switch (stage) {
   case ShaderStage::Vertex:
-    return SLANG_STAGE_VERTEX;
+    return SlangStage::SLANG_STAGE_VERTEX;
   case ShaderStage::Fragment:
-    return SLANG_STAGE_FRAGMENT;
+    return SlangStage::SLANG_STAGE_FRAGMENT;
   case ShaderStage::Geometry:
-    return SLANG_STAGE_GEOMETRY;
+    return SlangStage::SLANG_STAGE_GEOMETRY;
   case ShaderStage::TessellationControl:
-    return SLANG_STAGE_HULL;
+    return SlangStage::SLANG_STAGE_HULL;
   case ShaderStage::TessellationEvaluation:
-    return SLANG_STAGE_DOMAIN;
+    return SlangStage::SLANG_STAGE_DOMAIN;
   case ShaderStage::Compute:
-    return SLANG_STAGE_COMPUTE;
+    return SlangStage::SLANG_STAGE_COMPUTE;
   default:
-    return SLANG_STAGE_VERTEX;
+    return SlangStage::SLANG_STAGE_VERTEX;
   }
 }
 
@@ -184,8 +239,19 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   ShaderCompileResult result;
   result.success = false;
 
-  if (!slangSession_) {
-    result.errorMessage = "Slang session not initialized";
+  // Lock for session creation (global session access)
+  Slang::ComPtr<slang::ISession> session;
+  {
+    std::lock_guard<std::mutex> lock(slangMutex_);
+    if (!slangState_->globalSession) {
+      result.errorMessage = "Global slang session not initialized";
+      return result;
+    }
+    session = createCompileSession();
+  }
+
+  if (!session) {
+    result.errorMessage = "Failed to create Slang compile session";
     return result;
   }
 
@@ -217,77 +283,104 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   // Compute source hash for hot reload detection
   result.sourceHash = computeFileHash(fullPath);
 
-  // Create compile request
-  SlangCompileRequest *slangRequest = spCreateCompileRequest(slangSession_);
-  if (!slangRequest) {
-    result.errorMessage = "Failed to create Slang compile request";
+  // Load module using C++ API
+  Slang::ComPtr<slang::IBlob> diagnosticsBlob;
+  slang::IModule *module =
+      session->loadModule(fullPath.c_str(), diagnosticsBlob.writeRef());
+
+  if (!module) {
+    if (diagnosticsBlob) {
+      result.errorMessage =
+          static_cast<const char *>(diagnosticsBlob->getBufferPointer());
+    } else {
+      result.errorMessage = "Failed to load module: " + fullPath;
+    }
     return result;
   }
 
-  // Set target to SPIR-V
-  int targetIndex = spAddCodeGenTarget(slangRequest, SLANG_SPIRV);
-  spSetTargetProfile(slangRequest, targetIndex,
-                     spFindProfile(slangSession_, "spirv_1_5"));
+  // Find entry point
+  Slang::ComPtr<slang::IEntryPoint> entryPoint;
+  SlangResult findResult = module->findEntryPointByName(
+      request.entryPoint.c_str(), entryPoint.writeRef());
 
-  // Add search paths
-  for (const auto &path : includePaths_) {
-    spAddSearchPath(slangRequest, path.c_str());
-  }
+  if (SLANG_FAILED(findResult) || !entryPoint) {
+    // Try with explicit stage if not marked in source
+    Slang::ComPtr<slang::IBlob> epDiagnostics;
+    findResult = module->findAndCheckEntryPoint(
+        request.entryPoint.c_str(), stageToSlangStage(request.stage),
+        entryPoint.writeRef(), epDiagnostics.writeRef());
 
-  // Add preprocessor defines
-  for (const auto &define : request.defines) {
-    auto pos = define.find('=');
-    if (pos != std::string::npos) {
-      std::string name = define.substr(0, pos);
-      std::string value = define.substr(pos + 1);
-      spAddPreprocessorDefine(slangRequest, name.c_str(), value.c_str());
-    } else {
-      spAddPreprocessorDefine(slangRequest, define.c_str(), "1");
+    if (SLANG_FAILED(findResult) || !entryPoint) {
+      result.errorMessage = "Entry point not found: " + request.entryPoint;
+      if (epDiagnostics) {
+        result.errorMessage += "\n";
+        result.errorMessage +=
+            static_cast<const char *>(epDiagnostics->getBufferPointer());
+      }
+      return result;
     }
   }
 
-  // Add source file as translation unit
-  int translationUnitIndex =
-      spAddTranslationUnit(slangRequest, SLANG_SOURCE_LANGUAGE_SLANG, nullptr);
-  spAddTranslationUnitSourceFile(slangRequest, translationUnitIndex,
-                                 fullPath.c_str());
+  // Create composite component type
+  std::array<slang::IComponentType *, 2> components = {module,
+                                                       entryPoint.get()};
+  Slang::ComPtr<slang::IComponentType> composedProgram;
 
-  // Add entry point
-  spAddEntryPoint(slangRequest, translationUnitIndex,
-                  request.entryPoint.c_str(),
-                  static_cast<SlangStage>(stageToSlangStage(request.stage)));
+  SlangResult composeResult = session->createCompositeComponentType(
+      components.data(), static_cast<SlangInt>(components.size()),
+      composedProgram.writeRef(), diagnosticsBlob.writeRef());
 
-  // Compile
-  int compileResult = spCompile(slangRequest);
-  if (compileResult != 0) {
-    const char *diagnostics = spGetDiagnosticOutput(slangRequest);
-    result.errorMessage =
-        diagnostics ? diagnostics : "Unknown compilation error";
-    spDestroyCompileRequest(slangRequest);
+  if (SLANG_FAILED(composeResult)) {
+    if (diagnosticsBlob) {
+      result.errorMessage =
+          static_cast<const char *>(diagnosticsBlob->getBufferPointer());
+    } else {
+      result.errorMessage = "Failed to compose shader program";
+    }
     return result;
   }
 
-  // Get SPIR-V output
-  size_t codeSize = 0;
-  const void *code = spGetEntryPointCode(slangRequest, 0, &codeSize);
-  if (!code || codeSize == 0) {
-    result.errorMessage = "Failed to get SPIR-V code";
-    spDestroyCompileRequest(slangRequest);
+  // Link the program
+  Slang::ComPtr<slang::IComponentType> linkedProgram;
+  SlangResult linkResult = composedProgram->link(linkedProgram.writeRef(),
+                                                 diagnosticsBlob.writeRef());
+
+  if (SLANG_FAILED(linkResult)) {
+    if (diagnosticsBlob) {
+      result.errorMessage =
+          static_cast<const char *>(diagnosticsBlob->getBufferPointer());
+    } else {
+      result.errorMessage = "Failed to link shader program";
+    }
     return result;
   }
 
-  // Validate SPIR-V code size alignment (SPIR-V is 32-bit word-based)
-  if (codeSize % sizeof(uint32_t) != 0) {
-    result.errorMessage = "Invalid SPIR-V code size: not 4-byte aligned";
-    spDestroyCompileRequest(slangRequest);
+  // Get compiled SPIR-V code
+  Slang::ComPtr<slang::IBlob> codeBlob;
+  SlangResult codeResult = linkedProgram->getEntryPointCode(
+      0, // Entry point index
+      0, // Target index
+      codeBlob.writeRef(), diagnosticsBlob.writeRef());
+
+  if (SLANG_FAILED(codeResult) || !codeBlob) {
+    if (diagnosticsBlob) {
+      result.errorMessage =
+          static_cast<const char *>(diagnosticsBlob->getBufferPointer());
+    } else {
+      result.errorMessage = "Failed to get SPIR-V code";
+    }
     return result;
   }
 
-  // Copy SPIR-V code
+  // Validate and copy SPIR-V
+  size_t codeSize = codeBlob->getBufferSize();
+  if (codeSize == 0 || codeSize % sizeof(uint32_t) != 0) {
+    result.errorMessage = "Invalid SPIR-V code size";
+    return result;
+  }
+
   result.spirvCode.resize(codeSize / sizeof(uint32_t));
-  std::memcpy(result.spirvCode.data(), code, codeSize);
-
-  spDestroyCompileRequest(slangRequest);
+  std::memcpy(result.spirvCode.data(), codeBlob->getBufferPointer(), codeSize);
 
   result.success = true;
   return result;
@@ -337,7 +430,7 @@ ShaderManager::compileBatch(const std::vector<ShaderCompileRequest> &requests) {
   return results;
 }
 
-vk::ShaderModule
+vk::raii::ShaderModule
 ShaderManager::createShaderModule(const std::vector<uint32_t> &spirvCode) {
   if (!device_ || spirvCode.empty()) {
     return nullptr;
@@ -347,7 +440,7 @@ ShaderManager::createShaderModule(const std::vector<uint32_t> &spirvCode) {
       {}, spirvCode.size() * sizeof(uint32_t), spirvCode.data()};
 
   try {
-    return device_.createShaderModule(createInfo);
+    return device_->createShaderModule(createInfo);
   } catch (const vk::SystemError &e) {
     std::println(stderr, "[ShaderManager] Failed to create shader module: {}",
                  e.what());
@@ -391,13 +484,13 @@ CompiledShader *ShaderManager::loadShader(const std::string &sourcePath,
 
   // Create shader module
   auto module = createShaderModule(result.spirvCode);
-  if (!module) {
+  if (module == nullptr) {
     return nullptr;
   }
 
   // Create and cache compiled shader
   auto shader = std::make_unique<CompiledShader>();
-  shader->module = module;
+  shader->module = std::move(module);
   shader->stage = stage;
   shader->entryPoint = entryPoint;
   shader->sourcePath = sourcePath;
@@ -405,17 +498,14 @@ CompiledShader *ShaderManager::loadShader(const std::string &sourcePath,
   shader->isValid = true;
 
   std::lock_guard<std::mutex> lock(cacheMutex_);
-  shaderCache_[key] = std::move(shader);
-  return shaderCache_[key].get();
+  auto [it, inserted] = shaderCache_.try_emplace(key, std::move(shader));
+  return it->second.get();
 }
 
 CompiledShader *ShaderManager::getShader(const std::string &key) {
   std::lock_guard<std::mutex> lock(cacheMutex_);
   auto it = shaderCache_.find(key);
-  if (it != shaderCache_.end()) {
-    return it->second.get();
-  }
-  return nullptr;
+  return (it != shaderCache_.end()) ? it->second.get() : nullptr;
 }
 
 bool ShaderManager::needsRecompilation(const std::string &key) {
@@ -440,22 +530,23 @@ bool ShaderManager::reloadIfNeeded(const std::string &key) {
     return false;
   }
 
-  CompiledShader *existing = nullptr;
+  std::string sourcePath, entryPoint;
+  ShaderStage stage;
+
   {
     std::lock_guard<std::mutex> lock(cacheMutex_);
     auto it = shaderCache_.find(key);
-    if (it != shaderCache_.end()) {
-      existing = it->second.get();
+    if (it == shaderCache_.end()) {
+      return false;
     }
+    sourcePath = it->second->sourcePath;
+    entryPoint = it->second->entryPoint;
+    stage = it->second->stage;
   }
 
-  if (!existing) {
-    return false;
-  }
-
-  // Recompile
-  auto newShader =
-      loadShader(existing->sourcePath, existing->entryPoint, existing->stage);
+  // Destroy old shader and reload
+  destroyShader(key);
+  auto *newShader = loadShader(sourcePath, entryPoint, stage);
   return newShader != nullptr && newShader->isValid;
 }
 
@@ -465,8 +556,9 @@ uint32_t ShaderManager::reloadAllChanged() {
   std::vector<std::string> keys;
   {
     std::lock_guard<std::mutex> lock(cacheMutex_);
-    for (const auto &pair : shaderCache_) {
-      keys.push_back(pair.first);
+    keys.reserve(shaderCache_.size());
+    for (const auto &[key, _] : shaderCache_) {
+      keys.push_back(key);
     }
   }
 
@@ -481,28 +573,12 @@ uint32_t ShaderManager::reloadAllChanged() {
 
 void ShaderManager::clearCache() {
   std::lock_guard<std::mutex> lock(cacheMutex_);
-
-  for (auto &pair : shaderCache_) {
-    if (pair.second->module && device_) {
-      device_.destroyShaderModule(pair.second->module);
-    }
-  }
   shaderCache_.clear();
 }
 
 bool ShaderManager::destroyShader(const std::string &key) {
   std::lock_guard<std::mutex> lock(cacheMutex_);
-
-  auto it = shaderCache_.find(key);
-  if (it == shaderCache_.end()) {
-    return false;
-  }
-
-  if (it->second->module && device_) {
-    device_.destroyShaderModule(it->second->module);
-  }
-  shaderCache_.erase(it);
-  return true;
+  return shaderCache_.erase(key) > 0;
 }
 
 std::vector<std::string> ShaderManager::getCachedShaderKeys() const {

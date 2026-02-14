@@ -2,16 +2,15 @@
 #define SHADER_MANAGER_H_
 
 #include "device_export.h"
-#include "vulkan/vulkan.hpp"
+#include "slang.h"
+#include "vulkan/vulkan_raii.hpp"
 #include "vulkan_device.h"
 #include <cstdint>
 #include <future>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
-
-// Forward declare Slang types to avoid including slang.h in header
-struct SlangSession;
-struct SlangCompileRequest;
 
 namespace device {
 
@@ -31,7 +30,7 @@ enum class DEVICE_API ShaderStage : uint8_t {
  * @brief Compiled shader module information
  */
 struct DEVICE_API CompiledShader {
-  vk::ShaderModule module; // TODO change to vk::raii::ShaderModule if possible
+  vk::raii::ShaderModule module = nullptr;
   ShaderStage stage;
   std::string entryPoint;
   std::string sourcePath; // Original source path
@@ -191,7 +190,8 @@ public:
    * @param spirvCode SPIR-V bytecode
    * @return Vulkan shader module
    */
-  vk::ShaderModule createShaderModule(const std::vector<uint32_t> &spirvCode);
+  vk::raii::ShaderModule
+  createShaderModule(const std::vector<uint32_t> &spirvCode);
 
   /**
    * @brief Generate cache key from shader parameters
@@ -207,12 +207,20 @@ public:
 private:
   bool initializeSlang();
   void shutdownSlang();
-  std::string computeFileHash(const std::string &filePath);
-  std::string stageToSlangTarget(ShaderStage stage);
-  int stageToSlangStage(ShaderStage stage);
 
-  SlangSession *slangSession_ = nullptr;
-  vk::Device device_;
+  // Create a thread-local or locked session for compilation
+  slang::ISession *createCompileSession();
+  mutable std::mutex slangMutex_;
+
+  static std::string computeFileHash(const std::string &filePath);
+  static std::string stageToSlangTarget(ShaderStage stage);
+  static SlangStage stageToSlangStage(ShaderStage stage);
+
+  // Use opaque pointer pattern (PIMPL) for Slang types
+  struct SlangState;
+  std::unique_ptr<SlangState> slangState_;
+
+  const vk::raii::Device *device_ = nullptr;
   std::string shaderBasePath_;
   std::vector<std::string> includePaths_;
 

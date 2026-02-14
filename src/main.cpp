@@ -1,3 +1,4 @@
+#include "shader_manager.h"
 #include "swapchain.h"
 #include "thread_manager.h"
 #include "vma_allocator.h"
@@ -173,6 +174,9 @@ int main(int argc, char *argv[]) {
     window::SwapchainConfig sConf;
     win->createSwap(inst.getRaiiInstance(), sConf);
   }
+
+  device::ShaderManager sMan;
+  sMan.initialize(dMan.getPrimaryDevice());
 
   int frame = 0;
   // while (!wMan.checkWindowsVectorEmpty()) { TODO check for close action

@@ -196,7 +196,7 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
 
 add_library(slang INTERFACE)
 add_dependencies(slang _slang)
-target_link_libraries(slang INTERFACE _slang)
+#target_link_libraries(slang INTERFACE _slang)
 target_include_directories(slang INTERFACE
     "${SLANG_INSTALL_DIR}/include"
 )
