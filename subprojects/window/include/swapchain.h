@@ -167,8 +167,7 @@ private:
   device::GPUDevice *mainGPUDevice_ = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUDevices_;
   std::unique_ptr<vk::raii::SurfaceKHR> surface_;
-  vk::Queue presentQueue_; // TODO check if can be changed to
-                           // std::unique_prt<vk::raii::Queue>
+  vk::Queue presentQueue_;
   uint32_t presentQueueFamily_ = 0;
 
   std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;

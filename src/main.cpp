@@ -1,5 +1,6 @@
 #include "swapchain.h"
 #include "thread_manager.h"
+#include "vma_allocator.h"
 #include "vulkan_device.h"
 #include "vulkan_instance.h"
 #include "window.h"
@@ -154,6 +155,9 @@ int main(int argc, char *argv[]) {
 
   device::DeviceManager dMan;
   dMan.initialize(inst, {nullptr, false, 0});
+
+  device::VMAManager vMan;
+  vMan.initialize(inst.getRaiiInstance(), dMan);
 
   window::WindowManager wMan;
   wMan.initialize();

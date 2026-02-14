@@ -227,10 +227,19 @@ public:
   void setSecondaryGPUs(std::vector<device::GPUDevice *> &devices);
 
   /**
-   *@brief Get swapchain
-   *@return Swapchain object
+   * @brief Get swapchain
+   * @return Pointer to Swapchain object or nullptr if not created
    */
-  const Swapchain &getSwapchain() const { return *swapchain_; }
+  [[nodiscard]] Swapchain *getSwapchain() { return swapchain_.get(); }
+  [[nodiscard]] const Swapchain *getSwapchain() const {
+    return swapchain_.get();
+  }
+
+  /**
+   * @brief Check if swapchain is created
+   * @return true if swapchain exists
+   */
+  [[nodiscard]] bool hasSwapchain() const { return swapchain_ != nullptr; }
 
 private:
   SDL_Window *window_ = nullptr;
@@ -250,8 +259,6 @@ private:
 
   std::unordered_map<WindowEventType, std::vector<WindowEventCallback>>
       eventCallback_;
-
-  // TODO add swapchain variable
 
   mutable std::mutex windowMutex_;
 };

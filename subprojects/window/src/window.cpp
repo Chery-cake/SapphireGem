@@ -24,41 +24,50 @@ Window::Window() = default;
 Window::~Window() { destroy(); }
 
 Window::Window(Window &&other) noexcept
-    : window_(other.window_), windowId_(other.windowId_), width_(other.width_),
+    : window_(std::exchange(other.window_, nullptr)),
+      windowId_(std::exchange(other.windowId_, 0)), width_(other.width_),
       height_(other.height_), title_(std::move(other.title_)),
-      shouldClose_(other.shouldClose_), minimized_(other.minimized_),
-      focused_(other.focused_), fullscreen_(other.fullscreen_),
-      eventCallback_(std::move(other.eventCallback_)) {
-  other.window_ = nullptr;
-  other.windowId_ = 0;
-}
+      mainGPU(std::exchange(other.mainGPU, nullptr)),
+      secondaryGPUs(std::move(other.secondaryGPUs)),
+      swapchain_(std::move(other.swapchain_)), shouldClose_(other.shouldClose_),
+      minimized_(other.minimized_), focused_(other.focused_),
+      fullscreen_(other.fullscreen_),
+      eventCallback_(std::move(other.eventCallback_)) {}
 
 Window &Window::operator=(Window &&other) noexcept {
   if (this != &other) {
     destroy();
-    window_ = other.window_;
-    windowId_ = other.windowId_;
+    window_ = std::exchange(other.window_, nullptr);
+    windowId_ = std::exchange(other.windowId_, 0);
     width_ = other.width_;
     height_ = other.height_;
     title_ = std::move(other.title_);
+    mainGPU = std::exchange(other.mainGPU, nullptr);
+    secondaryGPUs = std::move(other.secondaryGPUs);
+    swapchain_ = std::move(other.swapchain_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
     focused_ = other.focused_;
     fullscreen_ = other.fullscreen_;
     eventCallback_ = std::move(other.eventCallback_);
-    other.window_ = nullptr;
-    other.windowId_ = 0;
   }
   return *this;
 }
 
 void Window::destroy() {
+  if (swapchain_) {
+    swapchain_.reset();
+  }
+
   if (window_) {
     SDL_DestroyWindow(window_);
     window_ = nullptr;
     windowId_ = 0;
     std::println("[Window] Destroyed: {}", title_);
   }
+
+  mainGPU = nullptr;
+  secondaryGPUs.clear();
 }
 
 bool Window::create(const WindowConfig &config) {
@@ -290,13 +299,13 @@ void Window::setFullscreen(bool fullscreen) {
 void Window::setMainGPU(device::GPUDevice *device) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   mainGPU = device;
-  // TODO update swapchain
+  // TODO update swapchain mainGPU
 }
 
 void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   secondaryGPUs = devices;
-  // TODO update swapchain
+  // TODO update swapchain secondaryGPUs
 }
 
 // ============================================================================

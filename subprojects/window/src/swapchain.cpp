@@ -20,9 +20,11 @@ Swapchain::Swapchain(Swapchain &&other) noexcept
       surface_(std::move(other.surface_)),
       presentQueue_(std::move(other.presentQueue_)),
       presentQueueFamily_(other.presentQueueFamily_),
-      swapchain_(std::move(other.swapchain_)), format_(other.format_),
-      extent_(other.extent_), frames_(std::move(other.frames_)),
-      config_(other.config_), needsRecreation_(other.needsRecreation_) {
+      swapchain_(std::move(other.swapchain_)),
+      offscreenImages_(std::move(other.offscreenImages_)),
+      format_(other.format_), extent_(other.extent_),
+      frames_(std::move(other.frames_)), config_(other.config_),
+      needsRecreation_(other.needsRecreation_) {
   other.mainGPUDevice_ = nullptr;
   other.secondaryGPUDevices_.clear();
 }
@@ -36,6 +38,7 @@ Swapchain &Swapchain::operator=(Swapchain &&other) noexcept {
     presentQueue_ = std::move(other.presentQueue_);
     presentQueueFamily_ = other.presentQueueFamily_;
     swapchain_ = std::move(other.swapchain_);
+    offscreenImages_ = std::move(other.offscreenImages_);
     format_ = other.format_;
     extent_ = other.extent_;
     frames_ = std::move(other.frames_);
