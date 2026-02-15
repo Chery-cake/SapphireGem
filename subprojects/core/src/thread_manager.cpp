@@ -10,22 +10,25 @@ namespace core {
 
 #ifdef ENGINE_DEBUG
 static ThreadManager *g_threadManagerInstance = nullptr;
-static std::once_flag g_threadManagerOnce;
+static std::mutex g_threadManagerMutex;
 
 ThreadManager &ThreadManager::instance() {
-  // Use call_once for thread-safe initial creation
-  std::call_once(g_threadManagerOnce,
-                 []() { g_threadManagerInstance = new ThreadManager(); });
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
+  if (!g_threadManagerInstance) {
+    g_threadManagerInstance = new ThreadManager();
+  }
   return *g_threadManagerInstance;
 }
 
 void ThreadManager::setInstance(ThreadManager *inst) {
-  // Called by hot reload system when coordinating instance swap.
-  // Caller is responsible for managing the old instance's lifetime.
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
   g_threadManagerInstance = inst;
 }
 
-ThreadManager *ThreadManager::getInstance() { return g_threadManagerInstance; }
+ThreadManager *ThreadManager::getInstance() {
+  std::lock_guard<std::mutex> lock(g_threadManagerMutex);
+  return g_threadManagerInstance;
+}
 
 #else
 // In release mode, use classic static local variable singleton

@@ -6,22 +6,25 @@ namespace core {
 
 #ifdef ENGINE_DEBUG
 static MemoryManager *g_memoryManagerInstance = nullptr;
-static std::once_flag g_memoryManagerOnce;
+static std::mutex g_memoryManagerMutex;
 
 MemoryManager &MemoryManager::instance() {
-  // Use call_once for thread-safe initial creation
-  std::call_once(g_memoryManagerOnce,
-                 []() { g_memoryManagerInstance = new MemoryManager(); });
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
+  if (!g_memoryManagerInstance) {
+    g_memoryManagerInstance = new MemoryManager();
+  }
   return *g_memoryManagerInstance;
 }
 
 void MemoryManager::setInstance(MemoryManager *inst) {
-  // Called by hot reload system when coordinating instance swap.
-  // Caller is responsible for managing the old instance's lifetime.
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
   g_memoryManagerInstance = inst;
 }
 
-MemoryManager *MemoryManager::getInstance() { return g_memoryManagerInstance; }
+MemoryManager *MemoryManager::getInstance() {
+  std::lock_guard<std::mutex> lock(g_memoryManagerMutex);
+  return g_memoryManagerInstance;
+}
 
 #else
 // In release mode, use classic static local variable singleton

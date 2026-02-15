@@ -21,7 +21,7 @@ Swapchain::Swapchain(Swapchain &&other) noexcept
       presentQueue_(std::move(other.presentQueue_)),
       presentQueueFamily_(other.presentQueueFamily_),
       swapchain_(std::move(other.swapchain_)),
-      offscreenImages_(std::move(other.offscreenImages_)),
+      secondaryResources_(std::move(other.secondaryResources_)),
       format_(other.format_), extent_(other.extent_),
       frames_(std::move(other.frames_)), config_(other.config_),
       needsRecreation_(other.needsRecreation_) {
@@ -38,7 +38,7 @@ Swapchain &Swapchain::operator=(Swapchain &&other) noexcept {
     presentQueue_ = std::move(other.presentQueue_);
     presentQueueFamily_ = other.presentQueueFamily_;
     swapchain_ = std::move(other.swapchain_);
-    offscreenImages_ = std::move(other.offscreenImages_);
+    secondaryResources_ = std::move(other.secondaryResources_);
     format_ = other.format_;
     extent_ = other.extent_;
     frames_ = std::move(other.frames_);
@@ -66,8 +66,10 @@ void Swapchain::destroy() {
   destroyFramebuffers();
   destroyImageViews();
 
+  // Destroy secondary GPU resources
+  destroySecondaryGPUResources();
+
   // RAII handles swapchain destruction
-  offscreenImages_.clear();
   swapchain_.reset();
 
   frames_.clear();
@@ -169,8 +171,20 @@ bool Swapchain::create(device::GPUDevice *device,
   createImageViews();
   needsRecreation_ = false;
 
-  std::println("[Swapchain] Created: {}x{} ({} images)", extent_.width,
-               extent_.height, frames_.size());
+  // Create offscreen rendering resources for secondary GPUs
+  if (!secondaryGPUDevices_.empty()) {
+    if (!createSecondaryGPUResources()) {
+      std::println(stderr,
+                   "[Swapchain] Warning: Failed to create secondary GPU "
+                   "resources, falling back to single GPU");
+      secondaryGPUDevices_.clear();
+      destroySecondaryGPUResources();
+    }
+  }
+
+  std::println("[Swapchain] Created: {}x{} ({} images, {} secondary GPUs)",
+               extent_.width, extent_.height, frames_.size(),
+               secondaryResources_.size());
   return true;
 }
 
@@ -254,6 +268,17 @@ bool Swapchain::recreate(uint32_t newWidth, uint32_t newHeight) {
 
   createImageViews();
   needsRecreation_ = false;
+
+  // Recreate secondary GPU resources with new extent
+  if (!secondaryGPUDevices_.empty()) {
+    destroySecondaryGPUResources();
+    if (!createSecondaryGPUResources()) {
+      std::println(stderr,
+                   "[Swapchain] Warning: Failed to recreate secondary GPU "
+                   "resources");
+      secondaryGPUDevices_.clear();
+    }
+  }
 
   std::println("[Swapchain] Recreated: {}x{}", extent_.width, extent_.height);
   return true;
@@ -440,6 +465,132 @@ void Swapchain::destroyImageViews() {
   for (auto &frame : frames_) {
     frame.imageView.reset(); // RAII handles destruction
   }
+}
+
+bool Swapchain::createSecondaryGPUResources() {
+  secondaryResources_.clear();
+
+  for (auto *gpu : secondaryGPUDevices_) {
+    if (!gpu || !gpu->isInitialized()) {
+      continue;
+    }
+
+    SecondaryGPUResources res;
+    res.device = gpu;
+
+    try {
+      // Create offscreen image on the secondary GPU
+      vk::ImageCreateInfo imageInfo{
+          {},
+          vk::ImageType::e2D,
+          format_,
+          vk::Extent3D{extent_.width, extent_.height, 1},
+          1,
+          1,
+          vk::SampleCountFlagBits::e1,
+          vk::ImageTiling::eOptimal,
+          vk::ImageUsageFlagBits::eColorAttachment |
+              vk::ImageUsageFlagBits::eTransferSrc,
+          vk::SharingMode::eExclusive};
+
+      res.offscreenImage = std::make_unique<vk::raii::Image>(
+          gpu->getRaiiDevice(), imageInfo);
+
+      // Allocate memory for the image
+      auto memRequirements =
+          gpu->getDevice().getImageMemoryRequirements(*res.offscreenImage);
+      auto memProperties = gpu->getPhysicalDevice().getMemoryProperties();
+
+      uint32_t memTypeIndex = UINT32_MAX;
+      for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i) {
+        if ((memRequirements.memoryTypeBits & (1 << i)) &&
+            (memProperties.memoryTypes[i].propertyFlags &
+             vk::MemoryPropertyFlagBits::eDeviceLocal)) {
+          memTypeIndex = i;
+          break;
+        }
+      }
+
+      if (memTypeIndex == UINT32_MAX) {
+        std::println(stderr,
+                     "[Swapchain] No suitable memory type for secondary GPU: "
+                     "{}",
+                     gpu->getInfo().name);
+        continue;
+      }
+
+      vk::MemoryAllocateInfo allocInfo{memRequirements.size, memTypeIndex};
+      res.offscreenMemory = std::make_unique<vk::raii::DeviceMemory>(
+          gpu->getRaiiDevice(), allocInfo);
+
+      gpu->getDevice().bindImageMemory(*res.offscreenImage, *res.offscreenMemory,
+                                       0);
+
+      // Create image view
+      vk::ImageViewCreateInfo viewInfo{
+          {},
+          *res.offscreenImage,
+          vk::ImageViewType::e2D,
+          format_,
+          {},
+          vk::ImageSubresourceRange{vk::ImageAspectFlagBits::eColor, 0, 1, 0,
+                                    1}};
+      res.offscreenImageView = std::make_unique<vk::raii::ImageView>(
+          gpu->getRaiiDevice(), viewInfo);
+
+      // Create command pool and buffer for this GPU
+      uint32_t graphicsFamily =
+          gpu->getQueueFamilies().graphicsFamily.value_or(0);
+      vk::CommandPoolCreateInfo poolInfo{
+          vk::CommandPoolCreateFlagBits::eResetCommandBuffer, graphicsFamily};
+      res.commandPool = std::make_unique<vk::raii::CommandPool>(
+          gpu->getRaiiDevice(), poolInfo);
+
+      vk::CommandBufferAllocateInfo cmdAllocInfo{*res.commandPool,
+                                                  vk::CommandBufferLevel::ePrimary, 1};
+      auto cmdBuffers =
+          gpu->getDevice().allocateCommandBuffers(cmdAllocInfo);
+      res.commandBuffer = cmdBuffers[0];
+
+      // Create sync objects
+      vk::FenceCreateInfo fenceInfo{vk::FenceCreateFlagBits::eSignaled};
+      res.renderFence = std::make_unique<vk::raii::Fence>(
+          gpu->getRaiiDevice(), fenceInfo);
+
+      vk::SemaphoreCreateInfo semInfo{};
+      res.renderSemaphore = std::make_unique<vk::raii::Semaphore>(
+          gpu->getRaiiDevice(), semInfo);
+
+      std::println("[Swapchain] Created offscreen resources for secondary "
+                   "GPU: {}",
+                   gpu->getInfo().name);
+      secondaryResources_.push_back(std::move(res));
+    } catch (const vk::SystemError &e) {
+      std::println(stderr,
+                   "[Swapchain] Failed to create resources for secondary "
+                   "GPU {}: {}",
+                   gpu->getInfo().name, e.what());
+      continue;
+    }
+  }
+
+  return !secondaryResources_.empty() || secondaryGPUDevices_.empty();
+}
+
+void Swapchain::destroySecondaryGPUResources() {
+  for (auto &res : secondaryResources_) {
+    if (res.device && res.device->isInitialized()) {
+      res.device->waitIdle();
+    }
+    // RAII handles cleanup in reverse order
+    res.renderSemaphore.reset();
+    res.renderFence.reset();
+    res.commandPool.reset();
+    res.offscreenImageView.reset();
+    res.offscreenMemory.reset();
+    res.offscreenImage.reset();
+  }
+  secondaryResources_.clear();
 }
 
 } // namespace window

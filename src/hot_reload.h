@@ -41,8 +41,14 @@ public:
                                LifecycleCallback callback);
 
   // Data pointer (passed to all callbacks)
-  void setData(void *newData) { data = newData; }
-  void *getData() const { return data; }
+  void setData(void *newData) {
+    std::lock_guard<std::mutex> lock(dataMutex_);
+    data = newData;
+  }
+  void *getData() const {
+    std::lock_guard<std::mutex> lock(dataMutex_);
+    return data;
+  }
 
 private:
   struct CallbackEntry {
@@ -65,6 +71,8 @@ private:
   std::vector<CallbackEntry> unloadCallbacks;
   std::vector<CallbackEntry> reloadCallbacks;
   std::vector<CallbackEntry> destroyCallbacks;
+
+  mutable std::mutex dataMutex_;
 
   // Instance tracking
   static std::set<HotReload *> instances;

@@ -1,3 +1,4 @@
+#include "config.h"
 #include "shader_manager.h"
 #include "swapchain.h"
 #include "thread_manager.h"
@@ -10,7 +11,9 @@
 #include <stop_token>
 #ifdef ENGINE_DEBUG
 #include "core_export_struct.h"
+#include "device_export_struct.h"
 #include "hot_reload.h"
+#include "window_export_struct.h"
 #endif
 #include <print>
 #include <thread>
@@ -29,6 +32,8 @@ int main(int argc, char *argv[]) {
   std::string exe_path = argv[0];
   std::string exe_dir = exe_path.substr(0, exe_path.find_last_of("/\\"));
   std::string core_path = exe_dir + "/lib/libcored.so";
+  std::string device_path = exe_dir + "/lib/libdeviced.so";
+  std::string window_path = exe_dir + "/lib/libwindowd.so";
 
   // Initialize hot reload system for core library
   HotReload core("core", core_path);
@@ -133,12 +138,126 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
+  // Initialize hot reload for device library
+  HotReload deviceHR("device", device_path);
+  deviceHR.setData(new deviceState{nullptr, nullptr, nullptr, nullptr});
+
+  deviceHR.registerLoadCallback("device_load", [&deviceHR](void *data) {
+    std::print("[Main] Device library loaded successfully\n");
+    auto func =
+        (void (*)(void *))deviceHR.getSymbol("device_lib_on_load");
+    if (func) {
+      func(data);
+    }
+  });
+
+  deviceHR.registerUnloadCallback("device_unload", [&deviceHR](void *data) {
+    std::print("[Main] Device library unloading\n");
+    auto func =
+        (void (*)(void *))deviceHR.getSymbol("device_lib_on_unload");
+    if (func) {
+      func(data);
+    }
+  });
+
+  deviceHR.registerReloadCallback("device_reload", [&deviceHR](void *data) {
+    std::print("[Main] Device library reloading\n");
+    auto func =
+        (void (*)(void *))deviceHR.getSymbol("device_lib_on_reload");
+    if (func) {
+      func(data);
+    }
+  });
+
+  deviceHR.registerDestroyCallback("device_cleanup", [&deviceHR](void *data) {
+    std::print("[Main] Device library cleanup\n");
+    void *symbol = deviceHR.getSymbol("device_lib_on_destroy");
+    if (symbol) {
+      auto func = reinterpret_cast<void (*)(void *)>(symbol);
+      func(data);
+    } else {
+      deviceState *state = static_cast<deviceState *>(data);
+      if (state) {
+        delete state;
+      }
+    }
+    deviceHR.setData(nullptr);
+  });
+
+  if (!deviceHR.load()) {
+    std::print(stderr, "Failed to load device library!\n");
+    deviceState *state = static_cast<deviceState *>(deviceHR.getData());
+    delete state;
+    deviceHR.setData(nullptr);
+    return EXIT_FAILURE;
+  }
+
+  // Initialize hot reload for window library
+  HotReload windowHR("window", window_path);
+  windowHR.setData(new windowState{nullptr});
+
+  windowHR.registerLoadCallback("window_load", [&windowHR](void *data) {
+    std::print("[Main] Window library loaded successfully\n");
+    auto func =
+        (void (*)(void *))windowHR.getSymbol("window_lib_on_load");
+    if (func) {
+      func(data);
+    }
+  });
+
+  windowHR.registerUnloadCallback("window_unload", [&windowHR](void *data) {
+    std::print("[Main] Window library unloading\n");
+    auto func =
+        (void (*)(void *))windowHR.getSymbol("window_lib_on_unload");
+    if (func) {
+      func(data);
+    }
+  });
+
+  windowHR.registerReloadCallback("window_reload", [&windowHR](void *data) {
+    std::print("[Main] Window library reloading\n");
+    auto func =
+        (void (*)(void *))windowHR.getSymbol("window_lib_on_reload");
+    if (func) {
+      func(data);
+    }
+  });
+
+  windowHR.registerDestroyCallback("window_cleanup", [&windowHR](void *data) {
+    std::print("[Main] Window library cleanup\n");
+    void *symbol = windowHR.getSymbol("window_lib_on_destroy");
+    if (symbol) {
+      auto func = reinterpret_cast<void (*)(void *)>(symbol);
+      func(data);
+    } else {
+      windowState *state = static_cast<windowState *>(data);
+      if (state) {
+        delete state;
+      }
+    }
+    windowHR.setData(nullptr);
+  });
+
+  if (!windowHR.load()) {
+    std::print(stderr, "Failed to load window library!\n");
+    windowState *state = static_cast<windowState *>(windowHR.getData());
+    delete state;
+    windowHR.setData(nullptr);
+    return EXIT_FAILURE;
+  }
+
   std::print("\n=== Starting Hot Reload Loop ===\n");
 
-  auto funcReloadCheck = [&core]() {
+  auto funcReloadCheck = [&core, &deviceHR, &windowHR]() {
     // Check for library changes and reload if needed
     if (core.checkAndReloadIfNeeded()) {
       std::print(">>> Core library reloaded! <<<\n\n");
+    }
+    if (deviceHR.checkAndReloadIfNeeded()) {
+      std::print(">>> Device library reloaded! <<<\n\n");
+    }
+    if (windowHR.checkAndReloadIfNeeded()) {
+      std::print(">>> Window library reloaded! <<<\n\n");
     }
   };
 
@@ -151,11 +270,27 @@ int main(int argc, char *argv[]) {
   });
 #endif // ENGINE_DEBUG
 
+  // Configure multi-GPU if available
+  core::GPUConfig gpuConfig;
+  gpuConfig.enableMultiGPU = true;
+  gpuConfig.gpuCount = 0; // Auto-detect
+  core::Config::instance().setGPUConfig(gpuConfig);
+
   device::VulkanInstance inst;
   inst.initialize();
 
   device::DeviceManager dMan;
-  dMan.initialize(inst, {nullptr, false, 0});
+  device::VulkanDeviceConfig devConfig;
+  devConfig.surface = nullptr;
+  devConfig.enableMultiGPU =
+      core::Config::instance().getGPUConfig().enableMultiGPU;
+  devConfig.preferredGPUIndex =
+      core::Config::instance().getGPUConfig().preferredGPUIndex;
+  dMan.initialize(inst, devConfig);
+
+  // Update GPU count in config based on actual device count
+  gpuConfig.gpuCount = static_cast<uint32_t>(dMan.getDeviceCount());
+  core::Config::instance().setGPUConfig(gpuConfig);
 
   device::VMAManager vMan;
   vMan.initialize(inst.getRaiiInstance(), dMan);
@@ -163,32 +298,94 @@ int main(int argc, char *argv[]) {
   window::WindowManager wMan;
   wMan.initialize();
 
+  // Build secondary GPU list for windows
+  std::vector<device::GPUDevice *> secondaryGPUs;
+  for (size_t i = 1; i < dMan.getDeviceCount(); ++i) {
+    secondaryGPUs.push_back(dMan.getDevice(static_cast<uint32_t>(i)));
+  }
+
+  // Create Window 1
   window::WindowConfig wConf;
   wConf.mainGPU = &dMan.getPrimaryDevice();
-  wConf.title = "Test1";
-  wMan.createWindow(wConf);
-  wConf.title = "Test2";
-  wMan.createWindow(wConf);
+  wConf.secondaryGPUs = secondaryGPUs;
+  wConf.title = "SapphireEngine - Window 1";
+  window::Window *win1 = wMan.createWindow(wConf);
 
+  // Create Window 2
+  wConf.title = "SapphireEngine - Window 2";
+  window::Window *win2 = wMan.createWindow(wConf);
+
+  // Register close callbacks on both windows
+  if (win1) {
+    win1->setEventCallback(
+        [](const window::WindowEvent &) {
+          std::print("[Main] Window 1 close requested\n");
+        },
+        window::WindowEventType::Close);
+
+    win1->setEventCallback(
+        [](const window::WindowEvent &event) {
+          std::print("[Main] Window 1 resized to {}x{}\n", event.width,
+                     event.height);
+        },
+        window::WindowEventType::Resize);
+  }
+
+  if (win2) {
+    win2->setEventCallback(
+        [](const window::WindowEvent &) {
+          std::print("[Main] Window 2 close requested\n");
+        },
+        window::WindowEventType::Close);
+
+    win2->setEventCallback(
+        [](const window::WindowEvent &event) {
+          std::print("[Main] Window 2 resized to {}x{}\n", event.width,
+                     event.height);
+        },
+        window::WindowEventType::Resize);
+  }
+
+  // Create swapchains for all windows
   for (const auto &win : wMan.getWindows()) {
     window::SwapchainConfig sConf;
+    sConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
     win->createSwap(inst.getRaiiInstance(), sConf);
   }
 
   device::ShaderManager sMan;
   sMan.initialize(dMan.getPrimaryDevice());
 
-  int frame = 0;
-  // while (!wMan.checkWindowsVectorEmpty()) { TODO check for close action
-  while (frame < 2) {
-    std::print("Frame {}\n", frame);
-    std::print("\n");
-
+  // Main loop - runs until all windows are closed
+  while (!wMan.checkWindowsVectorEmpty()) {
     wMan.pollAllEvents();
 
-    frame++;
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    // Remove windows that should close
+    std::vector<window::Window *> toRemove;
+    for (const auto &win : wMan.getWindows()) {
+      if (win->shouldClose()) {
+        toRemove.push_back(win.get());
+      }
+    }
+    for (auto *win : toRemove) {
+      std::print("[Main] Destroying closed window: {}\n", win->getTitle());
+      wMan.destroyWindow(win);
+    }
+
+    if (wMan.checkWindowsVectorEmpty()) {
+      break;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(16));
   }
+
+  std::print("[Main] All windows closed, shutting down\n");
+
+  sMan.shutdown();
+  wMan.shutdown();
+  vMan.shutdown();
+  dMan.shutdown();
+  inst.shutdown();
 
 #ifdef ENGINE_DEBUG
   hotReload.request_stop();

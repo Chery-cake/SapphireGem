@@ -214,7 +214,12 @@ bool Window::pollEvents() {
       }
 
       if (eventCallback_.find(windowEvent.type) != eventCallback_.end()) {
-        for (const auto &func : eventCallback_[windowEvent.type]) {
+        std::vector<WindowEventCallback> callbacks;
+        {
+          std::lock_guard<std::mutex> lock(eventCallbackMutex_);
+          callbacks = eventCallback_[windowEvent.type];
+        }
+        for (const auto &func : callbacks) {
           func(windowEvent);
         }
       }
@@ -223,10 +228,18 @@ bool Window::pollEvents() {
     // Handle quit event
     if (event.type == SDL_EVENT_QUIT) {
       shouldClose_ = true;
-      if (eventCallback_.find(WindowEventType::Close) != eventCallback_.end()) {
+      std::vector<WindowEventCallback> callbacks;
+      {
+        std::lock_guard<std::mutex> lock(eventCallbackMutex_);
+        if (eventCallback_.find(WindowEventType::Close) !=
+            eventCallback_.end()) {
+          callbacks = eventCallback_[WindowEventType::Close];
+        }
+      }
+      if (!callbacks.empty()) {
         WindowEvent quitEvent;
         quitEvent.type = WindowEventType::Close;
-        for (const auto &func : eventCallback_[WindowEventType::Close]) {
+        for (const auto &func : callbacks) {
           func(quitEvent);
         }
       }
@@ -238,6 +251,7 @@ bool Window::pollEvents() {
 
 void Window::setEventCallback(WindowEventCallback callback,
                               WindowEventType eventType) {
+  std::lock_guard<std::mutex> lock(eventCallbackMutex_);
   eventCallback_[eventType].push_back(std::move(callback));
 }
 
