@@ -306,13 +306,17 @@ void Window::setFullscreen(bool fullscreen) {
 void Window::setMainGPU(device::GPUDevice *device) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   mainGPU = device;
-  // TODO update swapchain mainGPU
+  if (swapchain_) {
+    swapchain_->updateMainDevice(device);
+  }
 }
 
 void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   secondaryGPUs = devices;
-  // TODO update swapchain secondaryGPUs
+  if (swapchain_) {
+    swapchain_->updateSecondaryDevices(devices);
+  }
 }
 
 // ============================================================================

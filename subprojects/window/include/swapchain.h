@@ -190,6 +190,29 @@ public:
     return mainGPUDevice_;
   }
 
+  /**
+   * @brief Get the secondary GPU devices
+   * @return Vector of secondary GPU device pointers
+   */
+  [[nodiscard]] const std::vector<device::GPUDevice *> &
+  getSecondaryDevices() const {
+    return secondaryGPUDevices_;
+  }
+
+  /**
+   * @brief Update the main GPU device and recreate swapchain resources
+   * @param device New main GPU device
+   * @return true if update succeeded
+   */
+  bool updateMainDevice(device::GPUDevice *device);
+
+  /**
+   * @brief Update secondary GPU devices and recreate secondary resources
+   * @param devices New secondary GPU devices
+   * @return true if update succeeded
+   */
+  bool updateSecondaryDevices(std::vector<device::GPUDevice *> &devices);
+
 private:
   static vk::SurfaceFormatKHR
   chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &formats,

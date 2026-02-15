@@ -593,4 +593,60 @@ void Swapchain::destroySecondaryGPUResources() {
   secondaryResources_.clear();
 }
 
+bool Swapchain::updateMainDevice(device::GPUDevice *device) {
+  if (!device || !device->isInitialized()) {
+    std::println(stderr, "[Swapchain] Invalid device for updateMainDevice");
+    return false;
+  }
+
+  if (device == mainGPUDevice_) {
+    return true; // No change needed
+  }
+
+  std::lock_guard<std::mutex> lock(swapchainMutex_);
+
+  // The main device changed - need full swapchain recreation
+  mainGPUDevice_ = device;
+  presentQueue_ = device->getPresentQueue();
+  presentQueueFamily_ = device->getQueueFamilies().presentFamily.value_or(0);
+  needsRecreation_ = true;
+
+  std::println("[Swapchain] Main device updated to: {}, recreation needed",
+               device->getInfo().name);
+  return true;
+}
+
+bool Swapchain::updateSecondaryDevices(
+    std::vector<device::GPUDevice *> &devices) {
+  std::lock_guard<std::mutex> lock(swapchainMutex_);
+
+  // Wait for existing secondary GPUs to finish
+  for (const auto &gpu : secondaryGPUDevices_) {
+    if (gpu && gpu->isInitialized()) {
+      gpu->waitIdle();
+    }
+  }
+
+  // Destroy old secondary resources
+  destroySecondaryGPUResources();
+
+  // Update secondary device list
+  secondaryGPUDevices_ = devices;
+
+  // Create new secondary resources if we have devices and a valid swapchain
+  if (!secondaryGPUDevices_.empty() && swapchain_) {
+    if (!createSecondaryGPUResources()) {
+      std::println(stderr,
+                   "[Swapchain] Warning: Failed to create secondary GPU "
+                   "resources after update");
+      secondaryGPUDevices_.clear();
+      return false;
+    }
+  }
+
+  std::println("[Swapchain] Secondary devices updated ({} devices)",
+               secondaryGPUDevices_.size());
+  return true;
+}
+
 } // namespace window
