@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <unordered_map>
 #include <vector>
 
 // Forward declare device types
