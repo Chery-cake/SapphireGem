@@ -186,9 +186,17 @@ int main(int argc, char *argv[]) {
     secondaryGPUs.push_back(dMan.getDevice(static_cast<uint32_t>(i)));
   }
 
+  // Configure swapchain
+  window::SwapchainConfig swapConf;
+  swapConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
+
+  // Window config with rendering chain initialization
   window::WindowConfig wConf;
   wConf.mainGPU = &dMan.getPrimaryDevice();
   wConf.secondaryGPUs = secondaryGPUs;
+  wConf.vulkanInstance = &inst.getRaiiInstance();
+  wConf.allocator = &vMan.getPrimaryAllocator();
+  wConf.swapchainConfig = swapConf;
 
   // Create window 1
   wConf.title = "SapphireEngine - Window 1";
@@ -276,37 +284,26 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
-  for (const auto &win : wMan.getWindows()) {
-    window::SwapchainConfig sConf;
-    sConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
-    win->createSwap(inst.getRaiiInstance(), sConf);
-  }
-
+  // Initialize shader manager and compile triangle shaders
   device::ShaderManager sMan;
   sMan.initialize(dMan.getPrimaryDevice());
 
-  // Create a renderer for each window
-  std::unordered_map<uint32_t, std::unique_ptr<window::Renderer>> renderers;
-  for (const auto &win : wMan.getWindows()) {
-    window::Swapchain *swapchain = win->getSwapchain();
-    if (swapchain) {
-      auto renderer = std::make_unique<window::Renderer>();
-      if (renderer->initialize(dMan.getPrimaryDevice(), *swapchain,
-                               vMan.getPrimaryAllocator())) {
-        std::print("[Main] Renderer initialized for window: {}\n",
-                   win->getTitle());
-        renderers[win->getWindowId()] = std::move(renderer);
-      } else {
-        std::print(stderr,
-                   "[Main] Failed to initialize renderer for window: {}\n",
-                   win->getTitle());
-      }
-    }
+  // Compile the triangle shader (vertex, geometry, fragment)
+  device::CompiledShader *vertShader = sMan.loadShader(
+      "triangle.slang", "vertMain", device::ShaderStage::Vertex);
+  device::CompiledShader *geomShader = sMan.loadShader(
+      "triangle.slang", "geomMain", device::ShaderStage::Geometry);
+  device::CompiledShader *fragShader = sMan.loadShader(
+      "triangle.slang", "fragMain", device::ShaderStage::Fragment);
+
+  if (vertShader && geomShader && fragShader) {
+    std::print("[Main] Triangle shaders compiled successfully\n");
+  } else {
+    std::print(stderr, "[Main] Failed to compile triangle shaders\n");
   }
 
   int frame = 0;
-  while (!wMan.checkWindowsVectorEmpty()) { // TODO check for close action
-                                            // while (frame < 2) {
+  while (!wMan.checkWindowsVectorEmpty()) { // TODO improve closing function
     std::print("Frame {}\n", frame);
     std::print("\n");
 

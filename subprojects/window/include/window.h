@@ -1,9 +1,9 @@
 #ifndef WINDOW_H_
 #define WINDOW_H_
 
+#include "renderer.h"
 #include "swapchain.h"
-#include "vulkan/vulkan.hpp"
-#include "vulkan_device.h"
+#include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
 #include <cstdint>
 #include <functional>
@@ -19,12 +19,10 @@ struct SDL_Window;
 // Forward declare device types
 namespace device {
 class GPUDevice;
-}
+class VMAAllocator;
+} // namespace device
 
 namespace window {
-
-// Forward declare swapchain config
-struct SwapchainConfig;
 
 /**
  * @brief Window creation configuration
@@ -41,8 +39,13 @@ struct WINDOW_API WindowConfig {
   bool maximized = false;
   bool vsync = true;
   bool highDPI = true;
-  device::GPUDevice *mainGPU;
+  device::GPUDevice *mainGPU = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUs = {};
+
+  // Rendering chain initialization parameters
+  const vk::raii::Instance *vulkanInstance = nullptr;
+  device::VMAAllocator *allocator = nullptr;
+  SwapchainConfig swapchainConfig = {};
 };
 
 /**
@@ -97,20 +100,11 @@ public:
   Window &operator=(Window &&other) noexcept;
 
   /**
-   * @brief Create the window
-   * @param config Window configuration
+   * @brief Create the window and initialize the rendering chain
+   * @param config Window configuration (includes rendering parameters)
    * @return true if creation succeeded
    */
   bool create(const WindowConfig &config);
-
-  /**
-   *@brief Create the window surface and swapchain
-   *@param instance for surface creation
-   *@param config Swapchain configuration
-   *@return tru if creation succeeded
-   */
-  bool createSwap(const vk::raii::Instance &instance,
-                  const SwapchainConfig &config);
 
   /**
    * @brief Destroy the window
@@ -227,19 +221,36 @@ public:
   void setSecondaryGPUs(std::vector<device::GPUDevice *> &devices);
 
   /**
-   * @brief Get swapchain
+   * @brief Get renderer
+   * @return Pointer to Renderer object or nullptr if not created
+   */
+  [[nodiscard]] Renderer *getRenderer() { return renderer_.get(); }
+  [[nodiscard]] const Renderer *getRenderer() const { return renderer_.get(); }
+
+  /**
+   * @brief Get swapchain (convenience accessor through renderer)
    * @return Pointer to Swapchain object or nullptr if not created
    */
-  [[nodiscard]] Swapchain *getSwapchain() { return swapchain_.get(); }
-  [[nodiscard]] const Swapchain *getSwapchain() const {
-    return swapchain_.get();
+  [[nodiscard]] Swapchain *getSwapchain() {
+    return renderer_ ? renderer_->getSwapchain() : nullptr;
   }
+  [[nodiscard]] const Swapchain *getSwapchain() const {
+    return renderer_ ? renderer_->getSwapchain() : nullptr;
+  }
+
+  /**
+   * @brief Check if renderer is created
+   * @return true if renderer exists
+   */
+  [[nodiscard]] bool hasRenderer() const { return renderer_ != nullptr; }
 
   /**
    * @brief Check if swapchain is created
    * @return true if swapchain exists
    */
-  [[nodiscard]] bool hasSwapchain() const { return swapchain_ != nullptr; }
+  [[nodiscard]] bool hasSwapchain() const {
+    return renderer_ && renderer_->getSwapchain() != nullptr;
+  }
 
 private:
   SDL_Window *window_ = nullptr;
@@ -250,7 +261,7 @@ private:
 
   device::GPUDevice *mainGPU = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUs = {};
-  std::unique_ptr<Swapchain> swapchain_;
+  std::unique_ptr<Renderer> renderer_;
 
   bool shouldClose_ = false;
   bool minimized_ = false;

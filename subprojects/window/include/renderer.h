@@ -74,14 +74,22 @@ public:
   Renderer &operator=(const Renderer &) = delete;
 
   /**
-   * @brief Initialize the renderer
+   * @brief Initialize the renderer, creating and owning the swapchain
    * @param device GPU device to use
-   * @param swapchain Swapchain to render to
+   * @param secondaryGPUs Secondary GPUs for multi-GPU rendering
+   * @param surface Vulkan surface for swapchain creation
+   * @param swapConfig Swapchain configuration
    * @param allocator VMA allocator for depth buffer
+   * @param windowWidth Actual window width for swapchain extent
+   * @param windowHeight Actual window height for swapchain extent
    * @return true if initialization succeeded
    */
-  bool initialize(device::GPUDevice &device, Swapchain &swapchain,
-                  device::VMAAllocator &allocator);
+  bool initialize(device::GPUDevice &device,
+                  std::vector<device::GPUDevice *> &secondaryGPUs,
+                  vk::raii::SurfaceKHR &surface,
+                  const SwapchainConfig &swapConfig,
+                  device::VMAAllocator &allocator, uint32_t windowWidth,
+                  uint32_t windowHeight);
 
   /**
    * @brief Shutdown the renderer
@@ -127,6 +135,9 @@ public:
     return renderPass_ ? *renderPass_ : vk::RenderPass{};
   }
   [[nodiscard]] uint32_t getCurrentFrame() const { return currentFrame_; }
+  [[nodiscard]] uint32_t getCurrentImageIndex() const {
+    return currentImageIndex_;
+  }
   [[nodiscard]] uint32_t getFrameCount() const { return MAX_FRAMES_IN_FLIGHT; }
 
   /**
@@ -170,6 +181,15 @@ public:
    */
   [[nodiscard]] std::array<vk::ClearValue, 2> getClearValues() const;
 
+  /**
+   * @brief Get the swapchain
+   * @return Pointer to Swapchain, or nullptr if not initialized
+   */
+  [[nodiscard]] Swapchain *getSwapchain() { return swapchain_.get(); }
+  [[nodiscard]] const Swapchain *getSwapchain() const {
+    return swapchain_.get();
+  }
+
 private:
   bool createRenderPass(const RenderPassConfig &config);
   void destroyRenderPass();
@@ -183,7 +203,7 @@ private:
   void destroyDepthResources();
 
   device::GPUDevice *gpuDevice_ = nullptr;
-  Swapchain *swapchain_ = nullptr;
+  std::unique_ptr<Swapchain> swapchain_;
   device::VMAAllocator *allocator_ = nullptr;
 
   std::unique_ptr<vk::raii::RenderPass> renderPass_;

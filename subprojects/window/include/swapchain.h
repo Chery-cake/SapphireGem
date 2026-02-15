@@ -83,7 +83,8 @@ public:
    */
   bool create(device::GPUDevice *device,
               std::vector<device::GPUDevice *> &secondary,
-              vk::raii::SurfaceKHR &surface, const SwapchainConfig &config);
+              vk::raii::SurfaceKHR &surface, const SwapchainConfig &config,
+              uint32_t windowWidth, uint32_t windowHeight);
 
   /**
    * @brief Destroy the swapchain

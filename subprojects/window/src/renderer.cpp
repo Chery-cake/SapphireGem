@@ -18,16 +18,19 @@ void Renderer::shutdown() {
 
   waitIdle();
 
-  /*
-  if (swapchain_) {// TODO make renderer be managed by the window or swapchain
+  // Destroy framebuffers first (they reference the render pass)
+  if (swapchain_) {
     swapchain_->destroyFramebuffers();
-  }*/
+  }
 
   destroyDepthResources();
   destroySyncObjects();
   destroyCommandBuffers();
   destroyCommandPool();
   destroyRenderPass();
+
+  // Destroy swapchain
+  swapchain_.reset();
 
   gpuDevice_ = nullptr;
   swapchain_ = nullptr;
@@ -37,20 +40,33 @@ void Renderer::shutdown() {
   std::println("[Renderer] Shutdown complete");
 }
 
-bool Renderer::initialize(device::GPUDevice &device, Swapchain &swapchain,
-                          device::VMAAllocator &allocator) {
+bool Renderer::initialize(device::GPUDevice &device,
+                          std::vector<device::GPUDevice *> &secondaryGPUs,
+                          vk::raii::SurfaceKHR &surface,
+                          const SwapchainConfig &swapConfig,
+                          device::VMAAllocator &allocator, uint32_t windowWidth,
+                          uint32_t windowHeight) {
   if (initialized_) {
     std::println(stderr, "[Renderer] Already initialized");
     return false;
   }
 
   gpuDevice_ = &device;
-  swapchain_ = &swapchain;
   allocator_ = &allocator;
+
+  // Create and own the swapchain
+  swapchain_ = std::make_unique<Swapchain>();
+  if (!swapchain_->create(&device, secondaryGPUs, surface, swapConfig,
+                          windowWidth, windowHeight)) {
+    std::println(stderr,
+                 "[Renderer] Failed to create swapchain during initialization");
+    swapchain_.reset();
+    return false;
+  }
 
   // Create render pass
   RenderPassConfig renderPassConfig;
-  renderPassConfig.colorFormat = swapchain.getFormat();
+  renderPassConfig.colorFormat = swapchain_->getFormat();
   if (!createRenderPass(renderPassConfig)) {
     return false;
   }
@@ -354,19 +370,8 @@ bool Renderer::endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex) {
   std::vector<vk::Semaphore> signalSemaphores = {signalSemaphore};
 
   submitCommandBuffer(syncObjects.commandBuffer, waitSemaphores,
-                      signalSemaphores, waitStages);
-  /*
-  vk::SubmitInfo submitInfo{waitSemaphores, waitStages,
-                            syncObjects.commandBuffer, signalSemaphores};
-
-  try {
-    gpuDevice_->getGraphicsQueue().submit(submitInfo,
-                                          **syncObjects.inFlightFence);
-  } catch (const vk::SystemError &e) {
-    std::println(stderr, "[Renderer] Failed to submit command buffer: {}",
-                 e.what());
-    return false;
-  }*/
+                      signalSemaphores, waitStages,
+                      **syncObjects.inFlightFence);
 
   // Present
   bool presentResult = swapchain_->present(imageIndex, signalSemaphores);

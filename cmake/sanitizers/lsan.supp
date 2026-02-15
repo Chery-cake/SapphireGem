@@ -185,6 +185,12 @@ leak:libc++*
 leak:__cxa_thread_atexit_impl
 
 # ==============================================================================
+# Slang Library
+# ==============================================================================
+# Slang compiler
+leak:libslang-compiler*
+
+# ==============================================================================
 # Known Engine Internal Leaks (to be fixed)
 # ==============================================================================
 # Add any known engine leaks here that are being tracked for fixing

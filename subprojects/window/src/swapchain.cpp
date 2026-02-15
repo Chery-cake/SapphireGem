@@ -81,7 +81,8 @@ void Swapchain::destroy() {
 bool Swapchain::create(device::GPUDevice *device,
                        std::vector<device::GPUDevice *> &secondary,
                        vk::raii::SurfaceKHR &surface,
-                       const SwapchainConfig &config) {
+                       const SwapchainConfig &config, uint32_t windowWidth,
+                       uint32_t windowHeight) {
   if (swapchain_) {
     std::println(stderr, "[Swapchain] Already created");
     return false;
@@ -110,8 +111,7 @@ bool Swapchain::create(device::GPUDevice *device,
   // Choose format, present mode, and extent
   auto surfaceFormat = chooseSurfaceFormat(formats, config);
   auto presentMode = choosePresentMode(presentModes, config);
-  extent_ = chooseExtent(capabilities, capabilities.currentExtent.width,
-                         capabilities.currentExtent.height);
+  extent_ = chooseExtent(capabilities, windowWidth, windowHeight);
   format_ = surfaceFormat.format;
 
   // Determine image count
