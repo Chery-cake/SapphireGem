@@ -213,9 +213,13 @@ bool Window::pollEvents() {
         continue;
       }
 
-      if (eventCallback_.find(windowEvent.type) != eventCallback_.end()) {
-        for (const auto &func : eventCallback_[windowEvent.type]) {
-          func(windowEvent);
+      {
+        std::lock_guard<std::mutex> lock(eventCallbackMutex_);
+        auto it = eventCallback_.find(windowEvent.type);
+        if (it != eventCallback_.end()) {
+          for (const auto &func : it->second) {
+            func(windowEvent);
+          }
         }
       }
     }
@@ -223,10 +227,12 @@ bool Window::pollEvents() {
     // Handle quit event
     if (event.type == SDL_EVENT_QUIT) {
       shouldClose_ = true;
-      if (eventCallback_.find(WindowEventType::Close) != eventCallback_.end()) {
+      std::lock_guard<std::mutex> lock(eventCallbackMutex_);
+      auto it = eventCallback_.find(WindowEventType::Close);
+      if (it != eventCallback_.end()) {
         WindowEvent quitEvent;
         quitEvent.type = WindowEventType::Close;
-        for (const auto &func : eventCallback_[WindowEventType::Close]) {
+        for (const auto &func : it->second) {
           func(quitEvent);
         }
       }
@@ -238,6 +244,7 @@ bool Window::pollEvents() {
 
 void Window::setEventCallback(WindowEventCallback callback,
                               WindowEventType eventType) {
+  std::lock_guard<std::mutex> lock(eventCallbackMutex_);
   eventCallback_[eventType].push_back(std::move(callback));
 }
 
@@ -299,13 +306,17 @@ void Window::setFullscreen(bool fullscreen) {
 void Window::setMainGPU(device::GPUDevice *device) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   mainGPU = device;
-  // TODO update swapchain mainGPU
+  if (swapchain_) {
+    swapchain_->updateMainDevice(device);
+  }
 }
 
 void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   secondaryGPUs = devices;
-  // TODO update swapchain secondaryGPUs
+  if (swapchain_) {
+    swapchain_->updateSecondaryDevices(devices);
+  }
 }
 
 // ============================================================================

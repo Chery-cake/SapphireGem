@@ -29,6 +29,20 @@ struct WINDOW_API SwapchainConfig { // TODO check default config
 };
 
 /**
+ * @brief Offscreen image resources for a secondary GPU
+ */
+struct WINDOW_API SecondaryGPUResources {
+  device::GPUDevice *device = nullptr;
+  std::unique_ptr<vk::raii::Image> offscreenImage;
+  std::unique_ptr<vk::raii::DeviceMemory> offscreenMemory;
+  std::unique_ptr<vk::raii::ImageView> offscreenImageView;
+  std::unique_ptr<vk::raii::CommandPool> commandPool;
+  std::unique_ptr<vk::raii::Fence> renderFence;
+  std::unique_ptr<vk::raii::Semaphore> renderSemaphore;
+  vk::CommandBuffer commandBuffer; // Owned by command pool
+};
+
+/**
  * @brief Swapchain image resources using RAII
  */
 struct WINDOW_API SwapchainFrame {
@@ -150,6 +164,45 @@ public:
    */
   void destroyFramebuffers();
 
+  /**
+   * @brief Check if multi-GPU rendering is enabled
+   * @return true if secondary GPUs are configured
+   */
+  [[nodiscard]] bool isMultiGPU() const {
+    return !secondaryGPUDevices_.empty();
+  }
+
+  /**
+   * @brief Get secondary GPU resources
+   * @return Vector of secondary GPU resource entries
+   */
+  [[nodiscard]] const std::vector<SecondaryGPUResources> &
+  getSecondaryResources() const {
+    return secondaryResources_;
+  }
+
+  /**
+   * @brief Get the main GPU device
+   * @return Pointer to main GPU device
+   */
+  [[nodiscard]] device::GPUDevice *getMainDevice() const {
+    return mainGPUDevice_;
+  }
+
+  /**
+   * @brief Update the main GPU device and recreate swapchain resources
+   * @param device New main GPU device
+   * @return true if update succeeded
+   */
+  bool updateMainDevice(device::GPUDevice *device);
+
+  /**
+   * @brief Update secondary GPU devices and recreate secondary resources
+   * @param devices New secondary GPU devices
+   * @return true if update succeeded
+   */
+  bool updateSecondaryDevices(std::vector<device::GPUDevice *> &devices);
+
 private:
   static vk::SurfaceFormatKHR
   chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &formats,
@@ -163,6 +216,8 @@ private:
 
   void createImageViews();
   void destroyImageViews();
+  bool createSecondaryGPUResources();
+  void destroySecondaryGPUResources();
 
   device::GPUDevice *mainGPUDevice_ = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUDevices_;
@@ -171,8 +226,7 @@ private:
   uint32_t presentQueueFamily_ = 0;
 
   std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;
-  std::unordered_map<uint32_t, std::unique_ptr<vk::raii::Image>>
-      offscreenImages_; // TODO implement the use of secondary GPUs
+  std::vector<SecondaryGPUResources> secondaryResources_;
 
   vk::Format format_ = vk::Format::eUndefined;
   vk::Extent2D extent_ = {0, 0};

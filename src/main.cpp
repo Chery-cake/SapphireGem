@@ -1,3 +1,4 @@
+#include "renderer.h"
 #include "shader_manager.h"
 #include "swapchain.h"
 #include "thread_manager.h"
@@ -151,11 +152,27 @@ int main(int argc, char *argv[]) {
   });
 #endif // ENGINE_DEBUG
 
+  // Configure multi-GPU if available
+  core::GPUConfig gpuConfig;
+  gpuConfig.enableMultiGPU = false;
+  gpuConfig.gpuCount = 0; // Auto-detect
+  core::Config::instance().setGPUConfig(gpuConfig);
+
   device::VulkanInstance inst;
   inst.initialize();
 
   device::DeviceManager dMan;
-  dMan.initialize(inst, {nullptr, false, 0});
+  device::VulkanDeviceConfig devConfig;
+  devConfig.surface = nullptr;
+  devConfig.enableMultiGPU =
+      core::Config::instance().getGPUConfig().enableMultiGPU;
+  devConfig.preferredGPUIndex =
+      core::Config::instance().getGPUConfig().preferredGPUIndex;
+  dMan.initialize(inst, devConfig);
+
+  // Update GPU count in config based on actual device count
+  gpuConfig.gpuCount = static_cast<uint32_t>(dMan.getDeviceCount());
+  core::Config::instance().setGPUConfig(gpuConfig);
 
   device::VMAManager vMan;
   vMan.initialize(inst.getRaiiInstance(), dMan);
@@ -163,28 +180,153 @@ int main(int argc, char *argv[]) {
   window::WindowManager wMan;
   wMan.initialize();
 
+  // Build secondary GPU list for windows
+  std::vector<device::GPUDevice *> secondaryGPUs;
+  for (size_t i = 1; i < dMan.getDeviceCount(); ++i) {
+    secondaryGPUs.push_back(dMan.getDevice(static_cast<uint32_t>(i)));
+  }
+
   window::WindowConfig wConf;
   wConf.mainGPU = &dMan.getPrimaryDevice();
-  wConf.title = "Test1";
-  wMan.createWindow(wConf);
-  wConf.title = "Test2";
-  wMan.createWindow(wConf);
+  wConf.secondaryGPUs = secondaryGPUs;
+
+  // Create window 1
+  wConf.title = "SapphireEngine - Window 1";
+  window::Window *win1 = wMan.createWindow(wConf);
+
+  // Create Window 2
+  wConf.title = "SapphireEngine - Window 2";
+  window::Window *win2 = wMan.createWindow(wConf);
+
+  // Update loop config to match window count
+  {
+    core::LoopConfig loopCfg = core::Config::instance().getLoopConfig();
+    loopCfg.mainLoopCount = static_cast<uint32_t>(wMan.getWindowCount());
+    core::Config::instance().setLoopConfig(loopCfg);
+  }
+
+  // Initialize thread pools based on effective thread allocation
+  {
+    auto &tm = core::ThreadManager::instance();
+    auto effectiveAlloc =
+        core::Config::instance().getEffectiveThreadAllocation();
+
+    // Create worker pool if not already created
+    if (!tm.hasPool("worker")) {
+      core::ThreadPoolConfig workerCfg;
+      workerCfg.name = "worker";
+      workerCfg.type = core::PoolType::Worker;
+      workerCfg.threadCount = effectiveAlloc.workerThreads;
+      tm.createPool(workerCfg);
+      std::print("[Main] Created worker pool with {} threads\n",
+                 effectiveAlloc.workerThreads);
+    }
+
+    // Create loop pool for window event polling / rendering loops
+    if (!tm.hasPool("loop")) {
+      core::ThreadPoolConfig loopCfg;
+      loopCfg.name = "loop";
+      loopCfg.type = core::PoolType::Loop;
+      loopCfg.threadCount = effectiveAlloc.loopThreads;
+      tm.createPool(loopCfg);
+      std::print("[Main] Created loop pool with {} threads\n",
+                 effectiveAlloc.loopThreads);
+    }
+
+    // Create GPU pool(s) for GPU operations
+    if (!tm.hasPool("gpu")) {
+      core::ThreadPoolConfig gpuCfg;
+      gpuCfg.name = "gpu";
+      gpuCfg.type = core::PoolType::GPU;
+      gpuCfg.threadCount = effectiveAlloc.gpuThreads;
+      tm.createPool(gpuCfg);
+      std::print("[Main] Created GPU pool with {} threads\n",
+                 effectiveAlloc.gpuThreads);
+    }
+  }
+
+  // Register close callbacks on both windows
+  if (win1) {
+    win1->setEventCallback(
+        [](const window::WindowEvent &) {
+          std::print("[Main] Window 1 close requested\n");
+        },
+        window::WindowEventType::Close);
+
+    win1->setEventCallback(
+        [](const window::WindowEvent &event) {
+          std::print("[Main] Window 1 resized to {}x{}\n", event.width,
+                     event.height);
+        },
+        window::WindowEventType::Resize);
+  }
+
+  if (win2) {
+    win2->setEventCallback(
+        [](const window::WindowEvent &) {
+          std::print("[Main] Window 2 close requested\n");
+        },
+        window::WindowEventType::Close);
+
+    win2->setEventCallback(
+        [](const window::WindowEvent &event) {
+          std::print("[Main] Window 2 resized to {}x{}\n", event.width,
+                     event.height);
+        },
+        window::WindowEventType::Resize);
+  }
 
   for (const auto &win : wMan.getWindows()) {
     window::SwapchainConfig sConf;
+    sConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
     win->createSwap(inst.getRaiiInstance(), sConf);
   }
 
   device::ShaderManager sMan;
   sMan.initialize(dMan.getPrimaryDevice());
 
+  // Create a renderer for each window
+  std::unordered_map<uint32_t, std::unique_ptr<window::Renderer>> renderers;
+  for (const auto &win : wMan.getWindows()) {
+    window::Swapchain *swapchain = win->getSwapchain();
+    if (swapchain) {
+      auto renderer = std::make_unique<window::Renderer>();
+      if (renderer->initialize(dMan.getPrimaryDevice(), *swapchain,
+                               vMan.getPrimaryAllocator())) {
+        std::print("[Main] Renderer initialized for window: {}\n",
+                   win->getTitle());
+        renderers[win->getWindowId()] = std::move(renderer);
+      } else {
+        std::print(stderr,
+                   "[Main] Failed to initialize renderer for window: {}\n",
+                   win->getTitle());
+      }
+    }
+  }
+
   int frame = 0;
-  // while (!wMan.checkWindowsVectorEmpty()) { TODO check for close action
-  while (frame < 2) {
+  while (!wMan.checkWindowsVectorEmpty()) { // TODO check for close action
+                                            // while (frame < 2) {
     std::print("Frame {}\n", frame);
     std::print("\n");
 
     wMan.pollAllEvents();
+
+    // Remove windows that should close
+    std::vector<window::Window *> toRemove;
+    for (const auto &win : wMan.getWindows()) {
+      if (win->shouldClose()) {
+        toRemove.push_back(win.get());
+      }
+    }
+    for (auto *win : toRemove) {
+      std::print("[Main] Destroying closed window: {}\n", win->getTitle());
+      wMan.destroyWindow(win);
+    }
+
+    if (wMan.checkWindowsVectorEmpty()) {
+      break;
+    }
 
     frame++;
     std::this_thread::sleep_for(std::chrono::seconds(1));

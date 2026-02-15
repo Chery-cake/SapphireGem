@@ -116,13 +116,15 @@ struct CORE_API GPUConfig {
  */
 struct CORE_API LoopConfig {
   uint32_t mainLoopCount = 1; // Number of main loops (e.g., for multi-window)
-  uint32_t targetFrameRate = 60; // Target frame rate (0 = unlimited)
-  bool enableVSync = true;       // Enable vertical sync
+  uint32_t targetFrameRate = 60;  // Target frame rate (0 = unlimited)
+  bool enableVSync = true;        // Enable vertical sync
+  uint32_t maxFramesInFlight = 2; // Maximum frames that can be in flight
 
   bool operator==(const LoopConfig &other) const {
     return mainLoopCount == other.mainLoopCount &&
            targetFrameRate == other.targetFrameRate &&
-           enableVSync == other.enableVSync;
+           enableVSync == other.enableVSync &&
+           maxFramesInFlight == other.maxFramesInFlight;
   }
 
   bool operator!=(const LoopConfig &other) const { return !(*this == other); }

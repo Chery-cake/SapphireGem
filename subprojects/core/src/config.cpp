@@ -7,21 +7,27 @@ namespace core {
 
 #ifdef ENGINE_DEBUG
 static Config *g_configInstance = nullptr;
-static std::once_flag g_configOnce;
+static std::mutex g_configMutex;
 
 Config &Config::instance() {
-  // Use call_once for thread-safe initial creation
-  std::call_once(g_configOnce, []() { g_configInstance = new Config(); });
+  std::lock_guard<std::mutex> lock(g_configMutex);
+  if (!g_configInstance) {
+    g_configInstance = new Config();
+  }
   return *g_configInstance;
 }
 
 void Config::setInstance(Config *inst) {
   // Called by hot reload system when coordinating instance swap.
   // Caller is responsible for managing the old instance's lifetime.
+  std::lock_guard<std::mutex> lock(g_configMutex);
   g_configInstance = inst;
 }
 
-Config *Config::getInstance() { return g_configInstance; }
+Config *Config::getInstance() {
+  std::lock_guard<std::mutex> lock(g_configMutex);
+  return g_configInstance;
+}
 
 #else
 // In release mode, use classic static local variable singleton

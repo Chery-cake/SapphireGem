@@ -259,6 +259,7 @@ private:
 
   std::unordered_map<WindowEventType, std::vector<WindowEventCallback>>
       eventCallback_;
+  mutable std::mutex eventCallbackMutex_;
 
   mutable std::mutex windowMutex_;
 };

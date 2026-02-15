@@ -23,6 +23,7 @@ namespace window {
  */
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT =
     2; // TODO check if the number is optimal or if it could be calculated
+       // and change it to the one in the config class
 
 /**
  * @brief Per-frame synchronization resources

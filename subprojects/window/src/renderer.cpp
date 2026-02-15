@@ -18,9 +18,10 @@ void Renderer::shutdown() {
 
   waitIdle();
 
-  if (swapchain_) {
+  /*
+  if (swapchain_) {// TODO make renderer be managed by the window or swapchain
     swapchain_->destroyFramebuffers();
-  }
+  }*/
 
   destroyDepthResources();
   destroySyncObjects();
