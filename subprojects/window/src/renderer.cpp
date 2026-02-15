@@ -18,15 +18,22 @@ void Renderer::shutdown() {
 
   waitIdle();
 
+  // Destroy framebuffers first (they reference the render pass)
+  if (swapchain_) {
+    swapchain_->destroyFramebuffers();
+  }
+
   destroyDepthResources();
   destroySyncObjects();
   destroyCommandBuffers();
   destroyCommandPool();
   destroyRenderPass();
 
+  // Nullify raw pointer before resetting owned swapchain
+  swapchain_ = nullptr;
+
   // Destroy owned swapchain if we own it
   ownedSwapchain_.reset();
-  swapchain_ = nullptr;
 
   gpuDevice_ = nullptr;
   allocator_ = nullptr;

@@ -417,6 +417,8 @@ int main(int argc, char *argv[]) {
     }
     for (auto *win : toRemove) {
       std::print("[Main] Destroying closed window: {}\n", win->getTitle());
+      // Wait for GPU to finish before destroying pipeline resources
+      dMan.getPrimaryDevice().waitIdle();
       // Remove pipeline resources before destroying window
       pipelines.erase(win->getWindowId());
       pipelineLayouts.erase(win->getWindowId());

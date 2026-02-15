@@ -17,7 +17,7 @@ struct GSOutput {
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
-    // Hardcoded triangle vertices in clip space
+    // Hardcoded triangle vertices in clip space (Vulkan NDC: +Y is down)
     float2 positions[3];
     positions[0] = float2( 0.0, -0.5);  // Top
     positions[1] = float2( 0.5,  0.5);  // Bottom-right
