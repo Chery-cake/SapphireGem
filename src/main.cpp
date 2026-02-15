@@ -186,15 +186,23 @@ int main(int argc, char *argv[]) {
     secondaryGPUs.push_back(dMan.getDevice(static_cast<uint32_t>(i)));
   }
 
+  // Configure swapchain
+  window::SwapchainConfig swapConf;
+  swapConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
+
+  // Window config with rendering chain initialization
   window::WindowConfig wConf;
   wConf.mainGPU = &dMan.getPrimaryDevice();
   wConf.secondaryGPUs = secondaryGPUs;
+  wConf.vulkanInstance = &inst.getRaiiInstance();
+  wConf.allocator = &vMan.getPrimaryAllocator();
+  wConf.swapchainConfig = swapConf;
 
-  // Create window 1
+  // Create window 1 (automatically initializes renderer and swapchain)
   wConf.title = "SapphireEngine - Window 1";
   window::Window *win1 = wMan.createWindow(wConf);
 
-  // Create Window 2
+  // Create Window 2 (automatically initializes renderer and swapchain)
   wConf.title = "SapphireEngine - Window 2";
   window::Window *win2 = wMan.createWindow(wConf);
 
@@ -276,37 +284,125 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
-  for (const auto &win : wMan.getWindows()) {
-    window::SwapchainConfig sConf;
-    sConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
-    win->createSwap(inst.getRaiiInstance(), sConf);
-  }
-
+  // Initialize shader manager and compile triangle shaders
   device::ShaderManager sMan;
   sMan.initialize(dMan.getPrimaryDevice());
 
-  // Create a renderer for each window
-  std::unordered_map<uint32_t, std::unique_ptr<window::Renderer>> renderers;
-  for (const auto &win : wMan.getWindows()) {
-    window::Swapchain *swapchain = win->getSwapchain();
-    if (swapchain) {
-      auto renderer = std::make_unique<window::Renderer>();
-      if (renderer->initialize(dMan.getPrimaryDevice(), *swapchain,
-                               vMan.getPrimaryAllocator())) {
-        std::print("[Main] Renderer initialized for window: {}\n",
+  // Compile the triangle shader (vertex, geometry, fragment)
+  device::CompiledShader *vertShader =
+      sMan.loadShader("triangle.slang", "vertMain", device::ShaderStage::Vertex);
+  device::CompiledShader *geomShader =
+      sMan.loadShader("triangle.slang", "geomMain",
+                      device::ShaderStage::Geometry);
+  device::CompiledShader *fragShader =
+      sMan.loadShader("triangle.slang", "fragMain",
+                      device::ShaderStage::Fragment);
+
+  if (vertShader && geomShader && fragShader) {
+    std::print("[Main] Triangle shaders compiled successfully\n");
+  } else {
+    std::print(stderr, "[Main] Failed to compile triangle shaders\n");
+  }
+
+  // Create graphics pipelines for each window
+  std::unordered_map<uint32_t, vk::raii::Pipeline> pipelines;
+  std::unordered_map<uint32_t, vk::raii::PipelineLayout> pipelineLayouts;
+
+  if (vertShader && geomShader && fragShader) {
+    for (const auto &win : wMan.getWindows()) {
+      window::Renderer *renderer = win->getRenderer();
+      if (!renderer) {
+        continue;
+      }
+
+      // Shader stages
+      std::array<vk::PipelineShaderStageCreateInfo, 3> shaderStages = {
+          vertShader->getStageInfo(), geomShader->getStageInfo(),
+          fragShader->getStageInfo()};
+
+      // Vertex input: no vertex buffers (hardcoded in shader)
+      vk::PipelineVertexInputStateCreateInfo vertexInput{};
+
+      // Input assembly: triangle list
+      vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
+          {}, vk::PrimitiveTopology::eTriangleList, vk::False};
+
+      // Viewport and scissor (dynamic)
+      vk::PipelineViewportStateCreateInfo viewportState{{}, 1, nullptr, 1,
+                                                        nullptr};
+
+      // Rasterizer
+      vk::PipelineRasterizationStateCreateInfo rasterizer{
+          {},
+          vk::False,
+          vk::False,
+          vk::PolygonMode::eFill,
+          vk::CullModeFlagBits::eNone,
+          vk::FrontFace::eClockwise,
+          vk::False,
+          0.0f,
+          0.0f,
+          0.0f,
+          1.0f};
+
+      // Multisampling
+      vk::PipelineMultisampleStateCreateInfo multisampling{
+          {}, vk::SampleCountFlagBits::e1, vk::False};
+
+      // Depth stencil
+      vk::PipelineDepthStencilStateCreateInfo depthStencil{
+          {}, vk::True, vk::True, vk::CompareOp::eLess, vk::False, vk::False};
+
+      // Color blending
+      vk::PipelineColorBlendAttachmentState colorBlendAttachment{
+          vk::False,
+          vk::BlendFactor::eOne,
+          vk::BlendFactor::eZero,
+          vk::BlendOp::eAdd,
+          vk::BlendFactor::eOne,
+          vk::BlendFactor::eZero,
+          vk::BlendOp::eAdd,
+          vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
+
+      vk::PipelineColorBlendStateCreateInfo colorBlending{
+          {}, vk::False, vk::LogicOp::eCopy, colorBlendAttachment};
+
+      // Dynamic states
+      std::array<vk::DynamicState, 2> dynamicStates = {
+          vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+      vk::PipelineDynamicStateCreateInfo dynamicState{{}, dynamicStates};
+
+      // Pipeline layout (empty - no descriptors needed)
+      vk::PipelineLayoutCreateInfo layoutInfo{};
+
+      try {
+        auto layout = vk::raii::PipelineLayout(
+            dMan.getPrimaryDevice().getRaiiDevice(), layoutInfo);
+
+        vk::GraphicsPipelineCreateInfo pipelineInfo{
+            {},           shaderStages,    &vertexInput, &inputAssembly,
+            nullptr,      &viewportState,  &rasterizer,  &multisampling,
+            &depthStencil, &colorBlending, &dynamicState, *layout,
+            renderer->getRenderPass()};
+
+        auto pipeline = vk::raii::Pipeline(
+            dMan.getPrimaryDevice().getRaiiDevice(), nullptr, pipelineInfo);
+
+        std::print("[Main] Pipeline created for window: {}\n",
                    win->getTitle());
-        renderers[win->getWindowId()] = std::move(renderer);
-      } else {
-        std::print(stderr,
-                   "[Main] Failed to initialize renderer for window: {}\n",
-                   win->getTitle());
+
+        pipelineLayouts.emplace(win->getWindowId(), std::move(layout));
+        pipelines.emplace(win->getWindowId(), std::move(pipeline));
+      } catch (const vk::SystemError &e) {
+        std::print(stderr, "[Main] Failed to create pipeline for {}: {}\n",
+                   win->getTitle(), e.what());
       }
     }
   }
 
   int frame = 0;
-  while (!wMan.checkWindowsVectorEmpty()) { // TODO check for close action
-                                            // while (frame < 2) {
+  while (!wMan.checkWindowsVectorEmpty()) {
     std::print("Frame {}\n", frame);
     std::print("\n");
 
@@ -321,6 +417,9 @@ int main(int argc, char *argv[]) {
     }
     for (auto *win : toRemove) {
       std::print("[Main] Destroying closed window: {}\n", win->getTitle());
+      // Remove pipeline resources before destroying window
+      pipelines.erase(win->getWindowId());
+      pipelineLayouts.erase(win->getWindowId());
       wMan.destroyWindow(win);
     }
 
@@ -328,9 +427,64 @@ int main(int argc, char *argv[]) {
       break;
     }
 
+    // Render a triangle in each window
+    for (const auto &win : wMan.getWindows()) {
+      window::Renderer *renderer = win->getRenderer();
+      if (!renderer || !renderer->isInitialized()) {
+        continue;
+      }
+
+      auto pipeIt = pipelines.find(win->getWindowId());
+      if (pipeIt == pipelines.end()) {
+        continue;
+      }
+
+      auto *syncObjects = renderer->beginFrame();
+      if (!syncObjects) {
+        continue;
+      }
+
+      vk::CommandBuffer cmd = syncObjects->commandBuffer;
+      window::Swapchain *swapchain = renderer->getSwapchain();
+      vk::Extent2D extent = swapchain->getExtent();
+
+      // Begin render pass
+      auto clearValues = renderer->getClearValues();
+      uint32_t imageIndex = renderer->getCurrentImageIndex();
+      vk::RenderPassBeginInfo renderPassInfo{
+          renderer->getRenderPass(),
+          **swapchain->getFrame(imageIndex).framebuffer,
+          vk::Rect2D{{0, 0}, extent}, clearValues};
+
+      cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+      // Set dynamic viewport and scissor
+      vk::Viewport viewport{0.0f,
+                             0.0f,
+                             static_cast<float>(extent.width),
+                             static_cast<float>(extent.height),
+                             0.0f,
+                             1.0f};
+      cmd.setViewport(0, viewport);
+
+      vk::Rect2D scissor{{0, 0}, extent};
+      cmd.setScissor(0, scissor);
+
+      // Bind pipeline and draw triangle
+      cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeIt->second);
+      cmd.draw(3, 1, 0, 0); // 3 vertices, 1 instance
+
+      cmd.endRenderPass();
+
+      renderer->endFrame(*syncObjects, imageIndex);
+    }
+
     frame++;
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
+
+  // Wait for all GPU work to finish before cleanup
+  dMan.getPrimaryDevice().waitIdle();
 
 #ifdef ENGINE_DEBUG
   hotReload.request_stop();

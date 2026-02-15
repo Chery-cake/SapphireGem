@@ -5,6 +5,7 @@
 #include "SDL3/SDL_version.h"
 #include "SDL3/SDL_video.h"
 #include "SDL3/SDL_vulkan.h"
+#include "renderer.h"
 #include "swapchain.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan_device.h"
@@ -29,7 +30,7 @@ Window::Window(Window &&other) noexcept
       height_(other.height_), title_(std::move(other.title_)),
       mainGPU(std::exchange(other.mainGPU, nullptr)),
       secondaryGPUs(std::move(other.secondaryGPUs)),
-      swapchain_(std::move(other.swapchain_)), shouldClose_(other.shouldClose_),
+      renderer_(std::move(other.renderer_)), shouldClose_(other.shouldClose_),
       minimized_(other.minimized_), focused_(other.focused_),
       fullscreen_(other.fullscreen_),
       eventCallback_(std::move(other.eventCallback_)) {}
@@ -44,7 +45,7 @@ Window &Window::operator=(Window &&other) noexcept {
     title_ = std::move(other.title_);
     mainGPU = std::exchange(other.mainGPU, nullptr);
     secondaryGPUs = std::move(other.secondaryGPUs);
-    swapchain_ = std::move(other.swapchain_);
+    renderer_ = std::move(other.renderer_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
     focused_ = other.focused_;
@@ -55,8 +56,8 @@ Window &Window::operator=(Window &&other) noexcept {
 }
 
 void Window::destroy() {
-  if (swapchain_) {
-    swapchain_.reset();
+  if (renderer_) {
+    renderer_.reset();
   }
 
   if (window_) {
@@ -124,14 +125,29 @@ bool Window::create(const WindowConfig &config) {
 
   std::println("[Window] Created: {} ({}x{})", title_, width_, height_);
 
-  return true;
-}
+  // Initialize rendering chain if Vulkan instance and allocator are provided
+  if (config.vulkanInstance && config.mainGPU && config.allocator) {
+    auto surface = createVulkanSurface(*config.vulkanInstance);
+    if (!surface) {
+      std::println(stderr,
+                   "[Window] Failed to create Vulkan surface for: {}", title_);
+      return false;
+    }
 
-bool Window::createSwap(const vk::raii::Instance &instance,
-                        const SwapchainConfig &config) {
-  swapchain_ = std::make_unique<Swapchain>();
-  auto surface = createVulkanSurface(instance);
-  return swapchain_->create(mainGPU, secondaryGPUs, surface, config);
+    renderer_ = std::make_unique<Renderer>();
+    if (!renderer_->initialize(*mainGPU, secondaryGPUs, surface,
+                               config.swapchainConfig, *config.allocator,
+                               static_cast<uint32_t>(width_),
+                               static_cast<uint32_t>(height_))) {
+      std::println(stderr,
+                   "[Window] Failed to initialize renderer for: {}", title_);
+      renderer_.reset();
+      return false;
+    }
+    std::println("[Window] Renderer initialized for: {}", title_);
+  }
+
+  return true;
 }
 
 bool Window::pollEvents() {
@@ -306,16 +322,16 @@ void Window::setFullscreen(bool fullscreen) {
 void Window::setMainGPU(device::GPUDevice *device) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   mainGPU = device;
-  if (swapchain_) {
-    swapchain_->updateMainDevice(device);
+  if (renderer_ && renderer_->getSwapchain()) {
+    renderer_->getSwapchain()->updateMainDevice(device);
   }
 }
 
 void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   std::lock_guard<std::mutex> lock(windowMutex_);
   secondaryGPUs = devices;
-  if (swapchain_) {
-    swapchain_->updateSecondaryDevices(devices);
+  if (renderer_ && renderer_->getSwapchain()) {
+    renderer_->getSwapchain()->updateSecondaryDevices(devices);
   }
 }
 
