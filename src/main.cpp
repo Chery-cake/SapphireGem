@@ -407,9 +407,10 @@ int main(int argc, char *argv[]) {
   // Create a renderer for each window
   std::unordered_map<uint32_t, std::unique_ptr<window::Renderer>> renderers;
   for (const auto &win : wMan.getWindows()) {
-    if (win->hasSwapchain()) {
+    window::Swapchain *swapchain = win->getSwapchain();
+    if (swapchain) {
       auto renderer = std::make_unique<window::Renderer>();
-      if (renderer->initialize(dMan.getPrimaryDevice(), *win->getSwapchain(),
+      if (renderer->initialize(dMan.getPrimaryDevice(), *swapchain,
                                vMan.getPrimaryAllocator())) {
         std::print("[Main] Renderer initialized for window: {}\n",
                    win->getTitle());

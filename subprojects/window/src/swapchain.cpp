@@ -599,11 +599,11 @@ bool Swapchain::updateMainDevice(device::GPUDevice *device) {
     return false;
   }
 
+  std::lock_guard<std::mutex> lock(swapchainMutex_);
+
   if (device == mainGPUDevice_) {
     return true; // No change needed
   }
-
-  std::lock_guard<std::mutex> lock(swapchainMutex_);
 
   // The main device changed - need full swapchain recreation
   mainGPUDevice_ = device;
