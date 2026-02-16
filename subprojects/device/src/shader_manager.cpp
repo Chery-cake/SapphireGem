@@ -571,9 +571,123 @@ uint32_t ShaderManager::reloadAllChanged() {
   return reloadCount;
 }
 
+// ============================================================================
+// Tag-based shader management
+// ============================================================================
+
+ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
+  if (!initialized_ || !tag) {
+    return nullptr;
+  }
+
+  // Check if already in registry
+  if (auto *program = shaderRegistry_.get(tag)) {
+    program->refCount++;
+    return program;
+  }
+
+  // Compile all stages specified in the tag
+  auto program = std::make_unique<ShaderProgram>(*tag);
+
+  if (tag->vertexEntry) {
+    program->vertex = compileStage(tag->sourcePath, tag->vertexEntry,
+                                   ShaderStage::Vertex);
+  }
+  if (tag->fragmentEntry) {
+    program->fragment = compileStage(tag->sourcePath, tag->fragmentEntry,
+                                     ShaderStage::Fragment);
+  }
+  if (tag->geometryEntry) {
+    program->geometry = compileStage(tag->sourcePath, tag->geometryEntry,
+                                     ShaderStage::Geometry);
+  }
+  if (tag->computeEntry) {
+    program->compute = compileStage(tag->sourcePath, tag->computeEntry,
+                                    ShaderStage::Compute);
+  }
+  if (tag->tessCtrlEntry) {
+    program->tessControl = compileStage(tag->sourcePath, tag->tessCtrlEntry,
+                                        ShaderStage::TessellationControl);
+  }
+  if (tag->tessEvalEntry) {
+    program->tessEval = compileStage(tag->sourcePath, tag->tessEvalEntry,
+                                     ShaderStage::TessellationEvaluation);
+  }
+
+  program->refCount = 1;
+  program->compiled = true;
+
+  ShaderProgram *ptr = program.get();
+  shaderRegistry_.add(tag, std::move(program));
+
+  std::println("[ShaderManager] Acquired shader program: {}", tag->name);
+  return ptr;
+}
+
+void ShaderManager::release(const ShaderTag *tag) {
+  if (!tag) {
+    return;
+  }
+
+  auto *program = shaderRegistry_.get(tag);
+  if (!program) {
+    return;
+  }
+
+  if (program->refCount > 0) {
+    program->refCount--;
+  }
+
+  // When no longer in use, discard to free memory
+  if (program->refCount == 0) {
+    std::println("[ShaderManager] Releasing unused shader program: {}",
+                 tag->name);
+    shaderRegistry_.remove(tag);
+  }
+}
+
+ShaderProgram *ShaderManager::getProgram(const ShaderTag *tag) {
+  if (!tag) {
+    return nullptr;
+  }
+  return shaderRegistry_.get(tag);
+}
+
+std::unique_ptr<CompiledShader>
+ShaderManager::compileStage(const std::string &sourcePath,
+                            const std::string &entryPoint, ShaderStage stage) {
+  ShaderCompileRequest request;
+  request.sourcePath = sourcePath;
+  request.entryPoint = entryPoint;
+  request.stage = stage;
+
+  auto result = compile(request);
+  if (!result.success) {
+    std::println(stderr,
+                 "[ShaderManager] Failed to compile stage {}:{} - {}",
+                 sourcePath, entryPoint, result.errorMessage);
+    return nullptr;
+  }
+
+  auto module = createShaderModule(result.spirvCode);
+  if (module == nullptr) {
+    return nullptr;
+  }
+
+  auto shader = std::make_unique<CompiledShader>();
+  shader->module = std::move(module);
+  shader->stage = stage;
+  shader->entryPoint = entryPoint;
+  shader->sourcePath = sourcePath;
+  shader->sourceHash = result.sourceHash;
+  shader->isValid = true;
+  return shader;
+}
+
 void ShaderManager::clearCache() {
   std::lock_guard<std::mutex> lock(cacheMutex_);
   shaderCache_.clear();
+  shaderRegistry_.clear();
 }
 
 bool ShaderManager::destroyShader(const std::string &key) {
