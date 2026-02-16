@@ -106,11 +106,25 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
 
   // Get device features
   vk::PhysicalDeviceFeatures deviceFeatures{};
-  deviceFeatures.samplerAnisotropy = VK_TRUE;
-  deviceFeatures.fillModeNonSolid = VK_TRUE;
-  deviceFeatures.wideLines = VK_TRUE;
-  deviceFeatures.geometryShader = VK_TRUE;
-  deviceFeatures.tessellationShader = VK_TRUE;
+  deviceFeatures.samplerAnisotropy = vk::True;
+  deviceFeatures.fillModeNonSolid = vk::True;
+  deviceFeatures.wideLines = vk::True;
+  deviceFeatures.geometryShader = vk::True;
+  deviceFeatures.tessellationShader = vk::True;
+
+  vk::PhysicalDeviceVulkan11Features deviceFeatures11{};
+  deviceFeatures11.sType = vk::StructureType::ePhysicalDeviceVulkan11Features;
+  deviceFeatures11.shaderDrawParameters = vk::True;
+
+  vk::PhysicalDeviceVulkan12Features deviceFeatures12{};
+  deviceFeatures12.pNext = &deviceFeatures11;
+
+  vk::PhysicalDeviceVulkan13Features deviceFeatures13{};
+  deviceFeatures13.dynamicRendering = vk::True;
+  deviceFeatures13.pNext = &deviceFeatures12;
+
+  vk::PhysicalDeviceVulkan14Features deviceFeatures14{};
+  deviceFeatures14.pNext = &deviceFeatures13;
 
   // Prepare extensions
   std::vector<const char *> enabledExtensions;
@@ -141,7 +155,8 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
                                   queueCreateInfos,
                                   {}, // No layers for device
                                   enabledExtensions,
-                                  &deviceFeatures};
+                                  &deviceFeatures,
+                                  &deviceFeatures14};
 
   try {
     device_ = std::make_unique<vk::raii::Device>(*physicalDevice_, createInfo);
