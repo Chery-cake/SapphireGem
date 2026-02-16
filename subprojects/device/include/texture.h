@@ -128,7 +128,8 @@ public:
   /**
    * @brief Upload all layers to the GPU
    * @param allocator VMA allocator for image creation
-   * @param device GPU device for command buffer operations
+   * @param device GPU device (reserved for future command buffer operations
+   *               such as image layout transitions and staging uploads)
    * @return true if all layers were uploaded successfully
    */
   bool upload(VMAAllocator &allocator, GPUDevice &device);

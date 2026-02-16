@@ -285,7 +285,7 @@ public:
   uint32_t reloadAllChanged();
 
   /**
-   * @brief Clear shader cache (both tag-based and legacy)
+   * @brief Clear shader cache (both tag-based registry and legacy string-key cache)
    */
   void clearCache();
 

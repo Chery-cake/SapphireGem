@@ -156,7 +156,7 @@ public:
    * @param device GPU device
    * @param descriptorSetLayout Layout from the material
    * @param framesInFlight Number of frames in flight
-   * @return true if initialization succeeded
+   * @return true if initialization succeeded, false if already initialized or on failure
    */
   bool initialize(VMAAllocator &allocator, GPUDevice &device,
                   vk::DescriptorSetLayout descriptorSetLayout,
@@ -164,7 +164,7 @@ public:
     std::lock_guard<std::mutex> lock(objectMutex_);
 
     if (initialized_) {
-      return false;
+      return false; // Already initialized - call release() first to reinitialize
     }
 
     // Create uniform buffers (one per frame in flight)

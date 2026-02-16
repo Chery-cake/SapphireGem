@@ -46,6 +46,7 @@ bool Material::initialize(ShaderManager &shaderManager, GPUDevice &device,
   std::lock_guard<std::mutex> lock(materialMutex_);
 
   if (initialized_) {
+    std::println(stderr, "[Material] Material already initialized: {}", name_);
     return false;
   }
 
