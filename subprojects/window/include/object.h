@@ -78,7 +78,7 @@ template <uint32_t Dim> struct Transform {
   using Traits = DimensionTraits<Dim>;
   typename Traits::VecType position{};
   typename Traits::RotType rotation{};
-  typename Traits::ScaleType scale{typename Traits::ScaleType{1}};
+  typename Traits::ScaleType scale = typename Traits::ScaleType{1};
 };
 
 /**

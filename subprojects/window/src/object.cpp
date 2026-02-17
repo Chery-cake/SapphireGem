@@ -52,7 +52,7 @@ createObjectDescriptorSetLayout(device::GPUDevice &device, bool hasTexture) {
 
   std::vector<vk::DescriptorSetLayoutBinding> bindings = {uboBinding};
 
-  // If material has a texture, add sampler binding
+  // If the object's material has a texture, add sampler binding
   if (hasTexture) {
     vk::DescriptorSetLayoutBinding samplerBinding{
         1, vk::DescriptorType::eCombinedImageSampler, 1,
