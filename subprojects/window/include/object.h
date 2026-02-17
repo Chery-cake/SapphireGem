@@ -9,7 +9,9 @@
 #include "window_export.h"
 #include <array>
 #include <cstdint>
-#include <gbm.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,19 +36,20 @@ struct WINDOW_API ObjectTag {
  * 0-x 1-y 2-z ...
  */
 template <uint32_t Dim> struct WINDOW_API Transform {
-  std::array<float, Dim> position;
-  std::array<float, Dim> rotation;
+  std::array<float, Dim> position = {};
+  std::array<float, Dim> rotation = {};
   std::array<float, Dim> scale;
+
+  Transform() { scale.fill(1.0f); }
 };
 
 /**
  * @brief Uniform buffer data matching the shader UBO layout
  */
 struct WINDOW_API UniformBufferData {
-  // 4x4 matrices stored as float[16] in column-major order
-  float model[16];
-  float view[16];
-  float proj[16];
+  glm::mat4 model{1.0f};
+  glm::mat4 view{1.0f};
+  glm::mat4 proj{1.0f};
 };
 
 /**
@@ -55,8 +58,9 @@ struct WINDOW_API UniformBufferData {
  * Objects live in a space matching their dimension, ensuring that e.g.
  * 2D rotations aren't applied to 3D objects and vice versa.
  *
- * Each object manages its own descriptor sets and uniform buffers,
- * and has a reference to its material via tag.
+ * Each object manages its own descriptor sets, uniform buffers, and pipeline.
+ * The pipeline is created by the material but stored per-object, preventing
+ * descriptor set conflicts when multiple objects share the same material.
  *
  * @tparam Dim The spatial dimension (1, 2, 3, or higher)
  *
@@ -78,17 +82,19 @@ public:
   Object &operator=(Object &&other) noexcept;
 
   /**
-   * @brief Initialize descriptor sets and uniform buffers
+   * @brief Initialize descriptor sets, uniform buffers, and per-object pipeline
    * @param allocator VMA allocator for buffer creation
    * @param device GPU device
-   * @param descriptorSetLayout Layout from the material
+   * @param material Material to create pipeline from
+   * @param renderPass Render pass for pipeline compatibility
    * @param framesInFlight Number of frames in flight
-   * @return true if initialization succeeded, false if already initialized or
-   * on failure
+   * @param pipelineConfig Pipeline configuration
+   * @return true if initialization succeeded
    */
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
-                  vk::DescriptorSetLayout descriptorSetLayout,
-                  uint32_t framesInFlight);
+                  Material &material, vk::RenderPass renderPass,
+                  uint32_t framesInFlight,
+                  const PipelineConfig &pipelineConfig = {});
 
   /**
    * @brief Release all GPU resources
@@ -97,23 +103,29 @@ public:
 
   /**
    * @brief Update uniform buffer data for the current frame
+   *
+   * Uses glm matrices for dimension-agnostic transform computation.
+   *
    * @param frameIndex Current frame index
-   * @param viewMatrix View matrix (16 floats, column-major)
-   * @param projMatrix Projection matrix (16 floats, column-major)
+   * @param viewMatrix View matrix (glm::mat4)
+   * @param projMatrix Projection matrix (glm::mat4)
    */
-  void updateUniforms(uint32_t frameIndex, const float *viewMatrix,
-                      const float *projMatrix);
+  void updateUniforms(uint32_t frameIndex, const glm::mat4 &viewMatrix,
+                      const glm::mat4 &projMatrix);
 
   /**
-   * @brief Draw this object
+   * @brief Draw this object using its own pipeline and descriptor sets
+   *
+   * Supports multi-GPU by accepting a command buffer that may be associated
+   * with any device queue. Uses per-object pipeline and descriptor sets
+   * to avoid conflicts with other objects using the same material.
+   *
    * @param cmd Command buffer to record draw commands
-   * @param material Material to use for rendering
    * @param frameIndex Current frame in flight index
    * @param vertexCount Number of vertices to draw
    * @param instanceCount Number of instances to draw
    */
-  void draw(vk::CommandBuffer cmd, const Material &material,
-            uint32_t frameIndex, uint32_t vertexCount,
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex, uint32_t vertexCount,
             uint32_t instanceCount = 1) const;
 
   // Transform accessors
@@ -127,6 +139,30 @@ public:
     return transform_;
   }
 
+  /**
+   * @brief Set position (dimension-agnostic)
+   */
+  void setPosition(const std::array<float, Dim> &pos) {
+    std::lock_guard<std::mutex> lock(objectMutex_);
+    transform_.position = pos;
+  }
+
+  /**
+   * @brief Set rotation angles in radians (dimension-agnostic)
+   */
+  void setRotation(const std::array<float, Dim> &rot) {
+    std::lock_guard<std::mutex> lock(objectMutex_);
+    transform_.rotation = rot;
+  }
+
+  /**
+   * @brief Set scale factors (dimension-agnostic)
+   */
+  void setScale(const std::array<float, Dim> &scl) {
+    std::lock_guard<std::mutex> lock(objectMutex_);
+    transform_.scale = scl;
+  }
+
   // Getters
   [[nodiscard]] const std::string &getName() const { return name_; }
   [[nodiscard]] const MaterialTag *getMaterialTag() const {
@@ -136,27 +172,24 @@ public:
   [[nodiscard]] static constexpr uint32_t getDimension() { return Dim; }
 
 private:
-  static void setIdentity(float *matrix) {
-    std::memset(matrix, 0, sizeof(float) * 16);
-    matrix[0] = 1.0f;
-    matrix[5] = 1.0f;
-    matrix[10] = 1.0f;
-    matrix[15] = 1.0f;
-  }
-
   /**
-   * @brief Build model matrix from transform (dimension-specific)
+   * @brief Build model matrix from transform (dimension-agnostic using glm)
+   * @return 4x4 model matrix
    */
-  void buildModelMatrix(float *matrix) const;
+  glm::mat4 buildModelMatrix() const;
 
   std::string name_;
   const MaterialTag *materialTag_ = nullptr;
   TransformType transform_{};
 
+  // Per-object pipeline (created by material, owned by object)
+  ObjectPipeline objectPipeline_;
+
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
+  std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
   mutable std::mutex objectMutex_;

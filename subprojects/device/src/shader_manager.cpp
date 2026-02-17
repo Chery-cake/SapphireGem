@@ -381,30 +381,114 @@ ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
 
   // Compile all stages specified in the tag
   auto program = std::make_unique<ShaderProgram>(*tag);
+  bool hasFailure = false;
 
   if (tag->vertexEntry) {
     program->vertex =
         compileStage(tag->sourcePath, tag->vertexEntry, ShaderStage::Vertex);
+    if (!program->vertex || !program->vertex->isValid) {
+      std::println(stderr,
+                   "[ShaderManager] Failed to compile vertex stage '{}' "
+                   "with entry point '{}' in '{}'",
+                   tag->name, tag->vertexEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println("[ShaderManager] Compiled vertex entry point '{}' for '{}'",
+                   tag->vertexEntry, tag->name);
+    }
   }
   if (tag->fragmentEntry) {
     program->fragment = compileStage(tag->sourcePath, tag->fragmentEntry,
                                      ShaderStage::Fragment);
+    if (!program->fragment || !program->fragment->isValid) {
+      std::println(stderr,
+                   "[ShaderManager] Failed to compile fragment stage '{}' "
+                   "with entry point '{}' in '{}'",
+                   tag->name, tag->fragmentEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println(
+          "[ShaderManager] Compiled fragment entry point '{}' for '{}'",
+          tag->fragmentEntry, tag->name);
+    }
   }
   if (tag->geometryEntry) {
     program->geometry = compileStage(tag->sourcePath, tag->geometryEntry,
                                      ShaderStage::Geometry);
+    if (!program->geometry || !program->geometry->isValid) {
+      std::println(stderr,
+                   "[ShaderManager] Failed to compile geometry stage '{}' "
+                   "with entry point '{}' in '{}'",
+                   tag->name, tag->geometryEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println(
+          "[ShaderManager] Compiled geometry entry point '{}' for '{}'",
+          tag->geometryEntry, tag->name);
+    }
   }
   if (tag->computeEntry) {
     program->compute =
         compileStage(tag->sourcePath, tag->computeEntry, ShaderStage::Compute);
+    if (!program->compute || !program->compute->isValid) {
+      std::println(stderr,
+                   "[ShaderManager] Failed to compile compute stage '{}' "
+                   "with entry point '{}' in '{}'",
+                   tag->name, tag->computeEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println(
+          "[ShaderManager] Compiled compute entry point '{}' for '{}'",
+          tag->computeEntry, tag->name);
+    }
   }
   if (tag->tessCtrlEntry) {
     program->tessControl = compileStage(tag->sourcePath, tag->tessCtrlEntry,
                                         ShaderStage::TessellationControl);
+    if (!program->tessControl || !program->tessControl->isValid) {
+      std::println(
+          stderr,
+          "[ShaderManager] Failed to compile tessellation control stage '{}' "
+          "with entry point '{}' in '{}'",
+          tag->name, tag->tessCtrlEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println("[ShaderManager] Compiled tessellation control entry point "
+                   "'{}' for '{}'",
+                   tag->tessCtrlEntry, tag->name);
+    }
   }
   if (tag->tessEvalEntry) {
     program->tessEval = compileStage(tag->sourcePath, tag->tessEvalEntry,
                                      ShaderStage::TessellationEvaluation);
+    if (!program->tessEval || !program->tessEval->isValid) {
+      std::println(stderr,
+                   "[ShaderManager] Failed to compile tessellation evaluation "
+                   "stage '{}' with entry point '{}' in '{}'",
+                   tag->name, tag->tessEvalEntry, tag->sourcePath);
+      hasFailure = true;
+    } else {
+      std::println("[ShaderManager] Compiled tessellation evaluation entry "
+                   "point '{}' for '{}'",
+                   tag->tessEvalEntry, tag->name);
+    }
+  }
+
+  // Validate that at least one stage compiled successfully
+  auto stageInfos = program->getStageInfos();
+  if (stageInfos.empty()) {
+    std::println(stderr,
+                 "[ShaderManager] No valid shader stages compiled for '{}' "
+                 "from source '{}'",
+                 tag->name, tag->sourcePath);
+    return nullptr;
+  }
+
+  if (hasFailure) {
+    std::println(stderr,
+                 "[ShaderManager] Shader program '{}' compiled with errors "
+                 "({} of requested stages succeeded)",
+                 tag->name, stageInfos.size());
   }
 
   program->refCount = 1;
@@ -413,7 +497,8 @@ ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
   ShaderProgram *ptr = program.get();
   shaderRegistry_.add(tag, std::move(program));
 
-  std::println("[ShaderManager] Acquired shader program: {}", tag->name);
+  std::println("[ShaderManager] Acquired shader program '{}': {} stage(s) ready",
+               tag->name, stageInfos.size());
   return ptr;
 }
 
