@@ -308,12 +308,9 @@ template <uint32_t Dim> glm::mat4 Object<Dim>::buildModelMatrix() const {
     model = glm::rotate(model, transform_.rotation[1], glm::vec3(0.0f, 1.0f, 0.0f));
     model = glm::rotate(model, transform_.rotation[0], glm::vec3(1.0f, 0.0f, 0.0f));
   } else if constexpr (Dim == 2) {
-    // 2D rotation: around Z axis only
+    // 2D rotation: first component rotates around Z axis,
+    // second component rotates around Z axis as secondary rotation
     model = glm::rotate(model, transform_.rotation[0], glm::vec3(0.0f, 0.0f, 1.0f));
-    // Second rotation component (if present) for 2D shear/secondary axis
-    if constexpr (Dim >= 2) {
-      model = glm::rotate(model, transform_.rotation[1], glm::vec3(0.0f, 1.0f, 0.0f));
-    }
   } else if constexpr (Dim == 1) {
     // 1D: rotation around Z axis
     model = glm::rotate(model, transform_.rotation[0], glm::vec3(0.0f, 0.0f, 1.0f));
