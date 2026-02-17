@@ -46,7 +46,6 @@ public:
   struct DeviceMaterialResources {
     vk::raii::Pipeline pipeline{nullptr};
     vk::raii::PipelineLayout pipelineLayout{nullptr};
-    vk::raii::DescriptorSetLayout descriptorLayout{nullptr};
   };
 
 private:
@@ -71,7 +70,8 @@ private:
 
   bool create_pipeline(device::LogicalDevice *device,
                        DeviceMaterialResources &resources,
-                       const MaterialCreateInfo &createInfo);
+                       const MaterialCreateInfo &createInfo,
+                       const vk::DescriptorSetLayout *descriptorLayout);
 
 public:
   Material(const std::vector<device::LogicalDevice *> &devices,
@@ -96,8 +96,9 @@ public:
 
   vk::raii::Pipeline &get_pipeline(uint32_t deviceIndex = 0);
   vk::raii::PipelineLayout &get_pipeline_layout(uint32_t deviceIndex = 0);
-  vk::raii::DescriptorSetLayout &
-  get_descriptor_set_layout(uint32_t deviceIndex = 0);
+
+  const std::vector<vk::DescriptorSetLayoutBinding> &
+  get_descriptor_bindings() const;
 
   const std::string &get_identifier() const;
   Shader *get_shader() const;

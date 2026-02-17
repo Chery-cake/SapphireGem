@@ -35,35 +35,35 @@ bool render::Shader::compile_shader_from_file(ShaderStageInfo &stageInfo) {
     return false;
   }
 
-  // Get the appropriate entry point based on stage type
-  std::string entryPoint;
+  // Slang source entry points used for compilation targeting
+  std::string slangEntryPoint;
   switch (stageInfo.type) {
   case ShaderType::VERTEX:
-    entryPoint = "vertMain";
+    slangEntryPoint = "vertMain";
     break;
   case ShaderType::FRAGMENT:
-    entryPoint = "fragMain";
+    slangEntryPoint = "fragMain";
     break;
   case ShaderType::GEOMETRY:
-    entryPoint = "geomMain";
+    slangEntryPoint = "geomMain";
     break;
   case ShaderType::COMPUTE:
-    entryPoint = "computeMain";
+    slangEntryPoint = "computeMain";
     break;
   case ShaderType::TESSELLATION_CONTROL:
-    entryPoint = "tessControlMain";
+    slangEntryPoint = "tessControlMain";
     break;
   case ShaderType::TESSELLATION_EVALUATION:
-    entryPoint = "tessEvalMain";
+    slangEntryPoint = "tessEvalMain";
     break;
   case ShaderType::MESH:
-    entryPoint = "meshMain";
+    slangEntryPoint = "meshMain";
     break;
   case ShaderType::TASK:
-    entryPoint = "taskMain";
+    slangEntryPoint = "taskMain";
     break;
   default:
-    entryPoint = stageInfo.entryPoint;
+    slangEntryPoint = stageInfo.entryPoint;
     break;
   }
 
@@ -75,11 +75,12 @@ bool render::Shader::compile_shader_from_file(ShaderStageInfo &stageInfo) {
   outputPath.replace_extension(".spv");
 
   // Compile the shader to a temporary SPIR-V file
-  if (!compiler.compileShaderToSpirv(inputPath, outputPath, {entryPoint})) {
+  if (!compiler.compileShaderToSpirv(inputPath, outputPath,
+                                     {slangEntryPoint})) {
     std::print(stderr,
                "Shader - {} - failed to compile {} from {} (entry: {}): {}\n",
                identifier, shader_type_to_string(stageInfo.type),
-               stageInfo.filePath, entryPoint, compiler.getLastError());
+               stageInfo.filePath, slangEntryPoint, compiler.getLastError());
     return false;
   }
 
@@ -97,7 +98,8 @@ bool render::Shader::compile_shader_from_file(ShaderStageInfo &stageInfo) {
   file.read(stageInfo.spirvCode.data(), fileSize);
   file.close();
 
-  stageInfo.entryPoint = entryPoint;
+  // SPIR-V compiled from Slang always uses "main" as the entry point
+  stageInfo.entryPoint = "main";
   stageInfo.isCompiled = true;
 
   std::print("Shader - {} - compiled {} from {}\n", identifier,

@@ -141,6 +141,10 @@ private:
   // Map: material identifier -> device index -> frame descriptor sets
   std::map<std::string, std::vector<vk::raii::DescriptorSets>>
       materialDescriptorSets;
+  // Per-object descriptor set layouts (owned by this object)
+  // Map: material identifier -> device index -> descriptor set layout
+  std::map<std::string, std::vector<vk::raii::DescriptorSetLayout>>
+      materialDescriptorLayouts;
   std::vector<device::LogicalDevice *> logicalDevices;
 
   RotationMode rotationMode;

@@ -47,7 +47,8 @@ render::Material::~Material() {
 
 bool render::Material::create_pipeline(device::LogicalDevice *device,
                                        DeviceMaterialResources &resources,
-                                       const MaterialCreateInfo &createInfo) {
+                                       const MaterialCreateInfo &createInfo,
+                                       const vk::DescriptorSetLayout *descriptorLayout) {
   try {
     // Get shader stage infos from the Shader object
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStages;
@@ -67,25 +68,10 @@ bool render::Material::create_pipeline(device::LogicalDevice *device,
       return false;
     }
 
-    // Create descriptor set layout if needed
-    if (!createInfo.descriptorBindings.empty()) {
-      vk::DescriptorSetLayoutCreateInfo layoutInfo{
-          .bindingCount =
-              static_cast<uint32_t>(createInfo.descriptorBindings.size()),
-          .pBindings = createInfo.descriptorBindings.data()};
-      resources.descriptorLayout =
-          device->get_device().createDescriptorSetLayout(layoutInfo);
-    } else {
-      // Create empty descriptor layout if no bindings
-      vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-      resources.descriptorLayout =
-          device->get_device().createDescriptorSetLayout(layoutInfo);
-    }
-
-    // Create pipeline layout
+    // Create pipeline layout using the provided descriptor set layout
     vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
-        .setLayoutCount = 1,
-        .pSetLayouts = &*resources.descriptorLayout,
+        .setLayoutCount = descriptorLayout ? 1u : 0u,
+        .pSetLayouts = descriptorLayout,
         .pushConstantRangeCount = 0};
 
     resources.pipelineLayout =
@@ -167,8 +153,22 @@ bool render::Material::initialize() {
 
     device->submit_task([this, device, &resources, promise]() {
       try {
-        // Create pipeline for this device
-        promise->set_value(create_pipeline(device, resources, createInfo));
+        // Create a temporary descriptor set layout for pipeline creation
+        vk::raii::DescriptorSetLayout tempLayout{nullptr};
+        const vk::DescriptorSetLayout *layoutPtr = nullptr;
+
+        if (!createInfo.descriptorBindings.empty()) {
+          vk::DescriptorSetLayoutCreateInfo layoutInfo{
+              .bindingCount =
+                  static_cast<uint32_t>(createInfo.descriptorBindings.size()),
+              .pBindings = createInfo.descriptorBindings.data()};
+          tempLayout =
+              device->get_device().createDescriptorSetLayout(layoutInfo);
+          layoutPtr = &*tempLayout;
+        }
+
+        promise->set_value(
+            create_pipeline(device, resources, createInfo, layoutPtr));
       } catch (const std::exception &e) {
         std::print(stderr, "Material - {} - pipeline creation failed: {}\n",
                    identifier, e.what());
@@ -273,9 +273,9 @@ render::Material::get_pipeline_layout(uint32_t deviceIndex) {
   return deviceResources[deviceIndex]->pipelineLayout;
 }
 
-vk::raii::DescriptorSetLayout &
-render::Material::get_descriptor_set_layout(uint32_t deviceIndex) {
-  return deviceResources[deviceIndex]->descriptorLayout;
+const std::vector<vk::DescriptorSetLayoutBinding> &
+render::Material::get_descriptor_bindings() const {
+  return createInfo.descriptorBindings;
 }
 
 const std::string &render::Material::get_identifier() const {

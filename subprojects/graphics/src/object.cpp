@@ -328,6 +328,29 @@ void render::Object::create_descriptor_sets_for_material(
 
   std::print("Creating descriptor sets for material '{}'\n", matIdentifier);
 
+  // Create descriptor set layouts for each device
+  const auto &bindings = mat->get_descriptor_bindings();
+  std::vector<vk::raii::DescriptorSetLayout> layoutsForMaterial;
+  layoutsForMaterial.reserve(logicalDevices.size());
+
+  for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
+    auto *device = logicalDevices[deviceIdx];
+
+    if (!bindings.empty()) {
+      vk::DescriptorSetLayoutCreateInfo layoutInfo{
+          .bindingCount = static_cast<uint32_t>(bindings.size()),
+          .pBindings = bindings.data()};
+      layoutsForMaterial.emplace_back(
+          device->get_device().createDescriptorSetLayout(layoutInfo));
+    } else {
+      vk::DescriptorSetLayoutCreateInfo layoutInfo{};
+      layoutsForMaterial.emplace_back(
+          device->get_device().createDescriptorSetLayout(layoutInfo));
+    }
+  }
+
+  materialDescriptorLayouts[matIdentifier] = std::move(layoutsForMaterial);
+
   // Create descriptor sets for each device
   std::vector<vk::raii::DescriptorSets> descriptorSetsForMaterial;
   descriptorSetsForMaterial.reserve(logicalDevices.size());
@@ -335,9 +358,9 @@ void render::Object::create_descriptor_sets_for_material(
   for (size_t deviceIdx = 0; deviceIdx < logicalDevices.size(); ++deviceIdx) {
     auto *device = logicalDevices[deviceIdx];
 
-    // Get descriptor set layout from material
+    // Get descriptor set layout from this object's layouts
     const vk::DescriptorSetLayout &layout =
-        *mat->get_descriptor_set_layout(deviceIdx);
+        *materialDescriptorLayouts[matIdentifier][deviceIdx];
 
     // Allocate descriptor sets (one per frame)
     uint32_t maxFrames = general::Config::get_instance().get_max_frames();
