@@ -57,16 +57,57 @@ struct DEVICE_API ImageTransform {
 };
 
 /**
+ * @brief Describes a single layer within a TextureTag
+ *
+ * Binds an ImageTag with its default transform at tag definition time.
+ */
+struct DEVICE_API TextureLayerInfo {
+  const ImageTag *imageTag = nullptr;
+  ImageTransform defaultTransform;
+
+  constexpr TextureLayerInfo() = default;
+  constexpr TextureLayerInfo(const ImageTag *img)
+      : imageTag(img) {}
+  constexpr TextureLayerInfo(const ImageTag *img,
+                             const ImageTransform &transform)
+      : imageTag(img), defaultTransform(transform) {}
+};
+
+/**
  * @brief Tag for identifying textures in the resource system
  *
  * A texture tag describes a single or multi-layer texture composition.
+ * It can embed pointers to ImageTags and default transforms for each layer,
+ * providing a complete description of the texture's contents at tag
+ * definition time.
+ *
+ * Example:
+ * @code
+ *   static constexpr ImageTag GRASS_IMAGE{"grass", "textures/grass.png"};
+ *   static constexpr ImageTag MOSS_IMAGE{"moss", "textures/moss.png"};
+ *
+ *   // Layers defined at tag level
+ *   static const TextureLayerInfo TERRAIN_LAYERS[] = {
+ *     {&GRASS_IMAGE},
+ *     {&MOSS_IMAGE},
+ *   };
+ *
+ *   static const TextureTag TERRAIN_TEXTURE{
+ *     "terrain", TERRAIN_LAYERS, 2
+ *   };
+ * @endcode
  */
 struct DEVICE_API TextureTag {
   const char *name;
-  uint32_t layerCount = 1;
+  const TextureLayerInfo *layers = nullptr; // Pointer to array of layer infos
+  uint32_t layerCount = 0;
 
-  constexpr TextureTag(const char *n, uint32_t layers = 1)
-      : name(n), layerCount(layers) {}
+  constexpr TextureTag(const char *n, uint32_t count = 0)
+      : name(n), layerCount(count) {}
+
+  constexpr TextureTag(const char *n, const TextureLayerInfo *layerInfos,
+                       uint32_t count)
+      : name(n), layers(layerInfos), layerCount(count) {}
 };
 
 /**

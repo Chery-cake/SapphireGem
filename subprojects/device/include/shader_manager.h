@@ -7,11 +7,9 @@
 #include "vulkan/vulkan_raii.hpp"
 #include "vulkan_device.h"
 #include <cstdint>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 
 namespace device {
 
@@ -116,27 +114,6 @@ struct DEVICE_API ShaderProgram {
 };
 
 /**
- * @brief Shader compilation request
- */
-struct DEVICE_API ShaderCompileRequest {
-  std::string sourcePath;                // Path to .slang file
-  std::string entryPoint;                // Entry point function name
-  ShaderStage stage;                     // Target shader stage
-  std::vector<std::string> defines;      // Preprocessor defines
-  std::vector<std::string> includePaths; // Include search paths
-};
-
-/**
- * @brief Result of shader compilation
- */
-struct DEVICE_API ShaderCompileResult {
-  bool success = false;
-  std::string errorMessage;
-  std::vector<uint32_t> spirvCode; // Compiled SPIR-V bytecode
-  std::string sourceHash;
-};
-
-/**
  * @brief Manages Slang shader compilation at runtime using the tag system
  *
  * Features:
@@ -222,108 +199,52 @@ public:
     return shaderRegistry_;
   }
 
-  // ========== Legacy string-key based interface ==========
+  /**
+   * @brief Clear all compiled shaders from the registry
+   */
+  void clearCache();
+
+private:
+  bool initializeSlang();
+  void shutdownSlang();
+
+  // ========== Internal compilation helpers ==========
 
   /**
-   * @brief Compile a shader synchronously
+   * @brief Shader compilation request (internal)
+   */
+  struct ShaderCompileRequest {
+    std::string sourcePath;                // Path to .slang file
+    std::string entryPoint;                // Entry point function name
+    ShaderStage stage;                     // Target shader stage
+    std::vector<std::string> defines;      // Preprocessor defines
+    std::vector<std::string> includePaths; // Include search paths
+  };
+
+  /**
+   * @brief Result of shader compilation (internal)
+   */
+  struct ShaderCompileResult {
+    bool success = false;
+    std::string errorMessage;
+    std::vector<uint32_t> spirvCode; // Compiled SPIR-V bytecode
+    std::string sourceHash;
+  };
+
+  /**
+   * @brief Compile a shader from a request (internal)
    * @param request Compilation request
    * @return Compilation result
    */
   ShaderCompileResult compile(const ShaderCompileRequest &request);
 
   /**
-   * @brief Compile a shader asynchronously using thread pool
-   * @param request Compilation request
-   * @return Future with compilation result
-   */
-  std::future<ShaderCompileResult>
-  compileAsync(const ShaderCompileRequest &request);
-
-  /**
-   * @brief Compile multiple shaders in parallel
-   * @param requests Vector of compilation requests
-   * @return Vector of compilation results
-   */
-  std::vector<ShaderCompileResult>
-  compileBatch(const std::vector<ShaderCompileRequest> &requests);
-
-  /**
-   * @brief Load and compile a shader, caching the result
-   * @param sourcePath Path to .slang file
-   * @param entryPoint Entry point function name
-   * @param stage Shader stage
-   * @return Pointer to compiled shader, or nullptr on failure
-   */
-  CompiledShader *loadShader(const std::string &sourcePath,
-                             const std::string &entryPoint, ShaderStage stage);
-
-  /**
-   * @brief Get a previously loaded shader
-   * @param key Cache key (sourcePath + entryPoint + stage)
-   * @return Pointer to shader, or nullptr if not found
-   */
-  CompiledShader *getShader(const std::string &key);
-
-  /**
-   * @brief Check if a shader needs recompilation (source changed)
-   * @param key Cache key
-   * @return true if shader needs recompilation
-   */
-  bool needsRecompilation(const std::string &key);
-
-  /**
-   * @brief Reload a shader if source has changed
-   * @param key Cache key
-   * @return true if shader was reloaded
-   */
-  bool reloadIfNeeded(const std::string &key);
-
-  /**
-   * @brief Reload all shaders that have changed
-   * @return Number of shaders reloaded
-   */
-  uint32_t reloadAllChanged();
-
-  /**
-   * @brief Clear shader cache (both tag-based registry and legacy string-key cache)
-   */
-  void clearCache();
-
-  /**
-   * @brief Destroy a specific shader from cache
-   * @param key Cache key
-   * @return true if shader was destroyed
-   */
-  bool destroyShader(const std::string &key);
-
-  /**
-   * @brief Get list of all cached shader keys
-   * @return Vector of cache keys
-   */
-  [[nodiscard]] std::vector<std::string> getCachedShaderKeys() const;
-
-  /**
-   * @brief Create a shader module from SPIR-V code
+   * @brief Create a Vulkan shader module from SPIR-V code (internal)
    * @param spirvCode SPIR-V bytecode
    * @return Vulkan shader module
    */
   vk::raii::ShaderModule
   createShaderModule(const std::vector<uint32_t> &spirvCode);
-
-  /**
-   * @brief Generate cache key from shader parameters
-   * @param sourcePath Source file path
-   * @param entryPoint Entry point name
-   * @param stage Shader stage
-   * @return Cache key string
-   */
-  static std::string generateCacheKey(const std::string &sourcePath,
-                                      const std::string &entryPoint,
-                                      ShaderStage stage);
-
-private:
-  bool initializeSlang();
-  void shutdownSlang();
 
   // Compile a single stage for a shader program
   std::unique_ptr<CompiledShader> compileStage(const std::string &sourcePath,
@@ -335,7 +256,6 @@ private:
   mutable std::mutex slangMutex_;
 
   static std::string computeFileHash(const std::string &filePath);
-  static std::string stageToSlangTarget(ShaderStage stage);
   static SlangStage stageToSlangStage(ShaderStage stage);
 
   // Use opaque pointer pattern (PIMPL) for Slang types
@@ -348,10 +268,6 @@ private:
 
   // Tag-based shader registry
   core::ResourceRegistry<ShaderTag, ShaderProgram> shaderRegistry_;
-
-  // Legacy string-key cache (kept for backward compatibility)
-  std::unordered_map<std::string, std::unique_ptr<CompiledShader>> shaderCache_;
-  mutable std::mutex cacheMutex_;
 
   bool initialized_ = false;
 };

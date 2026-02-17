@@ -5,7 +5,17 @@ namespace device {
 
 Texture::Texture(const TextureTag &tag)
     : name_(tag.name) {
-  layers_.reserve(tag.layerCount);
+  layers_.reserve(tag.layerCount > 0 ? tag.layerCount : 1);
+
+  // Auto-populate layers from tag's embedded layer info
+  if (tag.layers && tag.layerCount > 0) {
+    for (uint32_t i = 0; i < tag.layerCount; ++i) {
+      TextureLayer layer;
+      layer.imageTag = tag.layers[i].imageTag;
+      layer.transform = tag.layers[i].defaultTransform;
+      layers_.push_back(std::move(layer));
+    }
+  }
 }
 
 Texture::~Texture() { release(); }
