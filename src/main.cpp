@@ -1,3 +1,5 @@
+#include "material.h"
+#include "object.h"
 #include "renderer.h"
 #include "shader_manager.h"
 #include "swapchain.h"
@@ -8,6 +10,7 @@
 #include "window.h"
 #include <chrono>
 #include <cstdlib>
+#include <memory>
 #include <stop_token>
 #ifdef ENGINE_DEBUG
 #include "core_export_struct.h"
@@ -15,6 +18,26 @@
 #endif
 #include <print>
 #include <thread>
+
+// ============================================================================
+// Static shader, material, and object tags (must have static storage duration)
+// ============================================================================
+
+// Shader tags for the triangle shader program
+static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
+    "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
+
+// Material tags (one per window/object)
+static constexpr window::MaterialTag MATERIAL_WIN1_TAG{"material_win1",
+                                                       &TRIANGLE_SHADER_TAG};
+static constexpr window::MaterialTag MATERIAL_WIN2_TAG{"material_win2",
+                                                       &TRIANGLE_SHADER_TAG};
+
+// Object tags (2D for window 1, 3D for window 2)
+static constexpr window::ObjectTag OBJECT_WIN1_TAG{"object_win1",
+                                                   &MATERIAL_WIN1_TAG, 2};
+static constexpr window::ObjectTag OBJECT_WIN2_TAG{"object_win2",
+                                                   &MATERIAL_WIN2_TAG, 3};
 
 int main(int argc, char *argv[]) {
 
@@ -284,22 +307,77 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
-  // Initialize shader manager and compile triangle shaders
+  // Initialize shader manager
   device::ShaderManager sMan;
   sMan.initialize(dMan.getPrimaryDevice());
 
-  // Compile the triangle shader (vertex, geometry, fragment)
-  device::CompiledShader *vertShader = sMan.loadShader(
-      "triangle.slang", "vertMain", device::ShaderStage::Vertex);
-  device::CompiledShader *geomShader = sMan.loadShader(
-      "triangle.slang", "geomMain", device::ShaderStage::Geometry);
-  device::CompiledShader *fragShader = sMan.loadShader(
-      "triangle.slang", "fragMain", device::ShaderStage::Fragment);
-
-  if (vertShader && geomShader && fragShader) {
-    std::print("[Main] Triangle shaders compiled successfully\n");
+  // Acquire the triangle shader program using the tag system
+  // The shader is compiled when acquired, and shared across materials
+  device::ShaderProgram *triangleProgram = sMan.acquire(&TRIANGLE_SHADER_TAG);
+  if (triangleProgram && triangleProgram->compiled) {
+    std::print("[Main] Triangle shader program acquired successfully\n");
   } else {
-    std::print(stderr, "[Main] Failed to compile triangle shaders\n");
+    std::print(stderr, "[Main] Failed to acquire triangle shader program\n");
+  }
+
+  // Create materials using the tag system
+  // Both materials share the same shader (saving memory) but are independent
+  auto material1 = std::make_unique<window::Material>(MATERIAL_WIN1_TAG);
+  auto material2 = std::make_unique<window::Material>(MATERIAL_WIN2_TAG);
+
+  // Initialize materials if renderers are available
+  if (win1 && win1->hasRenderer()) {
+    window::PipelineConfig pConfig1;
+    pConfig1.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig1.cullMode = vk::CullModeFlagBits::eNone;
+    pConfig1.depthTestEnable = false;
+
+    if (material1->initialize(sMan, dMan.getPrimaryDevice(),
+                              win1->getRenderer()->getRenderPass(), pConfig1)) {
+      std::print("[Main] Material 1 initialized\n");
+    }
+  }
+
+  if (win2 && win2->hasRenderer()) {
+    window::PipelineConfig pConfig2;
+    pConfig2.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig2.cullMode = vk::CullModeFlagBits::eNone;
+    pConfig2.depthTestEnable = false;
+
+    if (material2->initialize(sMan, dMan.getPrimaryDevice(),
+                              win2->getRenderer()->getRenderPass(), pConfig2)) {
+      std::print("[Main] Material 2 initialized\n");
+    }
+  }
+
+  // Create objects using the tag system
+  // Window 1: 2D object (rotation only around Z axis)
+  auto object1 = std::make_unique<window::Object2D>(OBJECT_WIN1_TAG);
+  window::Transform2D t2d;
+  t2d.positionX = 0.0f;
+  t2d.positionY = 0.0f;
+  t2d.rotation = 0.0f;
+  object1->setTransform(t2d);
+
+  // Window 2: 3D object (full 3D rotation)
+  auto object2 = std::make_unique<window::Object3D>(OBJECT_WIN2_TAG);
+  window::Transform3D t3d;
+  t3d.positionX = 0.0f;
+  t3d.positionY = 0.0f;
+  t3d.positionZ = 0.0f;
+  object2->setTransform(t3d);
+
+  // Initialize object descriptor sets and uniform buffers
+  if (win1 && material1->isInitialized()) {
+    object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                        material1->getDescriptorSetLayout(),
+                        window::MAX_FRAMES_IN_FLIGHT);
+  }
+
+  if (win2 && material2->isInitialized()) {
+    object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                        material2->getDescriptorSetLayout(),
+                        window::MAX_FRAMES_IN_FLIGHT);
   }
 
   int frame = 0;

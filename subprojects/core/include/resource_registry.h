@@ -89,11 +89,11 @@ namespace core {
 template <typename Tag, typename Asset> class CORE_API ResourceRegistry {
 private:
   // Callback type
-  using Callback = std::function<void(const Tag *, Asset *)>;
+  using AssetCallback = std::function<void(const Tag *, Asset *)>;
 
   std::unordered_map<const Tag *, std::unique_ptr<Asset>> assets_;
-  std::vector<Callback> addCallbacks_;
-  std::vector<Callback> removeCallbacks_;
+  std::vector<AssetCallback> addCallbacks_;
+  std::vector<AssetCallback> removeCallbacks_;
   mutable std::mutex mutex_;
 
 public:
@@ -331,7 +331,7 @@ public:
 
     for (const Entry &entry : entries) {
       for (const auto &callback : removeCallbacks_) {
-        callback(entry.tag, entry.tag);
+        callback(entry.tag, entry.asset);
       }
     }
   }
@@ -358,7 +358,7 @@ public:
    * @brief Register a callback for when assets are added
    * @param callback Function to call: void(const Tag*, Asset*)
    */
-  void onAdd(Callback callback) {
+  void onAdd(AssetCallback callback) {
     std::lock_guard<std::mutex> lock(mutex_);
     addCallbacks_.push_back(std::move(callback));
   }
@@ -367,7 +367,7 @@ public:
    * @brief Register a callback for when assets are removed
    * @param callback Function to call: void(const Tag*)
    */
-  void onRemove(Callback callback) {
+  void onRemove(AssetCallback callback) {
     std::lock_guard<std::mutex> lock(mutex_);
     removeCallbacks_.push_back(std::move(callback));
   }

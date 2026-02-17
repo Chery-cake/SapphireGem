@@ -196,25 +196,6 @@ std::string ShaderManager::computeFileHash(const std::string &filePath) {
   return ss.str();
 }
 
-std::string ShaderManager::stageToSlangTarget(ShaderStage stage) {
-  switch (stage) {
-  case ShaderStage::Vertex:
-    return "vertex";
-  case ShaderStage::Fragment:
-    return "fragment";
-  case ShaderStage::Geometry:
-    return "geometry";
-  case ShaderStage::TessellationControl:
-    return "hull";
-  case ShaderStage::TessellationEvaluation:
-    return "domain";
-  case ShaderStage::Compute:
-    return "compute";
-  default:
-    return "vertex";
-  }
-}
-
 SlangStage ShaderManager::stageToSlangStage(ShaderStage stage) {
   switch (stage) {
   case ShaderStage::Vertex:
@@ -234,7 +215,7 @@ SlangStage ShaderManager::stageToSlangStage(ShaderStage stage) {
   }
 }
 
-ShaderCompileResult
+ShaderManager::ShaderCompileResult
 ShaderManager::compile(const ShaderCompileRequest &request) {
   ShaderCompileResult result;
   result.success = false;
@@ -386,48 +367,119 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   return result;
 }
 
-std::future<ShaderCompileResult>
-ShaderManager::compileAsync(const ShaderCompileRequest &request) {
-  // Try to use worker thread pool for async compilation
-  if (core::ThreadManager::instance().hasPool("worker")) {
-    return core::ThreadManager::instance().submitTo(
-        "worker", [this, request]() { return compile(request); });
+// ============================================================================
+// Tag-based shader management
+// ============================================================================
+
+ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
+  if (!initialized_ || !tag) {
+    return nullptr;
   }
-  std::println(
-      stderr,
-      "[ShaderManager] There's no \"worker\" pool in the ThreadManager");
-  // Fall back to std::async
-  return std::async(std::launch::async,
-                    [this, request]() { return compile(request); });
+
+  // Check if already in registry
+  if (auto *program = shaderRegistry_.get(tag)) {
+    program->refCount++;
+    return program;
+  }
+
+  // Compile all stages specified in the tag
+  auto program = std::make_unique<ShaderProgram>(*tag);
+
+  if (tag->vertexEntry) {
+    program->vertex =
+        compileStage(tag->sourcePath, tag->vertexEntry, ShaderStage::Vertex);
+  }
+  if (tag->fragmentEntry) {
+    program->fragment = compileStage(tag->sourcePath, tag->fragmentEntry,
+                                     ShaderStage::Fragment);
+  }
+  if (tag->geometryEntry) {
+    program->geometry = compileStage(tag->sourcePath, tag->geometryEntry,
+                                     ShaderStage::Geometry);
+  }
+  if (tag->computeEntry) {
+    program->compute =
+        compileStage(tag->sourcePath, tag->computeEntry, ShaderStage::Compute);
+  }
+  if (tag->tessCtrlEntry) {
+    program->tessControl = compileStage(tag->sourcePath, tag->tessCtrlEntry,
+                                        ShaderStage::TessellationControl);
+  }
+  if (tag->tessEvalEntry) {
+    program->tessEval = compileStage(tag->sourcePath, tag->tessEvalEntry,
+                                     ShaderStage::TessellationEvaluation);
+  }
+
+  program->refCount = 1;
+  program->compiled = true;
+
+  ShaderProgram *ptr = program.get();
+  shaderRegistry_.add(tag, std::move(program));
+
+  std::println("[ShaderManager] Acquired shader program: {}", tag->name);
+  return ptr;
 }
 
-std::vector<ShaderCompileResult>
-ShaderManager::compileBatch(const std::vector<ShaderCompileRequest> &requests) {
-  std::vector<ShaderCompileResult> results;
-  results.reserve(requests.size());
-
-  // Use thread pool for parallel compilation if available
-  if (requests.size() > 1 &&
-      core::ThreadManager::instance().hasPool("worker")) {
-    BS::multi_future<ShaderCompileResult> futures;
-    futures.reserve(requests.size());
-
-    for (const auto &request : requests) {
-      futures.push_back(compileAsync(request));
-    }
-
-    results.append_range(futures.get());
-  } else {
-    std::println(
-        stderr,
-        "[ShaderManager] There's no \"worker\" pool in the ThreadManager");
-    // Compile sequentially
-    for (const auto &request : requests) {
-      results.push_back(compile(request));
-    }
+void ShaderManager::release(const ShaderTag *tag) {
+  if (!tag) {
+    return;
   }
 
-  return results;
+  auto *program = shaderRegistry_.get(tag);
+  if (!program) {
+    return;
+  }
+
+  if (program->refCount > 0) {
+    program->refCount--;
+  }
+
+  // When no longer in use, discard to free memory
+  if (program->refCount == 0) {
+    std::println("[ShaderManager] Releasing unused shader program: {}",
+                 tag->name);
+    shaderRegistry_.remove(tag);
+  }
+}
+
+ShaderProgram *ShaderManager::getProgram(const ShaderTag *tag) {
+  if (!tag) {
+    return nullptr;
+  }
+  return shaderRegistry_.get(tag);
+}
+
+std::unique_ptr<CompiledShader>
+ShaderManager::compileStage(const std::string &sourcePath,
+                            const std::string &entryPoint, ShaderStage stage) {
+  ShaderCompileRequest request;
+  request.sourcePath = sourcePath;
+  request.entryPoint = entryPoint;
+  request.stage = stage;
+
+  auto result = compile(request);
+  if (!result.success) {
+    std::println(stderr, "[ShaderManager] Failed to compile stage {}:{} - {}",
+                 sourcePath, entryPoint, result.errorMessage);
+    return nullptr;
+  }
+
+  // Create shader module
+  auto module = createShaderModule(result.spirvCode);
+  if (module == nullptr) {
+    return nullptr;
+  }
+
+  // Create and cache compiled shader
+  auto shader = std::make_unique<CompiledShader>();
+  shader->module = std::move(module);
+  shader->stage = stage;
+  shader->entryPoint = entryPoint;
+  shader->sourcePath = sourcePath;
+  shader->sourceHash = result.sourceHash;
+  shader->isValid = true;
+
+  return shader;
 }
 
 vk::raii::ShaderModule
@@ -448,148 +500,6 @@ ShaderManager::createShaderModule(const std::vector<uint32_t> &spirvCode) {
   }
 }
 
-std::string ShaderManager::generateCacheKey(const std::string &sourcePath,
-                                            const std::string &entryPoint,
-                                            ShaderStage stage) {
-  return sourcePath + ":" + entryPoint + ":" +
-         std::to_string(static_cast<int>(stage));
-}
-
-CompiledShader *ShaderManager::loadShader(const std::string &sourcePath,
-                                          const std::string &entryPoint,
-                                          ShaderStage stage) {
-  std::string key = generateCacheKey(sourcePath, entryPoint, stage);
-
-  // Check cache first
-  {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    auto it = shaderCache_.find(key);
-    if (it != shaderCache_.end() && it->second->isValid) {
-      return it->second.get();
-    }
-  }
-
-  // Compile shader
-  ShaderCompileRequest request;
-  request.sourcePath = sourcePath;
-  request.entryPoint = entryPoint;
-  request.stage = stage;
-
-  auto result = compile(request);
-  if (!result.success) {
-    std::println(stderr, "[ShaderManager] Failed to compile {}:{} - {}",
-                 sourcePath, entryPoint, result.errorMessage);
-    return nullptr;
-  }
-
-  // Create shader module
-  auto module = createShaderModule(result.spirvCode);
-  if (module == nullptr) {
-    return nullptr;
-  }
-
-  // Create and cache compiled shader
-  auto shader = std::make_unique<CompiledShader>();
-  shader->module = std::move(module);
-  shader->stage = stage;
-  shader->entryPoint = entryPoint;
-  shader->sourcePath = sourcePath;
-  shader->sourceHash = result.sourceHash;
-  shader->isValid = true;
-
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-  auto [it, inserted] = shaderCache_.try_emplace(key, std::move(shader));
-  return it->second.get();
-}
-
-CompiledShader *ShaderManager::getShader(const std::string &key) {
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-  auto it = shaderCache_.find(key);
-  return (it != shaderCache_.end()) ? it->second.get() : nullptr;
-}
-
-bool ShaderManager::needsRecompilation(const std::string &key) {
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-  auto it = shaderCache_.find(key);
-  if (it == shaderCache_.end()) {
-    return true;
-  }
-
-  // Check if source file has changed
-  std::string fullPath = it->second->sourcePath;
-  if (!std::filesystem::path(fullPath).is_absolute()) {
-    fullPath = shaderBasePath_ + "/" + it->second->sourcePath;
-  }
-
-  std::string currentHash = computeFileHash(fullPath);
-  return currentHash != it->second->sourceHash;
-}
-
-bool ShaderManager::reloadIfNeeded(const std::string &key) {
-  if (!needsRecompilation(key)) {
-    return false;
-  }
-
-  std::string sourcePath, entryPoint;
-  ShaderStage stage;
-
-  {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    auto it = shaderCache_.find(key);
-    if (it == shaderCache_.end()) {
-      return false;
-    }
-    sourcePath = it->second->sourcePath;
-    entryPoint = it->second->entryPoint;
-    stage = it->second->stage;
-  }
-
-  // Destroy old shader and reload
-  destroyShader(key);
-  auto *newShader = loadShader(sourcePath, entryPoint, stage);
-  return newShader != nullptr && newShader->isValid;
-}
-
-uint32_t ShaderManager::reloadAllChanged() {
-  uint32_t reloadCount = 0;
-
-  std::vector<std::string> keys;
-  {
-    std::lock_guard<std::mutex> lock(cacheMutex_);
-    keys.reserve(shaderCache_.size());
-    for (const auto &[key, _] : shaderCache_) {
-      keys.push_back(key);
-    }
-  }
-
-  for (const auto &key : keys) {
-    if (reloadIfNeeded(key)) {
-      reloadCount++;
-    }
-  }
-
-  return reloadCount;
-}
-
-void ShaderManager::clearCache() {
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-  shaderCache_.clear();
-}
-
-bool ShaderManager::destroyShader(const std::string &key) {
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-  return shaderCache_.erase(key) > 0;
-}
-
-std::vector<std::string> ShaderManager::getCachedShaderKeys() const {
-  std::lock_guard<std::mutex> lock(cacheMutex_);
-
-  std::vector<std::string> keys;
-  keys.reserve(shaderCache_.size());
-  for (const auto &pair : shaderCache_) {
-    keys.push_back(pair.first);
-  }
-  return keys;
-}
+void ShaderManager::clearCache() { shaderRegistry_.clear(); }
 
 } // namespace device
