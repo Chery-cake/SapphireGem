@@ -1,8 +1,11 @@
 #ifndef OBJECT_H_
 #define OBJECT_H_
 
+#include "material.h"
+#include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
+#include "vulkan_device.h"
 #include "window_export.h"
 #include <cstdint>
 #include <memory>
@@ -12,19 +15,7 @@
 
 #include <glm/glm.hpp>
 
-// Forward declarations
-namespace device {
-class GPUDevice;
-class VMAAllocator;
-struct AllocatedBuffer;
-} // namespace device
-
 namespace window {
-
-// Forward declarations
-class Material;
-struct MaterialTag;
-struct TextureTag;
 
 /**
  * @brief Tag for identifying objects in the resource system

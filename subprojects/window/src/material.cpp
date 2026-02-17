@@ -2,6 +2,7 @@
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
+#include "vulkan_device.h"
 #include <mutex>
 #include <print>
 
