@@ -762,7 +762,7 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
       commandBuffer.drawIndexed(indicesPerFace, 1, faceIndexStart, 0, 0);
     }
   } else {
-    // Single material mode (backward compatibility)
+    // Single material mode
     if (!material) {
       std::print("Warning: Cannot draw object '{}' - no material assigned\n",
                  identifier);

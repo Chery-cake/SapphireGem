@@ -7,10 +7,9 @@ namespace render {
 // Strongly-typed enum for material identifiers
 // Prevents typos and provides compile-time safety
 enum class MaterialId {
-  SIMPLE_SHADERS,             // Basic 3D colored material (was "Test")
-  SIMPLE_SHADERS_2D,          // Basic 2D colored material (was "Test2D")
-  SIMPLE_SHADERS_3D_TEXTURED, // Basic 3D textured material (was
-                              // "Test3DTextured")
+  SIMPLE_SHADERS,             // Basic 3D colored material
+  SIMPLE_SHADERS_2D,          // Basic 2D colored material
+  SIMPLE_SHADERS_3D_TEXTURED, // Basic 3D textured material
   TEXTURED,                   // Generic textured material
   TEXTURED_CHECKERBOARD,      // Checkerboard texture material
   TEXTURED_GRADIENT,          // Gradient texture material
@@ -80,10 +79,6 @@ enum class TextureId {
 // Helper functions to convert enums to strings
 std::string to_string(MaterialId id);
 std::string to_string(TextureId id);
-
-// Helper functions to convert strings to enums (for backward compatibility)
-MaterialId material_id_from_string(const std::string &str);
-TextureId texture_id_from_string(const std::string &str);
 
 // Helper function to check if a material needs per-object UBO
 // Returns true for materials that require separate transform buffers per object

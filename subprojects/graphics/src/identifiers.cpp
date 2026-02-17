@@ -123,50 +123,6 @@ std::string to_string(TextureId id) {
   }
 }
 
-MaterialId material_id_from_string(const std::string &str) {
-  if (str == "simple_shaders" || str == "Test")
-    return MaterialId::SIMPLE_SHADERS;
-  if (str == "simple_shaders_2d" || str == "Test2D")
-    return MaterialId::SIMPLE_SHADERS_2D;
-  if (str == "simple_shaders_3d_textured" || str == "Test3DTextured")
-    return MaterialId::SIMPLE_SHADERS_3D_TEXTURED;
-  if (str == "Textured")
-    return MaterialId::TEXTURED;
-  if (str == "Textured_checkerboard")
-    return MaterialId::TEXTURED_CHECKERBOARD;
-  if (str == "Textured_gradient")
-    return MaterialId::TEXTURED_GRADIENT;
-  if (str == "Textured_atlas")
-    return MaterialId::TEXTURED_ATLAS;
-  if (str == "Textured3D_checkerboard")
-    return MaterialId::TEXTURED_3D_CHECKERBOARD;
-  if (str == "Textured3D_gradient")
-    return MaterialId::TEXTURED_3D_GRADIENT;
-  if (str == "Textured3D_atlas")
-    return MaterialId::TEXTURED_3D_ATLAS;
-
-  throw std::runtime_error("Unknown material identifier: " + str);
-}
-
-TextureId texture_id_from_string(const std::string &str) {
-  if (str == "checkerboard")
-    return TextureId::CHECKERBOARD;
-  if (str == "gradient")
-    return TextureId::GRADIENT;
-  if (str == "atlas")
-    return TextureId::ATLAS;
-  if (str == "atlas_0_0")
-    return TextureId::ATLAS_0_0;
-  if (str == "atlas_0_1")
-    return TextureId::ATLAS_0_1;
-  if (str == "atlas_1_0")
-    return TextureId::ATLAS_1_0;
-  if (str == "atlas_1_1")
-    return TextureId::ATLAS_1_1;
-
-  throw std::runtime_error("Unknown texture identifier: " + str);
-}
-
 bool material_needs_per_object_ubo(const std::string &materialIdentifier) {
   // Materials that need per-object UBOs are those with transform uniforms
   // This includes all materials in our current system except for potential
