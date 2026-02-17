@@ -5,7 +5,9 @@
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
+#include "vulkan_device.h"
 #include "window_export.h"
+#include <array>
 #include <cstdint>
 #include <gbm.h>
 #include <memory>
@@ -27,37 +29,14 @@ struct WINDOW_API ObjectTag {
 };
 
 /**
- * @brief Transform data for a 1D object (position only on a line)
+ * @brief Transform data define dimension with template (position, rotation,
+ * scale)
+ * 0-x 1-y 2-z ...
  */
-struct WINDOW_API Transform1D {
-  float position = 0.0f;
-  float scale = 1.0f;
-};
-
-/**
- * @brief Transform data for a 2D object (position, rotation around Z, scale)
- */
-struct WINDOW_API Transform2D {
-  float positionX = 0.0f;
-  float positionY = 0.0f;
-  float rotation = 0.0f; // Rotation in radians (around Z axis only)
-  float scaleX = 1.0f;
-  float scaleY = 1.0f;
-};
-
-/**
- * @brief Transform data for a 3D object (full position, rotation, scale)
- */
-struct WINDOW_API Transform3D {
-  float positionX = 0.0f;
-  float positionY = 0.0f;
-  float positionZ = 0.0f;
-  float rotationX = 0.0f; // Euler angles in radians
-  float rotationY = 0.0f;
-  float rotationZ = 0.0f;
-  float scaleX = 1.0f;
-  float scaleY = 1.0f;
-  float scaleZ = 1.0f;
+template <uint32_t Dim> struct WINDOW_API Transform {
+  std::array<float, Dim> position;
+  std::array<float, Dim> rotation;
+  std::array<float, Dim> scale;
 };
 
 /**
@@ -68,29 +47,6 @@ struct WINDOW_API UniformBufferData {
   float model[16];
   float view[16];
   float proj[16];
-};
-
-/**
- * @brief Selects the appropriate transform type for a given dimension
- */
-template <uint32_t Dim> struct TransformSelector;
-
-template <> struct TransformSelector<1> {
-  using type = Transform1D;
-};
-template <> struct TransformSelector<2> {
-  using type = Transform2D;
-};
-template <> struct TransformSelector<3> {
-  using type = Transform3D;
-};
-
-// For dimensions > 3, use 3D transform as the base
-template <uint32_t Dim>
-  requires(Dim > 3)
-struct TransformSelector<Dim> { // TODO implement calculations to use higher
-                                // dimentions
-  using type = Transform3D;
 };
 
 /**
@@ -106,52 +62,20 @@ struct TransformSelector<Dim> { // TODO implement calculations to use higher
  *
  * Thread-safe: all mutable operations are protected by mutex.
  */
-template <uint32_t Dim>
-  requires(Dim >= 1)
-class Object {
+template <uint32_t Dim> class Object {
 public:
-  using TransformType = typename TransformSelector<Dim>::type;
-
+  using TransformType = Transform<Dim>;
   static constexpr uint32_t DIMENSION = Dim;
 
-  explicit Object(const ObjectTag &tag)
-      : name_(tag.name), materialTag_(tag.materialTag) {}
+  explicit Object(const ObjectTag &tag);
 
-  ~Object() { release(); }
+  ~Object();
 
   // Disable copy, enable move
   Object(const Object &) = delete;
   Object &operator=(const Object &) = delete;
-
-  Object(Object &&other) noexcept {
-    std::lock_guard<std::mutex> lock(other.objectMutex_);
-    name_ = std::move(other.name_);
-    materialTag_ = other.materialTag_;
-    other.materialTag_ = nullptr;
-    transform_ = other.transform_;
-    uniformBuffers_ = std::move(other.uniformBuffers_);
-    descriptorPool_ = std::move(other.descriptorPool_);
-    descriptorSets_ = std::move(other.descriptorSets_);
-    initialized_ = other.initialized_;
-    other.initialized_ = false;
-  }
-
-  Object &operator=(Object &&other) noexcept {
-    if (this != &other) {
-      std::scoped_lock lock(objectMutex_, other.objectMutex_);
-      release();
-      name_ = std::move(other.name_);
-      materialTag_ = other.materialTag_;
-      other.materialTag_ = nullptr;
-      transform_ = other.transform_;
-      uniformBuffers_ = std::move(other.uniformBuffers_);
-      descriptorPool_ = std::move(other.descriptorPool_);
-      descriptorSets_ = std::move(other.descriptorSets_);
-      initialized_ = other.initialized_;
-      other.initialized_ = false;
-    }
-    return *this;
-  }
+  Object(Object &&other) noexcept;
+  Object &operator=(Object &&other) noexcept;
 
   /**
    * @brief Initialize descriptor sets and uniform buffers
@@ -164,87 +88,12 @@ public:
    */
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
                   vk::DescriptorSetLayout descriptorSetLayout,
-                  uint32_t framesInFlight) {
-    std::lock_guard<std::mutex> lock(objectMutex_);
-
-    if (initialized_) { // TODO see if need a warning print
-      return false;     // Already initialized - call release() first to
-                        // reinitialize
-    }
-
-    // Create uniform buffers (one per frame in flight)
-    uniformBuffers_.reserve(framesInFlight);
-    for (uint32_t i = 0; i < framesInFlight; ++i) {
-      auto ubo = allocator.createUniformBuffer(sizeof(UniformBufferData),
-                                               std::string(name_) + "_ubo_" +
-                                                   std::to_string(i));
-      if (!ubo.isValid()) {
-        return false;
-      }
-      uniformBuffers_.push_back(std::move(ubo));
-    }
-
-    // Create descriptor pool
-    vk::DescriptorPoolSize poolSize{vk::DescriptorType::eUniformBuffer,
-                                    framesInFlight};
-
-    vk::DescriptorPoolCreateInfo poolInfo{
-        vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight, 1,
-        &poolSize};
-
-    try {
-      descriptorPool_ = std::make_unique<vk::raii::DescriptorPool>(
-          device.getRaiiDevice(), poolInfo);
-    } catch (const vk::SystemError &) {
-      return false;
-    }
-
-    // Allocate descriptor sets
-    std::vector<vk::DescriptorSetLayout> layouts(framesInFlight,
-                                                 descriptorSetLayout);
-    vk::DescriptorSetAllocateInfo allocInfo{**descriptorPool_, framesInFlight,
-                                            layouts.data()};
-
-    try {
-      auto sets = vk::raii::DescriptorSets(device.getRaiiDevice(), allocInfo);
-      descriptorSets_.reserve(sets.size());
-      for (auto &s : sets) {
-        descriptorSets_.push_back(std::move(s));
-      }
-    } catch (const vk::SystemError &) {
-      return false;
-    }
-
-    // Update descriptor sets to point to uniform buffers
-    for (uint32_t i = 0; i < framesInFlight; ++i) {
-      vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
-                                          sizeof(UniformBufferData)};
-
-      vk::WriteDescriptorSet descriptorWrite{*descriptorSets_[i],
-                                             0,
-                                             0,
-                                             1,
-                                             vk::DescriptorType::eUniformBuffer,
-                                             nullptr,
-                                             &bufferInfo,
-                                             nullptr};
-
-      device.getRaiiDevice().updateDescriptorSets(descriptorWrite, {});
-    }
-
-    initialized_ = true;
-    return true;
-  }
+                  uint32_t framesInFlight);
 
   /**
    * @brief Release all GPU resources
    */
-  void release() {
-    descriptorSets_.clear();
-    descriptorPool_.reset();
-    uniformBuffers_.clear();
-    initialized_ = false;
-  }
+  void release();
 
   /**
    * @brief Update uniform buffer data for the current frame
@@ -253,35 +102,7 @@ public:
    * @param projMatrix Projection matrix (16 floats, column-major)
    */
   void updateUniforms(uint32_t frameIndex, const float *viewMatrix,
-                      const float *projMatrix) {
-    std::lock_guard<std::mutex> lock(objectMutex_);
-
-    if (!initialized_ || frameIndex >= uniformBuffers_.size()) {
-      return;
-    }
-
-    UniformBufferData uboData{};
-    buildModelMatrix(uboData.model);
-
-    if (viewMatrix) {
-      std::memcpy(uboData.view, viewMatrix, sizeof(float) * 16);
-    } else {
-      // Identity matrix
-      setIdentity(uboData.view);
-    }
-
-    if (projMatrix) {
-      std::memcpy(uboData.proj, projMatrix, sizeof(float) * 16);
-    } else {
-      setIdentity(uboData.proj);
-    }
-
-    void *mapped = uniformBuffers_[frameIndex].map();
-    if (mapped) {
-      std::memcpy(mapped, &uboData, sizeof(UniformBufferData));
-      uniformBuffers_[frameIndex].unmap();
-    }
-  }
+                      const float *projMatrix);
 
   /**
    * @brief Draw this object
@@ -293,24 +114,7 @@ public:
    */
   void draw(vk::CommandBuffer cmd, const Material &material,
             uint32_t frameIndex, uint32_t vertexCount,
-            uint32_t instanceCount = 1) const {
-    std::lock_guard<std::mutex> lock(objectMutex_);
-
-    if (!initialized_ || frameIndex >= descriptorSets_.size()) {
-      return;
-    }
-
-    // Bind material pipeline
-    material.bind(cmd);
-
-    // Bind descriptor set for this frame
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                           material.getPipelineLayout(), 0,
-                           {*descriptorSets_[frameIndex]}, {});
-
-    // Draw
-    cmd.draw(vertexCount, instanceCount, 0, 0);
-  }
+            uint32_t instanceCount = 1) const;
 
   // Transform accessors
   void setTransform(const TransformType &transform) {
@@ -358,11 +162,8 @@ private:
   mutable std::mutex objectMutex_;
 };
 
-// Common type aliases
-using Object1D = Object<1>;
-using Object2D = Object<2>;
-using Object3D = Object<3>;
-
 } // namespace window
+
+#include "../src/object_imp.hpp"
 
 #endif // OBJECT_H_

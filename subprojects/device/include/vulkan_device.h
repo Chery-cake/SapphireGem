@@ -2,9 +2,7 @@
 #define VULKAN_DEVICE_H_
 
 #include "device_export.h"
-#include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
-#include "vulkan_instance.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -12,6 +10,9 @@
 #include <string>
 
 namespace device {
+
+// Forward declarations
+class VulkanInstance;
 
 /**
  * @brief Queue family indices for a physical device

@@ -5,13 +5,15 @@
 #include "resource_registry.h"
 #include "slang.h"
 #include "vulkan/vulkan_raii.hpp"
-#include "vulkan_device.h"
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 
 namespace device {
+
+// Forward declarations
+class GPUDevice;
 
 /**
  * @brief Shader stage types

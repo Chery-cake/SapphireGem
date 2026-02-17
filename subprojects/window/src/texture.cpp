@@ -1,4 +1,5 @@
 #include "texture.h"
+#include "vulkan_device.h"
 #include <mutex>
 #include <print>
 

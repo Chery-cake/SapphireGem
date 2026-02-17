@@ -3,6 +3,7 @@
 #include "config.h"
 #include "thread_manager.h"
 #include "vulkan/vulkan.hpp"
+#include "vulkan_instance.h"
 #include <cstdint>
 #include <cstdio>
 #include <print>

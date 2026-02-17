@@ -59,7 +59,7 @@ struct WINDOW_API ImageTransform {
  *
  * Binds an ImageTag with its default transform at tag definition time.
  */
-struct DEVICE_API TextureLayerInfo {
+struct WINDOW_API TextureLayerInfo {
   const ImageTag *imageTag = nullptr;
   ImageTransform defaultTransform;
 

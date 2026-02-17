@@ -20,7 +20,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glm)
 
 # ==============================================================================
-# Eigen - Linear Algebra Library - doesn't have module
+# Eigen - Linear Algebra Library
 # ==============================================================================
 FetchContent_Declare(
     eigen

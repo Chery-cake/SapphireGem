@@ -1,12 +1,9 @@
 #include "shader_manager.h"
-#include "BS_thread_pool.hpp"
 #include "slang-com-ptr.h"
 #include "slang.h"
-#include "thread_manager.h"
 #include "vulkan_device.h"
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <print>
