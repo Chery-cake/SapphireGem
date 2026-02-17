@@ -1,10 +1,13 @@
 #pragma once
 
-#include "device_manager.h"
 #include "material.h"
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace device {
+class DeviceManager;
+}
 
 namespace render {
 

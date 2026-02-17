@@ -1,8 +1,14 @@
 #pragma once
 
-#include "device_manager.h"
 #include "texture.h"
+#include <memory>
 #include <mutex>
+#include <string>
+#include <unordered_map>
+
+namespace device {
+class DeviceManager;
+}
 
 namespace render {
 

@@ -1,4 +1,5 @@
 #include "texture_manager.h"
+#include "device_manager.h"
 #include <cstdio>
 #include <print>
 

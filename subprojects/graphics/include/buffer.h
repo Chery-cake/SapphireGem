@@ -1,6 +1,5 @@
 #pragma once
 
-#include "logical_device.h"
 #include <glm/detail/qualifier.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/mat4x4.hpp>
@@ -8,10 +7,13 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
 namespace device {
+
+class LogicalDevice;
 
 class Buffer {
 public:

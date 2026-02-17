@@ -4,6 +4,7 @@
 #include "config.h"
 #include "image.h"
 #include "logical_device.h"
+#include "shader.h"
 #include "slang_wasm_compiler.h"
 #include "vulkan/vulkan.hpp"
 #include <array>

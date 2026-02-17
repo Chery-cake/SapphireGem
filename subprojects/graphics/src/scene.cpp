@@ -1,7 +1,10 @@
 #include "scene.h"
 #include "material_manager.h"
 #include "object.h"
+#include "object_manager.h"
+#include "shader.h"
 #include "texture.h"
+#include "texture_manager.h"
 #include <print>
 #include <vector>
 

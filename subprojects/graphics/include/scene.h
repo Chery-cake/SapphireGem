@@ -1,17 +1,26 @@
 #pragma once
 
-#include "buffer_manager.h"
 #include "identifiers.h"
-#include "material_manager.h"
-#include "object.h"
-#include "object_manager.h"
-#include "texture_manager.h"
-#include <glm/vec3.hpp>
+#include <cstdint>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+namespace device {
+class BufferManager;
+}
+
 namespace render {
+
+class MaterialManager;
+class TextureManager;
+class ObjectManager;
+class Object;
+class Shader;
 
 // Base class for all scenes
 // Manages creation and lifecycle of objects, materials, and textures for a

@@ -1,10 +1,17 @@
 #pragma once
 
 #include "image.h"
-#include "logical_device.h"
 #include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float4.hpp>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+namespace device {
+class LogicalDevice;
+}
 
 namespace render {
 

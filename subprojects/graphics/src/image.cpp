@@ -1,4 +1,5 @@
 #include "image.h"
+#include "logical_device.h"
 #include "tasks.h"
 #include <future>
 #include <print>

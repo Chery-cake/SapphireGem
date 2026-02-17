@@ -1,13 +1,14 @@
 #pragma once
 
 #include "buffer.h"
-#include "device_manager.h"
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 
 namespace device {
+
+class DeviceManager;
 
 class BufferManager {
 private:

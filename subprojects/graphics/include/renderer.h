@@ -1,20 +1,23 @@
 #pragma once
 
-#include "buffer_manager.h"
-#include "device_manager.h"
-#include "logical_device.h"
-#include "material_manager.h"
 #include "object_manager.h"
-#include "texture_manager.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <sys/types.h>
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+class DeviceManager;
+class BufferManager;
+class LogicalDevice;
+}
+
 namespace render {
+
+class MaterialManager;
+class TextureManager;
 
 class Renderer {
 

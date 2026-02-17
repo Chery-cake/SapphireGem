@@ -1,16 +1,20 @@
 #pragma once
 
-#include "buffer_manager.h"
-#include "device_manager.h"
-#include "material_manager.h"
 #include "object.h"
-#include "texture_manager.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+namespace device {
+class DeviceManager;
+class BufferManager;
+}
+
 namespace render {
+
+class MaterialManager;
+class TextureManager;
 
 class ObjectManager {
 public:

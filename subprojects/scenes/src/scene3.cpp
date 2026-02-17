@@ -1,5 +1,6 @@
 #include "scene3.h"
 #include "identifiers.h"
+#include "object.h"
 #include <print>
 
 scene::Scene3::Scene3(render::MaterialManager *matMgr,

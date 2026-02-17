@@ -1,7 +1,5 @@
 #pragma once
 
-#include "logical_device.h"
-#include "shader.h"
 #include "vulkan/vulkan.hpp"
 #include <atomic>
 #include <glm/ext/vector_float4.hpp>
@@ -14,7 +12,13 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 
+namespace device {
+class LogicalDevice;
+}
+
 namespace render {
+
+class Shader;
 
 class Material {
 public:

@@ -1,4 +1,5 @@
 #include "scene5.h"
+#include "object.h"
 #include <print>
 
 scene::Scene5::Scene5(render::MaterialManager *matMgr,

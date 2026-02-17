@@ -1,10 +1,18 @@
 #pragma once
 
-#include "logical_device.h"
 #include "vulkan/vulkan.hpp"
 #include <cstdint>
 #include <glm/ext/vector_float4.hpp>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <vector>
+#include <vk_mem_alloc.h>
+#include <vulkan/vulkan_raii.hpp>
+
+namespace device {
+class LogicalDevice;
+}
 
 namespace render {
 

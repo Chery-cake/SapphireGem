@@ -1,9 +1,6 @@
 #pragma once
 
-#include "buffer_manager.h"
-#include "material.h"
-#include "material_manager.h"
-#include "texture_manager.h"
+#include <array>
 #include <cstdint>
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
@@ -11,9 +8,23 @@
 #include <glm/ext/vector_float4.hpp>
 #include <map>
 #include <string>
+#include <variant>
 #include <vector>
+#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
+
+namespace device {
+class LogicalDevice;
+class BufferManager;
+class Buffer;
+}
 
 namespace render {
+
+class Material;
+class MaterialManager;
+class TextureManager;
+class Image;
 
 // Dimension traits for N-dimensional transforms
 // Maps dimension count to appropriate GLM vector types
