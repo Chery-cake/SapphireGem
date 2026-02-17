@@ -28,9 +28,9 @@ static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
     "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
 
 // Material tags (one per window/object)
-static constexpr window::MaterialTag MATERIAL_WIN1_TAG{"material_win1",
+static constexpr window::MaterialTag MATERIAL_WIN1_TAG{"material_win1", 2,
                                                        &TRIANGLE_SHADER_TAG};
-static constexpr window::MaterialTag MATERIAL_WIN2_TAG{"material_win2",
+static constexpr window::MaterialTag MATERIAL_WIN2_TAG{"material_win2", 2,
                                                        &TRIANGLE_SHADER_TAG};
 
 // Object tags (2D for window 1, 3D for window 2)
@@ -325,57 +325,56 @@ int main(int argc, char *argv[]) {
   auto material1 = std::make_unique<window::Material>(MATERIAL_WIN1_TAG);
   auto material2 = std::make_unique<window::Material>(MATERIAL_WIN2_TAG);
 
+  // Initialize materials (acquires shader programs only, no pipeline yet)
+  material1->initialize(sMan);
+  material2->initialize(sMan);
+
   // Create objects using the tag system
   // Window 1: 2D object (rotation only around Z axis)
   auto object1 = std::make_unique<window::Object<2>>(OBJECT_WIN1_TAG);
-  window::Transform<2> t2d;
-  t2d.position = glm::vec2(0.0f, 0.0f);
-  t2d.rotation = 0.0f;
-  object1->setTransform(t2d);
+  {
+    window::Transform<2> t2d;
+    t2d.position = {0.0f, 0.0f};
+    t2d.rotation = {0.0f, 0.0f};
+    t2d.scale = {1.0f, 1.0f};
+    object1->setTransform(t2d);
+  }
 
   // Window 2: 3D object (full 3D rotation)
   auto object2 = std::make_unique<window::Object<3>>(OBJECT_WIN2_TAG);
-  window::Transform<3> t3d;
-  t3d.position = glm::vec3(0.0f, 0.0f, 0.0f);
-  object2->setTransform(t3d);
-
-  // Initialize objects first (creates descriptor set layouts)
-  if (win1) {
-    object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                        window::MAX_FRAMES_IN_FLIGHT);
+  {
+    window::Transform<3> t3d;
+    t3d.position = {0.0f, 0.0f, 0.0f};
+    t3d.rotation = {0.0f, 0.0f, 0.0f};
+    t3d.scale = {1.0f, 1.0f, 1.0f};
+    object2->setTransform(t3d);
   }
 
-  if (win2) {
-    object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                        window::MAX_FRAMES_IN_FLIGHT);
-  }
-
-  // Initialize materials using descriptor set layouts from objects
-  if (win1 && win1->hasRenderer() && object1->isInitialized()) {
+  // Initialize objects (creates descriptor sets, uniform buffers, and
+  // per-object pipelines from their materials)
+  if (win1 && win1->hasRenderer() && material1->isInitialized()) {
     window::PipelineConfig pConfig1;
     pConfig1.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig1.cullMode = vk::CullModeFlagBits::eNone;
     pConfig1.depthTestEnable = false;
 
-    if (material1->initialize(sMan, dMan.getPrimaryDevice(),
-                              win1->getRenderer()->getRenderPass(),
-                              win1->getRenderer()->getRenderPass(),
-                              object1->getDescriptorSetLayout(), pConfig1)) {
-      std::print("[Main] Material 1 initialized\n");
+    if (object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                            *material1, win1->getRenderer()->getRenderPass(),
+                            window::MAX_FRAMES_IN_FLIGHT, pConfig1)) {
+      std::print("[Main] Object 1 initialized with material 1\n");
     }
   }
 
-  if (win2 && win2->hasRenderer() && object2->isInitialized()) {
+  if (win2 && win2->hasRenderer() && material2->isInitialized()) {
     window::PipelineConfig pConfig2;
     pConfig2.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig2.cullMode = vk::CullModeFlagBits::eNone;
     pConfig2.depthTestEnable = false;
 
-    if (material2->initialize(sMan, dMan.getPrimaryDevice(),
-                              win2->getRenderer()->getRenderPass(),
-                              win2->getRenderer()->getRenderPass(),
-                              object2->getDescriptorSetLayout(), pConfig2)) {
-      std::print("[Main] Material 2 initialized\n");
+    if (object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                            *material2, win2->getRenderer()->getRenderPass(),
+                            window::MAX_FRAMES_IN_FLIGHT, pConfig2)) {
+      std::print("[Main] Object 2 initialized with material 2\n");
     }
   }
 

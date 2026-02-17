@@ -8,7 +8,8 @@
 namespace window {
 
 Material::Material(const MaterialTag &tag)
-    : name_(tag.name), shaderTag_(tag.shaderTag), textureTag_(tag.textureTag) {}
+    : name_(tag.name), dimension_(tag.dimension), shaderTag_(tag.shaderTag),
+      textureTag_(tag.textureTag) {}
 
 Material::~Material() { release(); }
 
@@ -19,8 +20,8 @@ Material::Material(Material &&other) noexcept {
   textureTag_ = other.textureTag_;
   other.shaderTag_ = nullptr;
   other.textureTag_ = nullptr;
-  pipeline_ = std::move(other.pipeline_);
-  pipelineLayout_ = std::move(other.pipelineLayout_);
+  shaderProgram_ = other.shaderProgram_;
+  other.shaderProgram_ = nullptr;
   initialized_ = other.initialized_;
   other.initialized_ = false;
 }
@@ -34,8 +35,8 @@ Material &Material::operator=(Material &&other) noexcept {
     textureTag_ = other.textureTag_;
     other.shaderTag_ = nullptr;
     other.textureTag_ = nullptr;
-    pipeline_ = std::move(other.pipeline_);
-    pipelineLayout_ = std::move(other.pipelineLayout_);
+    shaderProgram_ = other.shaderProgram_;
+    other.shaderProgram_ = nullptr;
     initialized_ = other.initialized_;
     other.initialized_ = false;
   }
@@ -43,15 +44,11 @@ Material &Material::operator=(Material &&other) noexcept {
 }
 
 void Material::release() {
-  pipeline_.reset();
-  pipelineLayout_.reset();
+  shaderProgram_ = nullptr;
   initialized_ = false;
 }
 
-bool Material::initialize(device::ShaderManager &shaderManager,
-                          device::GPUDevice &device, vk::RenderPass renderPass,
-                          vk::DescriptorSetLayout descriptorSetLayout,
-                          const PipelineConfig &pipelineConfig) {
+bool Material::initialize(device::ShaderManager &shaderManager) {
   std::lock_guard<std::mutex> lock(materialMutex_);
 
   if (initialized_) {
@@ -66,73 +63,79 @@ bool Material::initialize(device::ShaderManager &shaderManager,
   }
 
   // Acquire shader program (compiles if needed, increments ref count)
-  device::ShaderProgram *program = shaderManager.acquire(shaderTag_);
-  if (!program || !program->compiled) {
+  shaderProgram_ = shaderManager.acquire(shaderTag_);
+  if (!shaderProgram_ || !shaderProgram_->compiled) {
     std::println(stderr, "[Material] Failed to acquire shader program for: {}",
                  name_);
     return false;
   }
 
-  auto stageInfos = program->getStageInfos();
+  auto stageInfos = shaderProgram_->getStageInfos();
   if (stageInfos.empty()) {
     std::println(stderr, "[Material] No valid shader stages for material: {}",
                  name_);
     return false;
   }
 
-  // Create pipeline layout using the descriptor set layout from the Object
-  if (!createPipelineLayout(device, descriptorSetLayout)) {
-    std::println(stderr, "[Material] Failed to create pipeline layout: {}",
-                 name_);
-    return false;
-  }
-
-  // Create graphics pipeline
-  if (!createPipeline(device, renderPass, pipelineConfig, stageInfos)) {
-    std::println(stderr, "[Material] Failed to create pipeline: {}", name_);
-    return false;
-  }
-
   initialized_ = true;
-  std::println("[Material] Initialized material: {}", name_);
+  std::println("[Material] Initialized material: {} ({} shader stages)", name_,
+               stageInfos.size());
   return true;
 }
 
-void Material::bind(vk::CommandBuffer cmd) const {
+ObjectPipeline
+Material::createPipelineForObject(device::GPUDevice &device,
+                                  vk::RenderPass renderPass,
+                                  vk::DescriptorSetLayout descriptorSetLayout,
+                                  const PipelineConfig &pipelineConfig) {
   std::lock_guard<std::mutex> lock(materialMutex_);
-  if (!initialized_ || !pipeline_) {
-    return;
+
+  ObjectPipeline result;
+
+  if (!initialized_ || !shaderProgram_) {
+    std::println(stderr,
+                 "[Material] Cannot create pipeline: material '{}' not "
+                 "initialized",
+                 name_);
+    return result;
   }
-  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **pipeline_);
-}
 
-void Material::bindDescriptorSets(
-    vk::CommandBuffer cmd,
-    const std::vector<vk::DescriptorSet> &descriptorSets) const {
-  std::lock_guard<std::mutex> lock(materialMutex_);
-  if (!initialized_ || !pipelineLayout_) {
-    return;
+  auto stageInfos = shaderProgram_->getStageInfos();
+  if (stageInfos.empty()) {
+    std::println(stderr,
+                 "[Material] No valid shader stages for pipeline creation: {}",
+                 name_);
+    return result;
   }
-  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, **pipelineLayout_, 0,
-                         descriptorSets, {});
+
+  // Create pipeline layout using the object's descriptor set layout
+  if (!createPipelineLayout(device, descriptorSetLayout, result)) {
+    std::println(stderr,
+                 "[Material] Failed to create pipeline layout for object: {}",
+                 name_);
+    return result;
+  }
+
+  // Create graphics pipeline
+  if (!createPipeline(device, renderPass, pipelineConfig, stageInfos, result)) {
+    std::println(stderr, "[Material] Failed to create pipeline for object: {}",
+                 name_);
+    result.reset();
+    return result;
+  }
+
+  std::println("[Material] Created pipeline for object using material: {}",
+               name_);
+  return result;
 }
 
-vk::Pipeline Material::getPipeline() const {
-  std::lock_guard<std::mutex> lock(materialMutex_);
-  return pipeline_ ? **pipeline_ : vk::Pipeline{};
-}
-
-vk::PipelineLayout Material::getPipelineLayout() const {
-  std::lock_guard<std::mutex> lock(materialMutex_);
-  return pipelineLayout_ ? **pipelineLayout_ : vk::PipelineLayout{};
-}
-
-bool Material::createPipelineLayout(
-    device::GPUDevice &device, vk::DescriptorSetLayout descriptorSetLayout) {
+bool Material::createPipelineLayout(device::GPUDevice &device,
+                                    vk::DescriptorSetLayout descriptorSetLayout,
+                                    ObjectPipeline &out) {
   vk::PipelineLayoutCreateInfo layoutInfo{{}, 1, &descriptorSetLayout};
 
   try {
-    pipelineLayout_ = std::make_unique<vk::raii::PipelineLayout>(
+    out.pipelineLayout = std::make_unique<vk::raii::PipelineLayout>(
         device.getRaiiDevice(), layoutInfo);
     return true;
   } catch (const vk::SystemError &e) {
@@ -145,7 +148,8 @@ bool Material::createPipelineLayout(
 bool Material::createPipeline(
     device::GPUDevice &device, vk::RenderPass renderPass,
     const PipelineConfig &config,
-    const std::vector<vk::PipelineShaderStageCreateInfo> &stages) {
+    const std::vector<vk::PipelineShaderStageCreateInfo> &stages,
+    ObjectPipeline &out) {
 
   // Vertex input state (no vertex buffers for geometry-shader-based
   // rendering)
@@ -219,13 +223,13 @@ bool Material::createPipeline(
   pipelineInfo.pDepthStencilState = &depthStencil;
   pipelineInfo.pColorBlendState = &colorBlending;
   pipelineInfo.pDynamicState = &dynamicState;
-  pipelineInfo.layout = **pipelineLayout_;
+  pipelineInfo.layout = **out.pipelineLayout;
   pipelineInfo.renderPass = renderPass;
   pipelineInfo.subpass = 0;
 
   try {
-    pipeline_ = std::make_unique<vk::raii::Pipeline>(device.getRaiiDevice(),
-                                                     nullptr, pipelineInfo);
+    out.pipeline = std::make_unique<vk::raii::Pipeline>(device.getRaiiDevice(),
+                                                        nullptr, pipelineInfo);
     return true;
   } catch (const vk::SystemError &e) {
     std::println(stderr, "[Material] Failed to create graphics pipeline: {}",

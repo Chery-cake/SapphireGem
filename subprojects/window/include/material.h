@@ -4,6 +4,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
+#include <cstdint>
 #include <memory>
 #include <mutex>
 
@@ -12,6 +13,7 @@ namespace device {
 class GPUDevice;
 class ShaderManager;
 struct ShaderTag;
+struct ShaderProgram;
 } // namespace device
 
 namespace window {
@@ -27,12 +29,14 @@ struct TextureTag;
  */
 struct WINDOW_API MaterialTag {
   const char *name;
+  const uint32_t dimension;
   const device::ShaderTag *shaderTag = nullptr; // Tag for the shader program
   const TextureTag *textureTag = nullptr; // Tag for the texture (optional)
 
-  constexpr MaterialTag(const char *n, const device::ShaderTag *shader,
+  constexpr MaterialTag(const char *n, const uint32_t &dim,
+                        const device::ShaderTag *shader,
                         const TextureTag *tex = nullptr)
-      : name(n), shaderTag(shader), textureTag(tex) {}
+      : name(n), dimension(dim), shaderTag(shader), textureTag(tex) {}
 };
 
 /**
@@ -50,11 +54,32 @@ struct WINDOW_API PipelineConfig { // TODO check default config
 };
 
 /**
- * @brief Manages shader usage, texture binding, and pipeline creation
+ * @brief Per-object pipeline resources created by a material
  *
- * A material binds together shaders and textures, creating the Vulkan
- * graphics pipeline needed to render objects. Materials can be shared
- * across multiple objects to save GPU resources.
+ * Each Object gets its own pipeline and pipeline layout to avoid
+ * descriptor set conflicts when multiple objects share the same material.
+ */
+struct WINDOW_API ObjectPipeline {
+  std::unique_ptr<vk::raii::Pipeline> pipeline;
+  std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
+
+  [[nodiscard]] bool isValid() const {
+    return pipeline != nullptr && pipelineLayout != nullptr;
+  }
+
+  void reset() {
+    pipeline.reset();
+    pipelineLayout.reset();
+  }
+};
+
+/**
+ * @brief Manages shader usage and pipeline creation for rendering
+ *
+ * A material binds together shaders and textures. It acts as a pipeline
+ * factory: each Object requests its own pipeline and pipeline layout from
+ * the material, preventing descriptor set conflicts when multiple objects
+ * share the same material.
  *
  * Thread-safe: all mutable operations are protected by mutex.
  */
@@ -70,22 +95,32 @@ public:
   Material &operator=(Material &&) noexcept;
 
   /**
-   * @brief Initialize the material by compiling shaders and setting up
-   * pipeline
-   * @param shaderManager Shader manager for shader compilation
-   * @param device GPU device for pipeline creation
-   * @param renderPass Render pass for pipeline compatibility
-   * @param descriptorSetLayout Layout for descriptor sets (owned by Object)
-   * @param pipelineConfig Pipeline configuration
+   * @brief Initialize the material by compiling shaders
+   *
+   * This acquires the shader program but does NOT create a pipeline.
+   * Each Object creates its own pipeline via createPipelineForObject().
    * @return true if initialization succeeded
    */
-  bool initialize(device::ShaderManager &shaderManager,
-                  device::GPUDevice &device, vk::RenderPass renderPass,
-                  vk::DescriptorSetLayout descriptorSetLayout,
-                  const PipelineConfig &pipelineConfig = {});
+  bool initialize(device::ShaderManager &shaderManager);
 
   /**
-   * @brief Release all GPU resources
+   * @brief Create a pipeline and pipeline layout for a specific object
+   *
+   * Each object gets its own pipeline to avoid descriptor set conflicts.
+   *
+   * @param device GPU device for pipeline creation
+   * @param renderPass Render pass for pipeline compatibility
+   * @param descriptorSetLayout Layout for the object's descriptor sets
+   * @param pipelineConfig Pipeline configuration
+   * @return ObjectPipeline containing the created pipeline resources
+   */
+  ObjectPipeline
+  createPipelineForObject(device::GPUDevice &device, vk::RenderPass renderPass,
+                          vk::DescriptorSetLayout descriptorSetLayout,
+                          const PipelineConfig &pipelineConfig = {});
+
+  /**
+   * @brief Release shader references
    */
   void release();
 
@@ -111,23 +146,24 @@ public:
   }
   [[nodiscard]] const TextureTag *getTextureTag() const { return textureTag_; }
   [[nodiscard]] bool isInitialized() const { return initialized_; }
-  [[nodiscard]] vk::Pipeline getPipeline() const;
-  [[nodiscard]] vk::PipelineLayout getPipelineLayout() const;
 
 private:
-  bool createPipelineLayout(device::GPUDevice &device,
-                            vk::DescriptorSetLayout descriptorSetLayout);
-  bool
+  static bool createPipelineLayout(device::GPUDevice &device,
+                                   vk::DescriptorSetLayout descriptorSetLayout,
+                                   ObjectPipeline &out);
+  static bool
   createPipeline(device::GPUDevice &device, vk::RenderPass renderPass,
                  const PipelineConfig &config,
-                 const std::vector<vk::PipelineShaderStageCreateInfo> &stages);
+                 const std::vector<vk::PipelineShaderStageCreateInfo> &stages,
+                 ObjectPipeline &out);
 
   std::string name_;
+  uint32_t dimension_;
   const device::ShaderTag *shaderTag_ = nullptr;
   const TextureTag *textureTag_ = nullptr;
 
-  std::unique_ptr<vk::raii::Pipeline> pipeline_;
-  std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout_;
+  // Cached shader program (owned by ShaderManager)
+  device::ShaderProgram *shaderProgram_ = nullptr;
 
   bool initialized_ = false;
   mutable std::mutex materialMutex_;
