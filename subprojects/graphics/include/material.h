@@ -9,6 +9,8 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_raii.hpp>
 

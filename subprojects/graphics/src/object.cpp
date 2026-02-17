@@ -37,10 +37,9 @@ template <> void render::Transform<2>::update_model_matrix() {
   modelMatrix = glm::mat4(1.0f);
   modelMatrix =
       glm::translate(modelMatrix, glm::vec3(position.x, position.y, 0.0f));
+  // For 2D, rotation.x stores the Z-axis rotation angle
   modelMatrix =
-      glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
-  modelMatrix =
-      glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+      glm::rotate(modelMatrix, rotation.x, glm::vec3(0.0f, 0.0f, 1.0f));
   modelMatrix =
       glm::scale(modelMatrix, glm::vec3(scale.x, scale.y, 1.0f));
   dirty = false;
@@ -174,7 +173,8 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Initialize transforms from create info
   if (type == ObjectType::OBJECT_2D) {
     transform2D.set_position(glm::vec2(createInfo.position));
-    transform2D.set_rotation(glm::vec2(createInfo.rotation));
+    // For 2D, map the Z-axis rotation to rotation.x in Transform<2>
+    transform2D.set_rotation(glm::vec2(createInfo.rotation.z, 0.0f));
     transform2D.set_scale(glm::vec2(createInfo.scale));
   } else {
     transform3D.set_position(createInfo.position);
@@ -816,7 +816,8 @@ void render::Object::set_position(const glm::vec3 &pos) {
 void render::Object::set_rotation(const glm::vec3 &rot) {
   transform3D.set_rotation(rot);
   if (type == ObjectType::OBJECT_2D) {
-    transform2D.set_rotation(glm::vec2(rot));
+    // For 2D, map the Z-axis rotation to rotation.x in Transform<2>
+    transform2D.set_rotation(glm::vec2(rot.z, 0.0f));
   }
 }
 
@@ -834,7 +835,8 @@ void render::Object::set_position(const glm::vec2 &pos) {
 
 void render::Object::set_rotation(const glm::vec2 &rot) {
   transform2D.set_rotation(rot);
-  transform3D.set_rotation(glm::vec3(rot, 0.0f));
+  // For 2D, rot.x is the Z-axis rotation angle
+  transform3D.set_rotation(glm::vec3(0.0f, 0.0f, rot.x));
 }
 
 void render::Object::set_scale(const glm::vec2 &scl) {
@@ -858,20 +860,23 @@ void render::Object::set_rotation_mode(Object::RotationMode mode) {
 }
 
 void render::Object::rotate_2d(float angle) {
-  transform2D.set_rotation(glm::vec2(0.0f, angle));
+  // For 2D rotation, rotation.x stores the Z-axis angle
+  transform2D.set_rotation(glm::vec2(angle, 0.0f));
   transform3D.set_rotation(glm::vec3(0.0f, 0.0f, angle));
 }
 
 void render::Object::rotate(const glm::vec3 &angles) {
   transform3D.set_rotation(angles);
   if (type == ObjectType::OBJECT_2D) {
-    transform2D.set_rotation(glm::vec2(angles));
+    // For 2D, map the Z-axis rotation to rotation.x in Transform<2>
+    transform2D.set_rotation(glm::vec2(angles.z, 0.0f));
   }
 }
 
 void render::Object::rotate(const glm::vec2 &angles) {
+  // For 2D, angles.x is the Z-axis rotation angle
   transform2D.set_rotation(angles);
-  transform3D.set_rotation(glm::vec3(angles, 0.0f));
+  transform3D.set_rotation(glm::vec3(0.0f, 0.0f, angles.x));
 }
 
 const std::string &render::Object::get_identifier() const { return identifier; }
