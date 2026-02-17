@@ -12,6 +12,83 @@
 #include <vector>
 #include <vulkan/vulkan_raii.hpp>
 
+// Transform<N> template implementations
+
+template <unsigned int N>
+void render::Transform<N>::set_position(const Vec &pos) {
+  position = pos;
+  dirty = true;
+}
+
+template <unsigned int N>
+void render::Transform<N>::set_rotation(const Vec &rot) {
+  rotation = rot;
+  dirty = true;
+}
+
+template <unsigned int N>
+void render::Transform<N>::set_scale(const Vec &scl) {
+  scale = scl;
+  dirty = true;
+}
+
+// Transform<2> specialization: 2D transform with Z-axis rotation
+template <> void render::Transform<2>::update_model_matrix() {
+  modelMatrix = glm::mat4(1.0f);
+  modelMatrix =
+      glm::translate(modelMatrix, glm::vec3(position.x, position.y, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+  modelMatrix =
+      glm::scale(modelMatrix, glm::vec3(scale.x, scale.y, 1.0f));
+  dirty = false;
+}
+
+// Transform<3> specialization: full 3D transform
+template <> void render::Transform<3>::update_model_matrix() {
+  modelMatrix = glm::mat4(1.0f);
+  modelMatrix = glm::translate(modelMatrix, position);
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+  modelMatrix = glm::scale(modelMatrix, scale);
+  dirty = false;
+}
+
+// Transform<4> specialization: 4D transform (projects to 3D for rendering)
+template <> void render::Transform<4>::update_model_matrix() {
+  modelMatrix = glm::mat4(1.0f);
+  modelMatrix = glm::translate(
+      modelMatrix, glm::vec3(position.x, position.y, position.z));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
+  modelMatrix =
+      glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
+  modelMatrix =
+      glm::scale(modelMatrix, glm::vec3(scale.x, scale.y, scale.z));
+  dirty = false;
+}
+
+template <unsigned int N>
+const glm::mat4 &render::Transform<N>::get_model_matrix() {
+  if (dirty) {
+    update_model_matrix();
+  }
+  return modelMatrix;
+}
+
+// Explicit template instantiations
+template struct render::Transform<2>;
+template struct render::Transform<3>;
+template struct render::Transform<4>;
+
 // Vertex2D implementation
 vk::VertexInputBindingDescription
 render::Object::Vertex2D::getBindingDescription() {
@@ -89,12 +166,21 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
       materialIdentifier(createInfo.materialIdentifier),
       textureIdentifier(createInfo.textureIdentifier),
       useSubmeshes(!createInfo.submeshes.empty()),
-      position(createInfo.position), rotation(createInfo.rotation),
-      scale(createInfo.scale), transformDirty(true),
       visible(createInfo.visible), bufferManager(bufferManager),
       materialManager(materialManager), textureManager(textureManager),
       rotationMode(type == ObjectType::OBJECT_2D ? RotationMode::SHADER_2D
                                                  : RotationMode::TRANSFORM_3D) {
+
+  // Initialize transforms from create info
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.set_position(glm::vec2(createInfo.position));
+    transform2D.set_rotation(glm::vec2(createInfo.rotation));
+    transform2D.set_scale(glm::vec2(createInfo.scale));
+  } else {
+    transform3D.set_position(createInfo.position);
+    transform3D.set_rotation(createInfo.rotation);
+    transform3D.set_scale(createInfo.scale);
+  }
   // Get logical devices for descriptor set creation
   auto *deviceManager = materialManager->get_device_manager();
   if (deviceManager) {
@@ -218,7 +304,12 @@ render::Object::Object(const ObjectCreateInfo &createInfo,
   // Create per-object descriptor sets
   create_descriptor_sets();
 
-  update_model_matrix();
+  // Force initial model matrix computation
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.update_model_matrix();
+  } else {
+    transform3D.update_model_matrix();
+  }
 }
 
 render::Object::~Object() {
@@ -228,38 +319,6 @@ render::Object::~Object() {
   }
 
   std::print("Object - {} - destructor executed\n", identifier);
-}
-
-void render::Object::update_model_matrix() {
-  modelMatrix = glm::mat4(1.0f);
-  modelMatrix = glm::translate(modelMatrix, position);
-
-  // Apply rotation based on mode
-  if (rotationMode == RotationMode::SHADER_2D) {
-    // For shader-based 2D rotation, only apply Z rotation
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
-  } else if (rotationMode == RotationMode::TRANSFORM_2D) {
-    // For 2D transformation, can apply X, Y rotations for projection
-    // effects
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
-  } else {
-    // For 3D transformation, rotate around all axes
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.x, glm::vec3(1.0f, 0.0f, 0.0f));
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.y, glm::vec3(0.0f, 1.0f, 0.0f));
-    modelMatrix =
-        glm::rotate(modelMatrix, rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
-  }
-
-  modelMatrix = glm::scale(modelMatrix, scale);
-  transformDirty = false;
 }
 
 void render::Object::setup_materials_for_submeshes(
@@ -611,10 +670,10 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
     return;
   }
 
-  // Update model matrix if needed (GPU will use this via shaders)
-  if (transformDirty) {
-    update_model_matrix();
-  }
+  // Get the current model matrix from the appropriate transform
+  const glm::mat4 &modelMatrix = (type == ObjectType::OBJECT_2D)
+                                     ? transform2D.get_model_matrix()
+                                     : transform3D.get_model_matrix();
 
   // Bind vertex buffer (shared across all submeshes)
   device::Buffer *vertexBuffer = bufferManager->get_buffer(vertexBufferName);
@@ -748,18 +807,39 @@ void render::Object::draw(vk::raii::CommandBuffer &commandBuffer,
 }
 
 void render::Object::set_position(const glm::vec3 &pos) {
-  position = pos;
-  transformDirty = true;
+  transform3D.set_position(pos);
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.set_position(glm::vec2(pos));
+  }
 }
 
 void render::Object::set_rotation(const glm::vec3 &rot) {
-  rotation = rot;
-  transformDirty = true;
+  transform3D.set_rotation(rot);
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.set_rotation(glm::vec2(rot));
+  }
 }
 
 void render::Object::set_scale(const glm::vec3 &scl) {
-  scale = scl;
-  transformDirty = true;
+  transform3D.set_scale(scl);
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.set_scale(glm::vec2(scl));
+  }
+}
+
+void render::Object::set_position(const glm::vec2 &pos) {
+  transform2D.set_position(pos);
+  transform3D.set_position(glm::vec3(pos, 0.0f));
+}
+
+void render::Object::set_rotation(const glm::vec2 &rot) {
+  transform2D.set_rotation(rot);
+  transform3D.set_rotation(glm::vec3(rot, 0.0f));
+}
+
+void render::Object::set_scale(const glm::vec2 &scl) {
+  transform2D.set_scale(scl);
+  transform3D.set_scale(glm::vec3(scl, 1.0f));
 }
 
 void render::Object::set_visible(bool vis) { visible = vis; }
@@ -770,7 +850,6 @@ void render::Object::set_rotation_mode(Object::RotationMode mode) {
   }
 
   rotationMode = mode;
-  transformDirty = true;
 
   std::print("Object '{}' rotation mode changed to: {}\n", identifier,
              mode == RotationMode::SHADER_2D      ? "SHADER_2D"
@@ -779,26 +858,20 @@ void render::Object::set_rotation_mode(Object::RotationMode mode) {
 }
 
 void render::Object::rotate_2d(float angle) {
-  // For shader-based 2D rotation (Z-axis only)
-  rotation.z = angle;
-  transformDirty = true;
+  transform2D.set_rotation(glm::vec2(0.0f, angle));
+  transform3D.set_rotation(glm::vec3(0.0f, 0.0f, angle));
 }
 
 void render::Object::rotate(const glm::vec3 &angles) {
-  // For 2D/3D rotation based on current mode
-  if (rotationMode == RotationMode::SHADER_2D) {
-    // Shader-based 2D rotation: only Z-axis
-    rotation.z = angles.z;
-  } else if (rotationMode == RotationMode::TRANSFORM_2D) {
-    // Transform 2D: can use X, Y for projection effects, Z for in-plane
-    // rotation
-    rotation = angles;
-  } else {
-    // 3D rotation: all axes
-    rotation = angles;
+  transform3D.set_rotation(angles);
+  if (type == ObjectType::OBJECT_2D) {
+    transform2D.set_rotation(glm::vec2(angles));
   }
+}
 
-  transformDirty = true;
+void render::Object::rotate(const glm::vec2 &angles) {
+  transform2D.set_rotation(angles);
+  transform3D.set_rotation(glm::vec3(angles, 0.0f));
 }
 
 const std::string &render::Object::get_identifier() const { return identifier; }
@@ -808,10 +881,10 @@ render::Object::ObjectType render::Object::get_type() const { return type; }
 bool render::Object::is_visible() const { return visible; }
 
 const glm::mat4 &render::Object::get_model_matrix() {
-  if (transformDirty) {
-    update_model_matrix();
+  if (type == ObjectType::OBJECT_2D) {
+    return transform2D.get_model_matrix();
   }
-  return modelMatrix;
+  return transform3D.get_model_matrix();
 }
 
 render::Material *render::Object::get_material() const { return material; }

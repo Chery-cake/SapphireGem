@@ -8,11 +8,54 @@
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
+#include <glm/ext/vector_float4.hpp>
 #include <map>
 #include <string>
 #include <vector>
 
 namespace render {
+
+// Dimension traits for N-dimensional transforms
+// Maps dimension count to appropriate GLM vector types
+template <unsigned int N> struct DimensionTraits;
+
+template <> struct DimensionTraits<2> {
+  using VecType = glm::vec2;
+  static constexpr unsigned int Dims = 2;
+};
+
+template <> struct DimensionTraits<3> {
+  using VecType = glm::vec3;
+  static constexpr unsigned int Dims = 3;
+};
+
+template <> struct DimensionTraits<4> {
+  using VecType = glm::vec4;
+  static constexpr unsigned int Dims = 4;
+};
+
+// Transform struct templated on dimension count
+// All transforms produce a 4x4 model matrix for GPU compatibility
+template <unsigned int N> struct Transform {
+  using Vec = typename DimensionTraits<N>::VecType;
+
+  Vec position{0.0f};
+  Vec rotation{0.0f};
+  Vec scale{1.0f};
+  glm::mat4 modelMatrix{1.0f};
+  bool dirty = true;
+
+  void set_position(const Vec &pos);
+  void set_rotation(const Vec &rot);
+  void set_scale(const Vec &scl);
+  void update_model_matrix();
+  const glm::mat4 &get_model_matrix();
+};
+
+// Explicit instantiation declarations (defined in object.cpp)
+extern template struct Transform<2>;
+extern template struct Transform<3>;
+extern template struct Transform<4>;
 
 class Object {
 public:
@@ -91,7 +134,7 @@ public:
     // materialIdentifier is used
     std::vector<Submesh> submeshes;
 
-    // Transform
+    // Transform (using vec3 for backward compatibility in create info)
     glm::vec3 position = glm::vec3(0.0f);
     glm::vec3 rotation = glm::vec3(0.0f);
     glm::vec3 scale = glm::vec3(1.0f);
@@ -121,12 +164,10 @@ private:
   std::vector<Submesh> submeshes;
   bool useSubmeshes;
 
-  // Transform
-  glm::vec3 position;
-  glm::vec3 rotation;
-  glm::vec3 scale;
-  glm::mat4 modelMatrix;
-  bool transformDirty;
+  // Transform - uses dimension-specific Transform struct
+  // 2D objects use Transform<2>, 3D objects use Transform<3>
+  Transform<2> transform2D;
+  Transform<3> transform3D;
 
   // Visibility
   bool visible;
@@ -149,7 +190,6 @@ private:
 
   RotationMode rotationMode;
 
-  void update_model_matrix();
   void setup_materials_for_submeshes(std::vector<Submesh> &submeshes);
   std::string get_ubo_buffer_name(const std::string &matIdentifier) const;
 
@@ -174,12 +214,19 @@ public:
 
   // Rotation functions
   void rotate_2d(float angle);          // For shader-based 2D rotation (Z-axis)
-  void rotate(const glm::vec3 &angles); // For 2D/3D rotation
+  void rotate(const glm::vec3 &angles); // For 3D rotation
+  void rotate(const glm::vec2 &angles); // For 2D rotation
 
-  // Transform methods
+  // Transform methods (3D)
   void set_position(const glm::vec3 &pos);
   void set_rotation(const glm::vec3 &rot);
   void set_scale(const glm::vec3 &scl);
+
+  // Transform methods (2D)
+  void set_position(const glm::vec2 &pos);
+  void set_rotation(const glm::vec2 &rot);
+  void set_scale(const glm::vec2 &scl);
+
   void set_visible(bool vis);
   void set_rotation_mode(RotationMode mode);
 
