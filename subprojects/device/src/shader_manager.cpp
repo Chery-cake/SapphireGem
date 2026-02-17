@@ -38,8 +38,9 @@ vk::ShaderStageFlagBits CompiledShader::getVkStage() const {
 }
 
 vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
-  return vk::PipelineShaderStageCreateInfo{
-      {}, getVkStage(), module, entryPoint.c_str()};
+  // Slang compiles to SPIR-V with "main" as the entry point name,
+  // regardless of the original source entry point name.
+  return vk::PipelineShaderStageCreateInfo{{}, getVkStage(), module, "main"};
 }
 
 // ============================================================================

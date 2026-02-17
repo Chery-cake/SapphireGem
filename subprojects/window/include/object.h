@@ -1,18 +1,30 @@
 #ifndef OBJECT_H_
 #define OBJECT_H_
 
-#include "material.h"
-#include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
 #include <cstdint>
-#include <gbm.h>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
+
+#include <glm/glm.hpp>
+
+// Forward declarations
+namespace device {
+class GPUDevice;
+class VMAAllocator;
+struct AllocatedBuffer;
+} // namespace device
 
 namespace window {
+
+// Forward declarations
+class Material;
+struct MaterialTag;
+struct TextureTag;
 
 /**
  * @brief Tag for identifying objects in the resource system
@@ -27,71 +39,88 @@ struct WINDOW_API ObjectTag {
 };
 
 /**
- * @brief Transform data for a 1D object (position only on a line)
+ * @brief Dimension traits: maps a compile-time dimension to
+ *        the appropriate GLM vector and matrix types.
+ *
+ * Specializations define:
+ *   - VecType: position vector
+ *   - ScaleType: scale vector
+ *   - MatType: model matrix (always 4×4 for the GPU)
  */
-struct WINDOW_API Transform1D {
-  float position = 0.0f;
-  float scale = 1.0f;
+template <uint32_t Dim> struct DimensionTraits;
+
+template <> struct DimensionTraits<1> {
+  using VecType = glm::vec1;
+  using ScaleType = glm::vec1;
+  using RotType = float; // no rotation axis in 1D
+  using MatType = glm::mat4;
+};
+
+template <> struct DimensionTraits<2> {
+  using VecType = glm::vec2;
+  using ScaleType = glm::vec2;
+  using RotType = float; // rotation around Z only
+  using MatType = glm::mat4;
+};
+
+template <> struct DimensionTraits<3> {
+  using VecType = glm::vec3;
+  using ScaleType = glm::vec3;
+  using RotType = glm::vec3; // Euler angles
+  using MatType = glm::mat4;
+};
+
+// For dimensions > 3, project down to 3D types for GPU compatibility
+template <uint32_t Dim>
+  requires(Dim > 3)
+struct DimensionTraits<Dim> {
+  using VecType = glm::vec3;
+  using ScaleType = glm::vec3;
+  using RotType = glm::vec3;
+  using MatType = glm::mat4;
 };
 
 /**
- * @brief Transform data for a 2D object (position, rotation around Z, scale)
+ * @brief Generic transform for any dimension, using GLM types
  */
-struct WINDOW_API Transform2D {
-  float positionX = 0.0f;
-  float positionY = 0.0f;
-  float rotation = 0.0f; // Rotation in radians (around Z axis only)
-  float scaleX = 1.0f;
-  float scaleY = 1.0f;
-};
-
-/**
- * @brief Transform data for a 3D object (full position, rotation, scale)
- */
-struct WINDOW_API Transform3D {
-  float positionX = 0.0f;
-  float positionY = 0.0f;
-  float positionZ = 0.0f;
-  float rotationX = 0.0f; // Euler angles in radians
-  float rotationY = 0.0f;
-  float rotationZ = 0.0f;
-  float scaleX = 1.0f;
-  float scaleY = 1.0f;
-  float scaleZ = 1.0f;
+template <uint32_t Dim> struct Transform {
+  using Traits = DimensionTraits<Dim>;
+  typename Traits::VecType position{};
+  typename Traits::RotType rotation{};
+  typename Traits::ScaleType scale{typename Traits::ScaleType{1}};
 };
 
 /**
  * @brief Uniform buffer data matching the shader UBO layout
  */
 struct WINDOW_API UniformBufferData {
-  // 4x4 matrices stored as float[16] in column-major order
-  float model[16];
-  float view[16];
-  float proj[16];
+  glm::mat4 model{1.0f};
+  glm::mat4 view{1.0f};
+  glm::mat4 proj{1.0f};
 };
 
 /**
- * @brief Selects the appropriate transform type for a given dimension
+ * @brief Build a 4×4 model matrix from a dimension-specific transform.
+ *
+ * Explicit specializations for Dim = 1, 2, 3 are provided in object.cpp.
  */
-template <uint32_t Dim> struct TransformSelector;
-
-template <> struct TransformSelector<1> {
-  using type = Transform1D;
-};
-template <> struct TransformSelector<2> {
-  using type = Transform2D;
-};
-template <> struct TransformSelector<3> {
-  using type = Transform3D;
-};
-
-// For dimensions > 3, use 3D transform as the base
 template <uint32_t Dim>
-  requires(Dim > 3)
-struct TransformSelector<Dim> { // TODO implement calculations to use higher
-                                // dimentions
-  using type = Transform3D;
-};
+WINDOW_API glm::mat4 buildModelMatrix(const Transform<Dim> &transform);
+
+// Declare explicit specializations (defined in object.cpp)
+template <> WINDOW_API glm::mat4 buildModelMatrix<1>(const Transform<1> &t);
+template <> WINDOW_API glm::mat4 buildModelMatrix<2>(const Transform<2> &t);
+template <> WINDOW_API glm::mat4 buildModelMatrix<3>(const Transform<3> &t);
+
+/**
+ * @brief Create a descriptor set layout for per-object data
+ *
+ * @param device GPU device
+ * @param hasTexture Whether to include a texture sampler binding
+ * @return Descriptor set layout, or nullptr on failure
+ */
+WINDOW_API std::unique_ptr<vk::raii::DescriptorSetLayout>
+createObjectDescriptorSetLayout(device::GPUDevice &device, bool hasTexture);
 
 /**
  * @brief Templated renderable object with dimension-appropriate transforms
@@ -99,8 +128,8 @@ struct TransformSelector<Dim> { // TODO implement calculations to use higher
  * Objects live in a space matching their dimension, ensuring that e.g.
  * 2D rotations aren't applied to 3D objects and vice versa.
  *
- * Each object manages its own descriptor sets and uniform buffers,
- * and has a reference to its material via tag.
+ * Each object manages its own descriptor sets, descriptor set layout,
+ * and uniform buffers, and has a reference to its material via tag.
  *
  * @tparam Dim The spatial dimension (1, 2, 3, or higher)
  *
@@ -110,7 +139,7 @@ template <uint32_t Dim>
   requires(Dim >= 1)
 class Object {
 public:
-  using TransformType = typename TransformSelector<Dim>::type;
+  using TransformType = Transform<Dim>;
 
   static constexpr uint32_t DIMENSION = Dim;
 
@@ -132,6 +161,7 @@ public:
     uniformBuffers_ = std::move(other.uniformBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
+    descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
     other.initialized_ = false;
   }
@@ -147,6 +177,7 @@ public:
       uniformBuffers_ = std::move(other.uniformBuffers_);
       descriptorPool_ = std::move(other.descriptorPool_);
       descriptorSets_ = std::move(other.descriptorSets_);
+      descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
       initialized_ = other.initialized_;
       other.initialized_ = false;
     }
@@ -154,23 +185,31 @@ public:
   }
 
   /**
-   * @brief Initialize descriptor sets and uniform buffers
+   * @brief Initialize descriptor set layout, descriptor sets, and uniform
+   * buffers
    * @param allocator VMA allocator for buffer creation
    * @param device GPU device
-   * @param descriptorSetLayout Layout from the material
    * @param framesInFlight Number of frames in flight
+   * @param hasTexture Whether the associated material uses a texture
    * @return true if initialization succeeded, false if already initialized or
    * on failure
    */
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
-                  vk::DescriptorSetLayout descriptorSetLayout,
-                  uint32_t framesInFlight) {
+                  uint32_t framesInFlight, bool hasTexture = false) {
     std::lock_guard<std::mutex> lock(objectMutex_);
 
-    if (initialized_) { // TODO see if need a warning print
-      return false;     // Already initialized - call release() first to
-                        // reinitialize
+    if (initialized_) {
+      return false;
     }
+
+    // Create descriptor set layout (owned by the object)
+    descriptorSetLayout_ =
+        createObjectDescriptorSetLayout(device, hasTexture);
+    if (!descriptorSetLayout_) {
+      return false;
+    }
+
+    vk::DescriptorSetLayout layout = **descriptorSetLayout_;
 
     // Create uniform buffers (one per frame in flight)
     uniformBuffers_.reserve(framesInFlight);
@@ -200,8 +239,7 @@ public:
     }
 
     // Allocate descriptor sets
-    std::vector<vk::DescriptorSetLayout> layouts(framesInFlight,
-                                                 descriptorSetLayout);
+    std::vector<vk::DescriptorSetLayout> layouts(framesInFlight, layout);
     vk::DescriptorSetAllocateInfo allocInfo{**descriptorPool_, framesInFlight,
                                             layouts.data()};
 
@@ -243,17 +281,28 @@ public:
     descriptorSets_.clear();
     descriptorPool_.reset();
     uniformBuffers_.clear();
+    descriptorSetLayout_.reset();
     initialized_ = false;
+  }
+
+  /**
+   * @brief Get the descriptor set layout owned by this object
+   * @return Descriptor set layout handle, or null handle if not initialized
+   */
+  [[nodiscard]] vk::DescriptorSetLayout getDescriptorSetLayout() const {
+    std::lock_guard<std::mutex> lock(objectMutex_);
+    return descriptorSetLayout_ ? **descriptorSetLayout_
+                                : vk::DescriptorSetLayout{};
   }
 
   /**
    * @brief Update uniform buffer data for the current frame
    * @param frameIndex Current frame index
-   * @param viewMatrix View matrix (16 floats, column-major)
-   * @param projMatrix Projection matrix (16 floats, column-major)
+   * @param viewMatrix View matrix
+   * @param projMatrix Projection matrix
    */
-  void updateUniforms(uint32_t frameIndex, const float *viewMatrix,
-                      const float *projMatrix) {
+  void updateUniforms(uint32_t frameIndex, const glm::mat4 &viewMatrix,
+                      const glm::mat4 &projMatrix) {
     std::lock_guard<std::mutex> lock(objectMutex_);
 
     if (!initialized_ || frameIndex >= uniformBuffers_.size()) {
@@ -261,20 +310,9 @@ public:
     }
 
     UniformBufferData uboData{};
-    buildModelMatrix(uboData.model);
-
-    if (viewMatrix) {
-      std::memcpy(uboData.view, viewMatrix, sizeof(float) * 16);
-    } else {
-      // Identity matrix
-      setIdentity(uboData.view);
-    }
-
-    if (projMatrix) {
-      std::memcpy(uboData.proj, projMatrix, sizeof(float) * 16);
-    } else {
-      setIdentity(uboData.proj);
-    }
+    uboData.model = buildModelMatrix<Dim>(transform_);
+    uboData.view = viewMatrix;
+    uboData.proj = projMatrix;
 
     void *mapped = uniformBuffers_[frameIndex].map();
     if (mapped) {
@@ -332,19 +370,6 @@ public:
   [[nodiscard]] static constexpr uint32_t getDimension() { return Dim; }
 
 private:
-  static void setIdentity(float *matrix) {
-    std::memset(matrix, 0, sizeof(float) * 16);
-    matrix[0] = 1.0f;
-    matrix[5] = 1.0f;
-    matrix[10] = 1.0f;
-    matrix[15] = 1.0f;
-  }
-
-  /**
-   * @brief Build model matrix from transform (dimension-specific)
-   */
-  void buildModelMatrix(float *matrix) const;
-
   std::string name_;
   const MaterialTag *materialTag_ = nullptr;
   TransformType transform_{};
@@ -353,6 +378,7 @@ private:
   std::vector<device::AllocatedBuffer> uniformBuffers_;
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
+  std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
   mutable std::mutex objectMutex_;

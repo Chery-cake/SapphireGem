@@ -1,5 +1,6 @@
 #include "vma_allocator.h"
 #include "vk_mem_alloc_raii.hpp"
+#include "vulkan_device.h"
 #include <cstdio>
 #include <memory>
 #include <print>

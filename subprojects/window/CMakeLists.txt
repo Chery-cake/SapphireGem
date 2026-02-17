@@ -44,6 +44,7 @@ target_link_libraries(${PROJECT_NAME}
         device
         SDL3::SDL3
         core
+        glm::glm
 )
 
 # ==============================================================================

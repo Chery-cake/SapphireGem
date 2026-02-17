@@ -3,10 +3,19 @@
 
 #include "device_export.h"
 #include "vk_mem_alloc_raii.hpp"
-#include "vulkan_device.h"
+#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_raii.hpp"
 #include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 namespace device {
+
+// Forward declarations
+class GPUDevice;
+class DeviceManager;
+class VulkanInstance;
 
 /**
  * @brief Wrapper for a VMA-allocated buffer

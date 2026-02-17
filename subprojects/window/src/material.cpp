@@ -1,6 +1,7 @@
 #include "material.h"
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_raii.hpp"
 #include <mutex>
 #include <print>
 
@@ -20,7 +21,6 @@ Material::Material(Material &&other) noexcept {
   other.textureTag_ = nullptr;
   pipeline_ = std::move(other.pipeline_);
   pipelineLayout_ = std::move(other.pipelineLayout_);
-  descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
   initialized_ = other.initialized_;
   other.initialized_ = false;
 }
@@ -36,7 +36,6 @@ Material &Material::operator=(Material &&other) noexcept {
     other.textureTag_ = nullptr;
     pipeline_ = std::move(other.pipeline_);
     pipelineLayout_ = std::move(other.pipelineLayout_);
-    descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
     other.initialized_ = false;
   }
@@ -46,12 +45,12 @@ Material &Material::operator=(Material &&other) noexcept {
 void Material::release() {
   pipeline_.reset();
   pipelineLayout_.reset();
-  descriptorSetLayout_.reset();
   initialized_ = false;
 }
 
 bool Material::initialize(device::ShaderManager &shaderManager,
                           device::GPUDevice &device, vk::RenderPass renderPass,
+                          vk::DescriptorSetLayout descriptorSetLayout,
                           const PipelineConfig &pipelineConfig) {
   std::lock_guard<std::mutex> lock(materialMutex_);
 
@@ -81,15 +80,8 @@ bool Material::initialize(device::ShaderManager &shaderManager,
     return false;
   }
 
-  // Create descriptor set layout
-  if (!createDescriptorSetLayout(device)) {
-    std::println(
-        stderr, "[Material] Failed to create descriptor set layout: {}", name_);
-    return false;
-  }
-
-  // Create pipeline layout
-  if (!createPipelineLayout(device)) {
+  // Create pipeline layout using the descriptor set layout from the Object
+  if (!createPipelineLayout(device, descriptorSetLayout)) {
     std::println(stderr, "[Material] Failed to create pipeline layout: {}",
                  name_);
     return false;
@@ -135,47 +127,10 @@ vk::PipelineLayout Material::getPipelineLayout() const {
   return pipelineLayout_ ? **pipelineLayout_ : vk::PipelineLayout{};
 }
 
-vk::DescriptorSetLayout Material::getDescriptorSetLayout() const {
-  std::lock_guard<std::mutex> lock(materialMutex_);
-  return descriptorSetLayout_ ? **descriptorSetLayout_
-                              : vk::DescriptorSetLayout{};
-}
-
-bool Material::createDescriptorSetLayout(device::GPUDevice &device) {
-  // UBO binding at binding 0
-  vk::DescriptorSetLayoutBinding uboBinding{
-      0, vk::DescriptorType::eUniformBuffer, 1,
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
-          vk::ShaderStageFlagBits::eFragment};
-
-  std::vector<vk::DescriptorSetLayoutBinding> bindings = {uboBinding};
-
-  // If material has a texture, add sampler binding
-  if (textureTag_) {
-    vk::DescriptorSetLayoutBinding samplerBinding{
-        1, vk::DescriptorType::eCombinedImageSampler, 1,
-        vk::ShaderStageFlagBits::eFragment};
-    bindings.push_back(samplerBinding);
-  }
-
-  vk::DescriptorSetLayoutCreateInfo layoutInfo{
-      {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
-
-  try {
-    descriptorSetLayout_ = std::make_unique<vk::raii::DescriptorSetLayout>(
-        device.getRaiiDevice(), layoutInfo);
-    return true;
-  } catch (const vk::SystemError &e) {
-    std::println(stderr,
-                 "[Material] Failed to create descriptor set layout: {}",
-                 e.what());
-    return false;
-  }
-}
-
-bool Material::createPipelineLayout(device::GPUDevice &device) {
-  vk::DescriptorSetLayout setLayout = **descriptorSetLayout_;
-  vk::PipelineLayoutCreateInfo layoutInfo{{}, 1, &setLayout};
+bool Material::createPipelineLayout(
+    device::GPUDevice &device,
+    vk::DescriptorSetLayout descriptorSetLayout) {
+  vk::PipelineLayoutCreateInfo layoutInfo{{}, 1, &descriptorSetLayout};
 
   try {
     pipelineLayout_ = std::make_unique<vk::raii::PipelineLayout>(

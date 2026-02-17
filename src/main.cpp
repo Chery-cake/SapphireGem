@@ -325,59 +325,56 @@ int main(int argc, char *argv[]) {
   auto material1 = std::make_unique<window::Material>(MATERIAL_WIN1_TAG);
   auto material2 = std::make_unique<window::Material>(MATERIAL_WIN2_TAG);
 
-  // Initialize materials if renderers are available
-  if (win1 && win1->hasRenderer()) {
+  // Create objects using the tag system
+  // Window 1: 2D object (rotation only around Z axis)
+  auto object1 = std::make_unique<window::Object2D>(OBJECT_WIN1_TAG);
+  window::Transform<2> t2d;
+  t2d.position = glm::vec2(0.0f, 0.0f);
+  t2d.rotation = 0.0f;
+  object1->setTransform(t2d);
+
+  // Window 2: 3D object (full 3D rotation)
+  auto object2 = std::make_unique<window::Object3D>(OBJECT_WIN2_TAG);
+  window::Transform<3> t3d;
+  t3d.position = glm::vec3(0.0f, 0.0f, 0.0f);
+  object2->setTransform(t3d);
+
+  // Initialize objects first (creates descriptor set layouts)
+  if (win1) {
+    object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                        window::MAX_FRAMES_IN_FLIGHT);
+  }
+
+  if (win2) {
+    object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
+                        window::MAX_FRAMES_IN_FLIGHT);
+  }
+
+  // Initialize materials using descriptor set layouts from objects
+  if (win1 && win1->hasRenderer() && object1->isInitialized()) {
     window::PipelineConfig pConfig1;
     pConfig1.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig1.cullMode = vk::CullModeFlagBits::eNone;
     pConfig1.depthTestEnable = false;
 
     if (material1->initialize(sMan, dMan.getPrimaryDevice(),
-                              win1->getRenderer()->getRenderPass(), pConfig1)) {
+                              win1->getRenderer()->getRenderPass(),
+                              object1->getDescriptorSetLayout(), pConfig1)) {
       std::print("[Main] Material 1 initialized\n");
     }
   }
 
-  if (win2 && win2->hasRenderer()) {
+  if (win2 && win2->hasRenderer() && object2->isInitialized()) {
     window::PipelineConfig pConfig2;
     pConfig2.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig2.cullMode = vk::CullModeFlagBits::eNone;
     pConfig2.depthTestEnable = false;
 
     if (material2->initialize(sMan, dMan.getPrimaryDevice(),
-                              win2->getRenderer()->getRenderPass(), pConfig2)) {
+                              win2->getRenderer()->getRenderPass(),
+                              object2->getDescriptorSetLayout(), pConfig2)) {
       std::print("[Main] Material 2 initialized\n");
     }
-  }
-
-  // Create objects using the tag system
-  // Window 1: 2D object (rotation only around Z axis)
-  auto object1 = std::make_unique<window::Object2D>(OBJECT_WIN1_TAG);
-  window::Transform2D t2d;
-  t2d.positionX = 0.0f;
-  t2d.positionY = 0.0f;
-  t2d.rotation = 0.0f;
-  object1->setTransform(t2d);
-
-  // Window 2: 3D object (full 3D rotation)
-  auto object2 = std::make_unique<window::Object3D>(OBJECT_WIN2_TAG);
-  window::Transform3D t3d;
-  t3d.positionX = 0.0f;
-  t3d.positionY = 0.0f;
-  t3d.positionZ = 0.0f;
-  object2->setTransform(t3d);
-
-  // Initialize object descriptor sets and uniform buffers
-  if (win1 && material1->isInitialized()) {
-    object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                        material1->getDescriptorSetLayout(),
-                        window::MAX_FRAMES_IN_FLIGHT);
-  }
-
-  if (win2 && material2->isInitialized()) {
-    object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                        material2->getDescriptorSetLayout(),
-                        window::MAX_FRAMES_IN_FLIGHT);
   }
 
   int frame = 0;

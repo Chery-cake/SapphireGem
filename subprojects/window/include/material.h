@@ -5,13 +5,15 @@
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
 #include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
-// Forward declaration
 namespace device {
 class GPUDevice;
 class ShaderManager;
 struct ShaderTag;
-}; // namespace device
+} // namespace device
 
 namespace window {
 
@@ -74,11 +76,13 @@ public:
    * @param shaderManager Shader manager for shader compilation
    * @param device GPU device for pipeline creation
    * @param renderPass Render pass for pipeline compatibility
+   * @param descriptorSetLayout Layout for descriptor sets (owned by Object)
    * @param pipelineConfig Pipeline configuration
    * @return true if initialization succeeded
    */
   bool initialize(device::ShaderManager &shaderManager,
                   device::GPUDevice &device, vk::RenderPass renderPass,
+                  vk::DescriptorSetLayout descriptorSetLayout,
                   const PipelineConfig &pipelineConfig = {});
 
   /**
@@ -110,15 +114,14 @@ public:
   [[nodiscard]] bool isInitialized() const { return initialized_; }
   [[nodiscard]] vk::Pipeline getPipeline() const;
   [[nodiscard]] vk::PipelineLayout getPipelineLayout() const;
-  [[nodiscard]] vk::DescriptorSetLayout getDescriptorSetLayout() const;
 
 private:
-  bool createPipelineLayout(device::GPUDevice &device);
+  bool createPipelineLayout(device::GPUDevice &device,
+                            vk::DescriptorSetLayout descriptorSetLayout);
   bool
   createPipeline(device::GPUDevice &device, vk::RenderPass renderPass,
                  const PipelineConfig &config,
                  const std::vector<vk::PipelineShaderStageCreateInfo> &stages);
-  bool createDescriptorSetLayout(device::GPUDevice &device);
 
   std::string name_;
   const device::ShaderTag *shaderTag_ = nullptr;
@@ -126,7 +129,6 @@ private:
 
   std::unique_ptr<vk::raii::Pipeline> pipeline_;
   std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout_;
-  std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
   mutable std::mutex materialMutex_;
