@@ -110,4 +110,5 @@ build/
 # files to be ignored
 
 bin/
+out/
 *.clangd
