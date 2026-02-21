@@ -97,7 +97,7 @@ template <> struct GPUUniformBufferData<2> {
 
   struct Std140Column {
     float x, y, z;
-    float _pad{0.0f};
+    float pad{0.0f};
   };
 
   struct Std140Mat3 {
@@ -114,7 +114,7 @@ template <> struct GPUUniformBufferData<2> {
       result.col[c].x = m[c][0];
       result.col[c].y = m[c][1];
       result.col[c].z = m[c][2];
-      result.col[c]._pad = 0.0f;
+      result.col[c].pad = 0.0f;
     }
     return result;
   }

@@ -183,7 +183,12 @@ bool Window::pollEvents() {
 
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
-    processEvent(event);
+    // Only process window events and quit events
+    if (event.type == SDL_EVENT_QUIT ||
+        (event.type >= SDL_EVENT_WINDOW_FIRST &&
+         event.type <= SDL_EVENT_WINDOW_LAST)) {
+      processEvent(event);
+    }
   }
 
   return true;
