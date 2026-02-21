@@ -34,7 +34,6 @@ Window::Window(Window &&other) noexcept
       renderer_(std::move(other.renderer_)),
       allocator_(std::exchange(other.allocator_, nullptr)),
       shaderManager_(std::exchange(other.shaderManager_, nullptr)),
-      scenes_(std::move(other.scenes_)),
       activeScenes_(std::move(other.activeScenes_)),
       shouldClose_(other.shouldClose_), minimized_(other.minimized_),
       focused_(other.focused_), fullscreen_(other.fullscreen_),
@@ -53,7 +52,6 @@ Window &Window::operator=(Window &&other) noexcept {
     renderer_ = std::move(other.renderer_);
     allocator_ = std::exchange(other.allocator_, nullptr);
     shaderManager_ = std::exchange(other.shaderManager_, nullptr);
-    scenes_ = std::move(other.scenes_);
     activeScenes_ = std::move(other.activeScenes_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
@@ -73,13 +71,13 @@ void Window::destroy() {
   // Unload all active scenes (they hold GPU resources)
   {
     std::lock_guard<std::mutex> lock(sceneMutex_);
-    for (auto &[name, scene] : scenes_) {
+    sceneRegistry_.forEach([](const SceneTag *, Scene *scene) {
       if (scene && scene->isLoaded()) {
         scene->unload();
       }
-    }
+    });
     activeScenes_.clear();
-    scenes_.clear();
+    sceneRegistry_.clear();
   }
 
   if (renderer_) {
@@ -366,117 +364,118 @@ void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
 }
 
 // ============================================================================
-// Scene Management Implementation
+// Scene Management Implementation (tag-based)
 // ============================================================================
 
-void Window::addScene(std::shared_ptr<Scene> scene) {
-  if (!scene) {
-    std::println(stderr, "[Window] Cannot add null scene");
+void Window::addScene(const SceneTag *tag, std::unique_ptr<Scene> scene) {
+  if (!tag || !scene) {
+    std::println(stderr, "[Window] Cannot add null scene or tag");
     return;
   }
-  std::lock_guard<std::mutex> lock(sceneMutex_);
-  std::println("[Window] Added scene: {}", scene->getName());
-  scenes_[scene->getName()] = std::move(scene);
+  if (sceneRegistry_.add(tag, std::move(scene))) {
+    std::println("[Window] Added scene: {}", tag->name);
+  } else {
+    std::println(stderr, "[Window] Scene already exists: {}", tag->name);
+  }
 }
 
-void Window::removeScene(const std::string &name) {
-  std::shared_ptr<Scene> sceneToUnload;
+void Window::removeScene(const SceneTag *tag) {
+  if (!tag) {
+    return;
+  }
+
+  // Remove from active list
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    auto it = std::find(activeScenes_.begin(), activeScenes_.end(), tag);
+    if (it != activeScenes_.end()) {
+      activeScenes_.erase(it);
+    }
+  }
+
+  // Unload if loaded
+  Scene *scene = sceneRegistry_.get(tag);
+  if (scene && scene->isLoaded()) {
+    if (renderer_) {
+      renderer_->waitIdle();
+    }
+    scene->unload();
+    std::println("[Window] Removed and unloaded scene: {}", tag->name);
+  } else {
+    std::println("[Window] Removed scene: {}", tag->name);
+  }
+
+  sceneRegistry_.remove(tag);
+}
+
+bool Window::presentScene(const SceneTag *tag) {
+  if (!tag) {
+    return false;
+  }
+
+  Scene *scene = sceneRegistry_.get(tag);
+  if (!scene) {
+    std::println(stderr, "[Window] Scene not found: {}", tag->name);
+    return false;
+  }
 
   {
     std::lock_guard<std::mutex> lock(sceneMutex_);
 
-    // Remove from active list
-    auto activeIt =
-        std::find(activeScenes_.begin(), activeScenes_.end(), name);
-    if (activeIt != activeScenes_.end()) {
-      activeScenes_.erase(activeIt);
-    }
-
-    auto sceneIt = scenes_.find(name);
-    if (sceneIt != scenes_.end()) {
-      if (sceneIt->second && sceneIt->second->isLoaded()) {
-        sceneToUnload = sceneIt->second;
+    // Check if already active
+    for (const auto *active : activeScenes_) {
+      if (active == tag) {
+        return true;
       }
-      scenes_.erase(sceneIt);
-    }
-  }
-
-  // Unload outside the lock to avoid holding sceneMutex_ during GPU wait
-  if (sceneToUnload) {
-    if (renderer_) {
-      renderer_->waitIdle();
-    }
-    sceneToUnload->unload();
-    std::println("[Window] Removed and unloaded scene: {}", name);
-  } else {
-    std::println("[Window] Removed scene: {}", name);
-  }
-}
-
-bool Window::presentScene(const std::string &name) {
-  std::lock_guard<std::mutex> lock(sceneMutex_);
-
-  auto it = scenes_.find(name);
-  if (it == scenes_.end()) {
-    std::println(stderr, "[Window] Scene not found: {}", name);
-    return false;
-  }
-
-  // Check if already active
-  for (const auto &active : activeScenes_) {
-    if (active == name) {
-      return true;
     }
   }
 
   // Load if not loaded
-  if (!it->second->isLoaded()) {
+  if (!scene->isLoaded()) {
     if (!mainGPU || !allocator_ || !shaderManager_ || !renderer_) {
       std::println(
           stderr,
           "[Window] Cannot load scene '{}': missing GPU, allocator, "
           "shader manager, or renderer",
-          name);
+          tag->name);
       return false;
     }
 
-    if (!it->second->load(*mainGPU, secondaryGPUs, *allocator_,
-                          *shaderManager_, *renderer_)) {
-      std::println(stderr, "[Window] Failed to load scene: {}", name);
+    if (!scene->load(*mainGPU, secondaryGPUs, *allocator_, *shaderManager_,
+                     *renderer_)) {
+      std::println(stderr, "[Window] Failed to load scene: {}", tag->name);
       return false;
     }
   }
-
-  activeScenes_.push_back(name);
-  std::println("[Window] Presenting scene: {}", name);
-  return true;
-}
-
-void Window::unpresentScene(const std::string &name) {
-  std::shared_ptr<Scene> sceneToUnload;
 
   {
     std::lock_guard<std::mutex> lock(sceneMutex_);
+    activeScenes_.push_back(tag);
+  }
+  std::println("[Window] Presenting scene: {}", tag->name);
+  return true;
+}
 
-    // Remove from active list
-    auto it = std::find(activeScenes_.begin(), activeScenes_.end(), name);
+void Window::unpresentScene(const SceneTag *tag) {
+  if (!tag) {
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    auto it = std::find(activeScenes_.begin(), activeScenes_.end(), tag);
     if (it != activeScenes_.end()) {
       activeScenes_.erase(it);
     }
-
-    auto sceneIt = scenes_.find(name);
-    if (sceneIt != scenes_.end() && sceneIt->second->isLoaded()) {
-      sceneToUnload = sceneIt->second;
-    }
   }
 
-  // Unload outside the lock to avoid holding sceneMutex_ during GPU wait
-  if (sceneToUnload) {
+  Scene *scene = sceneRegistry_.get(tag);
+  if (scene && scene->isLoaded()) {
     if (renderer_) {
       renderer_->waitIdle();
     }
-    sceneToUnload->unload();
-    std::println("[Window] Unpresented and unloaded scene: {}", name);
+    scene->unload();
+    std::println("[Window] Unpresented and unloaded scene: {}", tag->name);
   }
 }
 
@@ -488,14 +487,14 @@ bool Window::renderFrame(float deltaTime) {
     return true; // Skip rendering when minimized
   }
 
-  // Collect active loaded scenes under lock (shared_ptrs keep them alive)
-  std::vector<std::shared_ptr<Scene>> scenesToRender;
+  // Collect active loaded scenes under lock
+  std::vector<Scene *> scenesToRender;
   {
     std::lock_guard<std::mutex> lock(sceneMutex_);
-    for (const auto &name : activeScenes_) {
-      auto it = scenes_.find(name);
-      if (it != scenes_.end() && it->second->isLoaded()) {
-        scenesToRender.push_back(it->second);
+    for (const auto *tag : activeScenes_) {
+      Scene *scene = sceneRegistry_.get(tag);
+      if (scene && scene->isLoaded()) {
+        scenesToRender.push_back(scene);
       }
     }
   }
@@ -505,7 +504,7 @@ bool Window::renderFrame(float deltaTime) {
   }
 
   // Update scenes outside the lock
-  for (auto &scene : scenesToRender) {
+  for (auto *scene : scenesToRender) {
     scene->update(deltaTime);
   }
 
@@ -554,7 +553,7 @@ bool Window::renderFrame(float deltaTime) {
   cmd.setScissor(0, scissor);
 
   // Draw all active scenes
-  for (auto &scene : scenesToRender) {
+  for (auto *scene : scenesToRender) {
     scene->draw(cmd, frameIndex);
   }
 
@@ -564,16 +563,14 @@ bool Window::renderFrame(float deltaTime) {
   return renderer_->endFrame(*sync, imageIndex);
 }
 
-Scene *Window::getScene(const std::string &name) {
-  std::lock_guard<std::mutex> lock(sceneMutex_);
-  auto it = scenes_.find(name);
-  if (it != scenes_.end()) {
-    return it->second.get();
+Scene *Window::getScene(const SceneTag *tag) {
+  if (!tag) {
+    return nullptr;
   }
-  return nullptr;
+  return sceneRegistry_.get(tag);
 }
 
-std::vector<std::string> Window::getActiveSceneNames() const {
+std::vector<const SceneTag *> Window::getActiveSceneTags() const {
   std::lock_guard<std::mutex> lock(sceneMutex_);
   return activeScenes_;
 }

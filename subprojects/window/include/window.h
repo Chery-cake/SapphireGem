@@ -2,6 +2,8 @@
 #define WINDOW_H_
 
 #include "renderer.h"
+#include "resource_registry.h"
+#include "scene.h"
 #include "swapchain.h"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
@@ -12,11 +14,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-// Forward declare Scene
-namespace window {
-class Scene;
-} // namespace window
 
 // Forward declare SDL types to avoid including SDL.h in header
 struct SDL_Window;
@@ -260,26 +257,27 @@ public:
   }
 
   // ===========================================================================
-  // Scene Management
+  // Scene Management (tag-based via ResourceRegistry)
   // ===========================================================================
 
   /**
-   * @brief Add a scene to this window
+   * @brief Add a scene to this window using the tag system
    *
    * The scene is registered but not loaded until presentScene() is called.
    *
+   * @param tag Tag identifying the scene (must have static storage duration)
    * @param scene Scene to add
    */
-  void addScene(std::shared_ptr<Scene> scene);
+  void addScene(const SceneTag *tag, std::unique_ptr<Scene> scene);
 
   /**
-   * @brief Remove a scene from this window
+   * @brief Remove a scene from this window by tag
    *
    * If the scene is active, it is unpresented (and unloaded) first.
    *
-   * @param name Name of the scene to remove
+   * @param tag Tag identifying the scene
    */
-  void removeScene(const std::string &name);
+  void removeScene(const SceneTag *tag);
 
   /**
    * @brief Present a scene (make it active)
@@ -287,19 +285,19 @@ public:
    * Loads the scene onto GPU if not already loaded. A window can
    * display multiple scenes at once.
    *
-   * @param name Name of the scene to present
+   * @param tag Tag identifying the scene
    * @return true if the scene was successfully presented
    */
-  bool presentScene(const std::string &name);
+  bool presentScene(const SceneTag *tag);
 
   /**
    * @brief Unpresent a scene (make it inactive)
    *
    * Unloads the scene from GPU memory to free resources.
    *
-   * @param name Name of the scene to unpresent
+   * @param tag Tag identifying the scene
    */
-  void unpresentScene(const std::string &name);
+  void unpresentScene(const SceneTag *tag);
 
   /**
    * @brief Render all active scenes for the current frame
@@ -314,17 +312,17 @@ public:
   bool renderFrame(float deltaTime = 0.0f);
 
   /**
-   * @brief Get a scene by name
-   * @param name Scene name
+   * @brief Get a scene by tag
+   * @param tag Scene tag
    * @return Pointer to scene, or nullptr if not found
    */
-  Scene *getScene(const std::string &name);
+  Scene *getScene(const SceneTag *tag);
 
   /**
-   * @brief Get names of all active (presented) scenes
-   * @return Vector of active scene names
+   * @brief Get all active (presented) scene tags
+   * @return Vector of active scene tags
    */
-  [[nodiscard]] std::vector<std::string> getActiveSceneNames() const;
+  [[nodiscard]] std::vector<const SceneTag *> getActiveSceneTags() const;
 
 private:
   SDL_Window *window_ = nullptr;
@@ -339,9 +337,9 @@ private:
   device::VMAAllocator *allocator_ = nullptr;
   device::ShaderManager *shaderManager_ = nullptr;
 
-  // Scene management
-  std::unordered_map<std::string, std::shared_ptr<Scene>> scenes_;
-  std::vector<std::string> activeScenes_;
+  // Scene management (tag-based)
+  core::ResourceRegistry<SceneTag, Scene> sceneRegistry_;
+  std::vector<const SceneTag *> activeScenes_;
   mutable std::mutex sceneMutex_;
 
   bool shouldClose_ = false;

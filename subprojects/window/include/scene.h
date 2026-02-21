@@ -1,6 +1,7 @@
 #ifndef SCENE_H_
 #define SCENE_H_
 
+#include "resource_registry.h"
 #include "vulkan/vulkan.hpp"
 #include "window_export.h"
 #include <cstdint>
@@ -21,6 +22,18 @@ namespace window {
 class Renderer;
 
 /**
+ * @brief Tag for identifying scenes in the resource system
+ *
+ * Must have static storage duration (constexpr, static, or global)
+ * when used with ResourceRegistry.
+ */
+struct WINDOW_API SceneTag {
+  const char *name;
+
+  constexpr SceneTag(const char *n) : name(n) {}
+};
+
+/**
  * @brief Abstract base class for scenes
  *
  * A scene manages a collection of objects and their rendering.
@@ -33,11 +46,14 @@ class Renderer;
  * A window can display multiple scenes at once. When a scene is
  * not being presented, it is unloaded from GPU memory.
  *
+ * Scenes are managed through a ResourceRegistry<SceneTag, Scene>
+ * using the tag system for type-safe identification.
+ *
  * Thread-safe: the loaded state is protected by mutex.
  */
 class WINDOW_API Scene {
 public:
-  explicit Scene(std::string name);
+  explicit Scene(const SceneTag &tag);
   virtual ~Scene();
 
   // Disable copy
@@ -105,9 +121,9 @@ public:
 
   /**
    * @brief Get scene name
-   * @return Scene name
+   * @return Scene name from tag
    */
-  [[nodiscard]] const std::string &getName() const { return name_; }
+  [[nodiscard]] const char *getName() const { return name_; }
 
 protected:
   /**
@@ -117,7 +133,7 @@ protected:
   void setLoaded(bool loaded) { loaded_ = loaded; }
 
 private:
-  std::string name_;
+  const char *name_;
   bool loaded_ = false;
   mutable std::mutex sceneMutex_;
 };

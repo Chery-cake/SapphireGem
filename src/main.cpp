@@ -21,42 +21,45 @@
 #include <thread>
 
 // ============================================================================
-// Static shader, material, and object tags (must have static storage duration)
+// Static tags (must have static storage duration)
 // ============================================================================
 
-// Shader tags for the triangle shader program
+// Shader tag
 static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
     "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
 
-// Material tags (2D and 3D variants)
-static constexpr window::MaterialTag MATERIAL_2D_TAG{"material_2d", 2,
-                                                     &TRIANGLE_SHADER_TAG};
-static constexpr window::MaterialTag MATERIAL_3D_TAG{"material_3d", 3,
-                                                     &TRIANGLE_SHADER_TAG};
+// Material tag (no dimension — that belongs to the object)
+static constexpr window::MaterialTag TRIANGLE_MATERIAL_TAG{
+    "triangle_material", &TRIANGLE_SHADER_TAG};
 
-// Object tags (2D and 3D variants)
-static constexpr window::ObjectTag OBJECT_2D_TAG{"object_2d",
-                                                 &MATERIAL_2D_TAG, 2};
-static constexpr window::ObjectTag OBJECT_3D_TAG{"object_3d",
-                                                 &MATERIAL_3D_TAG, 3};
+// Object tags: n-dimensional objects with n faces
+// 2D triangle: 2 dimensions, 1 face (the triangle itself, 3 vertices)
+static constexpr window::ObjectTag TRIANGLE_2D_TAG{
+    "triangle_2d", &TRIANGLE_MATERIAL_TAG, 2, 1};
+// 3D triangle: 3 dimensions, 1 face (3 vertices)
+static constexpr window::ObjectTag TRIANGLE_3D_TAG{
+    "triangle_3d", &TRIANGLE_MATERIAL_TAG, 3, 1};
+
+// Scene tags
+static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
+static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
 
 // ============================================================================
 // Concrete Scene Implementation
 // ============================================================================
 
 /**
- * @brief A concrete scene that renders a triangle with dimension-aware objects
+ * @brief A concrete scene that renders a triangle object
  *
  * Demonstrates the scene lifecycle: load creates GPU resources (material,
- * object, pipeline), draw issues render commands, unload frees GPU memory.
- *
- * @tparam Dim Spatial dimension (2 or 3)
+ * object with faces, pipeline), draw issues render commands per face,
+ * unload frees GPU memory.
  */
-template <uint32_t Dim> class TriangleScene : public window::Scene {
+class TriangleScene : public window::Scene {
 public:
-  TriangleScene(const std::string &name, const window::MaterialTag &matTag,
+  TriangleScene(const window::SceneTag &sceneTag,
                 const window::ObjectTag &objTag)
-      : Scene(name), matTag_(matTag), objTag_(objTag) {}
+      : Scene(sceneTag), objTag_(objTag) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -67,15 +70,21 @@ public:
     // offscreen rendering on secondary devices with result compositing on
     // the primary device. This basic scene uses the primary GPU only.
     (void)secondaryGPUs;
-    // Create and initialize material (acquires shader program)
-    material_ = std::make_unique<window::Material>(matTag_);
+
+    // Create and initialize base material (acquires shader program)
+    material_ = std::make_unique<window::Material>(*objTag_.baseMaterialTag);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize material", getName());
       return false;
     }
 
-    // Create and initialize object (creates pipeline, descriptor sets, UBOs)
-    object_ = std::make_unique<window::Object<Dim>>(objTag_);
+    // Create object with runtime dimension and face count from tag
+    object_ = std::make_unique<window::Object>(objTag_);
+
+    // Configure face 0: the triangle (3 vertices starting at offset 0)
+    object_->setFaceVertices(0, 0, 3);
+
+    // Initialize object (creates pipeline, descriptor sets, UBOs)
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eNone;
@@ -88,12 +97,9 @@ public:
       return false;
     }
 
-    // Set default transform
-    window::Transform<Dim> t;
-    object_->setTransform(t);
-
     setLoaded(true);
-    std::println("[{}] Scene loaded", getName());
+    std::println("[{}] Scene loaded ({}D, {} faces)", getName(),
+                 objTag_.dimension, objTag_.faceCount);
     return true;
   }
 
@@ -119,15 +125,14 @@ public:
       glm::mat4 view(1.0f);
       glm::mat4 proj(1.0f);
       object_->updateUniforms(frameIndex, view, proj);
-      object_->draw(cmd, frameIndex, 3); // 3 vertices for triangle
+      object_->draw(cmd, frameIndex);
     }
   }
 
 private:
-  const window::MaterialTag &matTag_;
   const window::ObjectTag &objTag_;
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<Dim>> object_;
+  std::unique_ptr<window::Object> object_;
 };
 
 // ============================================================================
@@ -407,23 +412,21 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
-  // Create scenes and add them to windows
+  // Create scenes using the tag system and add them to windows
   // Window 1: 2D triangle scene
   if (win1 && win1->hasRenderer()) {
-    auto scene2d = std::make_shared<TriangleScene<2>>("triangle_2d",
-                                                      MATERIAL_2D_TAG,
-                                                      OBJECT_2D_TAG);
-    win1->addScene(scene2d);
-    win1->presentScene("triangle_2d");
+    auto scene2d =
+        std::make_unique<TriangleScene>(SCENE_2D_TAG, TRIANGLE_2D_TAG);
+    win1->addScene(&SCENE_2D_TAG, std::move(scene2d));
+    win1->presentScene(&SCENE_2D_TAG);
   }
 
   // Window 2: 3D triangle scene
   if (win2 && win2->hasRenderer()) {
-    auto scene3d = std::make_shared<TriangleScene<3>>("triangle_3d",
-                                                      MATERIAL_3D_TAG,
-                                                      OBJECT_3D_TAG);
-    win2->addScene(scene3d);
-    win2->presentScene("triangle_3d");
+    auto scene3d =
+        std::make_unique<TriangleScene>(SCENE_3D_TAG, TRIANGLE_3D_TAG);
+    win2->addScene(&SCENE_3D_TAG, std::move(scene3d));
+    win2->presentScene(&SCENE_3D_TAG);
   }
 
   // Main loop with scene-based rendering

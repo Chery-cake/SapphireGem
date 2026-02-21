@@ -8,7 +8,7 @@
 namespace window {
 
 Material::Material(const MaterialTag &tag)
-    : name_(tag.name), dimension_(tag.dimension), shaderTag_(tag.shaderTag),
+    : name_(tag.name), shaderTag_(tag.shaderTag),
       textureTag_(tag.textureTag) {}
 
 Material::~Material() { release(); }
