@@ -13,6 +13,11 @@
 #include <unordered_map>
 #include <vector>
 
+// Forward declare Scene
+namespace window {
+class Scene;
+} // namespace window
+
 // Forward declare SDL types to avoid including SDL.h in header
 struct SDL_Window;
 
@@ -20,6 +25,7 @@ struct SDL_Window;
 namespace device {
 class GPUDevice;
 class VMAAllocator;
+class ShaderManager;
 } // namespace device
 
 namespace window {
@@ -45,6 +51,7 @@ struct WINDOW_API WindowConfig {
   // Rendering chain initialization parameters
   const vk::raii::Instance *vulkanInstance = nullptr;
   device::VMAAllocator *allocator = nullptr;
+  device::ShaderManager *shaderManager = nullptr;
   SwapchainConfig swapchainConfig = {};
 };
 
@@ -252,6 +259,73 @@ public:
     return renderer_ && renderer_->getSwapchain() != nullptr;
   }
 
+  // ===========================================================================
+  // Scene Management
+  // ===========================================================================
+
+  /**
+   * @brief Add a scene to this window
+   *
+   * The scene is registered but not loaded until presentScene() is called.
+   *
+   * @param scene Scene to add
+   */
+  void addScene(std::shared_ptr<Scene> scene);
+
+  /**
+   * @brief Remove a scene from this window
+   *
+   * If the scene is active, it is unpresented (and unloaded) first.
+   *
+   * @param name Name of the scene to remove
+   */
+  void removeScene(const std::string &name);
+
+  /**
+   * @brief Present a scene (make it active)
+   *
+   * Loads the scene onto GPU if not already loaded. A window can
+   * display multiple scenes at once.
+   *
+   * @param name Name of the scene to present
+   * @return true if the scene was successfully presented
+   */
+  bool presentScene(const std::string &name);
+
+  /**
+   * @brief Unpresent a scene (make it inactive)
+   *
+   * Unloads the scene from GPU memory to free resources.
+   *
+   * @param name Name of the scene to unpresent
+   */
+  void unpresentScene(const std::string &name);
+
+  /**
+   * @brief Render all active scenes for the current frame
+   *
+   * Updates and draws all active scenes within a single render pass.
+   * Handles frame synchronization, command buffer recording, and
+   * presentation.
+   *
+   * @param deltaTime Time elapsed since last frame in seconds
+   * @return true if rendering succeeded
+   */
+  bool renderFrame(float deltaTime = 0.0f);
+
+  /**
+   * @brief Get a scene by name
+   * @param name Scene name
+   * @return Pointer to scene, or nullptr if not found
+   */
+  Scene *getScene(const std::string &name);
+
+  /**
+   * @brief Get names of all active (presented) scenes
+   * @return Vector of active scene names
+   */
+  [[nodiscard]] std::vector<std::string> getActiveSceneNames() const;
+
 private:
   SDL_Window *window_ = nullptr;
   uint32_t windowId_ = 0;
@@ -262,6 +336,13 @@ private:
   device::GPUDevice *mainGPU = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUs = {};
   std::unique_ptr<Renderer> renderer_;
+  device::VMAAllocator *allocator_ = nullptr;
+  device::ShaderManager *shaderManager_ = nullptr;
+
+  // Scene management
+  std::unordered_map<std::string, std::shared_ptr<Scene>> scenes_;
+  std::vector<std::string> activeScenes_;
+  mutable std::mutex sceneMutex_;
 
   bool shouldClose_ = false;
   bool minimized_ = false;
