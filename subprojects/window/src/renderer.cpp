@@ -24,6 +24,7 @@ void Renderer::shutdown() {
   }
 
   destroyDepthResources();
+  destroyImageSyncObjects();
   destroySyncObjects();
   destroyCommandBuffers();
   destroyCommandPool();
@@ -84,8 +85,17 @@ bool Renderer::initialize(device::GPUDevice &device,
     return false;
   }
 
-  // Create sync objects
+  // Create sync objects (per frame-in-flight)
   if (!createSyncObjects()) {
+    destroyCommandBuffers();
+    destroyCommandPool();
+    destroyRenderPass();
+    return false;
+  }
+
+  // Create image sync objects (per swapchain image)
+  if (!createImageSyncObjects()) {
+    destroySyncObjects();
     destroyCommandBuffers();
     destroyCommandPool();
     destroyRenderPass();
@@ -94,6 +104,7 @@ bool Renderer::initialize(device::GPUDevice &device,
 
   // Create depth resources
   if (!createDepthResources()) {
+    destroyImageSyncObjects();
     destroySyncObjects();
     destroyCommandBuffers();
     destroyCommandPool();
@@ -105,6 +116,7 @@ bool Renderer::initialize(device::GPUDevice &device,
   vk::ImageView depthView = depthImage_ ? **depthImage_->view : nullptr;
   if (!swapchain_->createFramebuffers(getRenderPass(), depthView)) {
     destroyDepthResources();
+    destroyImageSyncObjects();
     destroySyncObjects();
     destroyCommandBuffers();
     destroyCommandPool();
@@ -248,9 +260,9 @@ bool Renderer::createSyncObjects() {
 
   try {
     for (auto &sync : frameSyncObjects_) {
+      // imageAvailableSemaphore is per frame-in-flight: the fence wait
+      // guarantees the previous acquire has been consumed before reuse.
       sync.imageAvailableSemaphore = std::make_unique<vk::raii::Semaphore>(
-          gpuDevice_->getRaiiDevice(), semaphoreInfo);
-      sync.renderFinishedSemaphore = std::make_unique<vk::raii::Semaphore>(
           gpuDevice_->getRaiiDevice(), semaphoreInfo);
       sync.inFlightFence = std::make_unique<vk::raii::Fence>(
           gpuDevice_->getRaiiDevice(), fenceInfo);
@@ -266,9 +278,43 @@ bool Renderer::createSyncObjects() {
 void Renderer::destroySyncObjects() {
   for (auto &sync : frameSyncObjects_) {
     sync.imageAvailableSemaphore.reset();
-    sync.renderFinishedSemaphore.reset();
     sync.inFlightFence.reset();
   }
+}
+
+bool Renderer::createImageSyncObjects() {
+  if (!gpuDevice_ || !swapchain_) {
+    return false;
+  }
+
+  uint32_t imageCount = swapchain_->getImageCount();
+  imageSyncObjects_.resize(imageCount);
+
+  vk::SemaphoreCreateInfo semaphoreInfo{};
+
+  try {
+    for (uint32_t i = 0; i < imageCount; ++i) {
+      // renderFinishedSemaphore is per swapchain image: acquiring the
+      // same image guarantees its previous present has completed, so the
+      // semaphore is safe to reuse. This avoids the validation error
+      // caused by signaling a semaphore still in use by the swapchain.
+      imageSyncObjects_[i].renderFinishedSemaphore =
+          std::make_unique<vk::raii::Semaphore>(gpuDevice_->getRaiiDevice(),
+                                                semaphoreInfo);
+    }
+    return true;
+  } catch (const vk::SystemError &e) {
+    std::println(stderr, "[Renderer] Failed to create image sync objects: {}",
+                 e.what());
+    return false;
+  }
+}
+
+void Renderer::destroyImageSyncObjects() {
+  for (auto &imgSync : imageSyncObjects_) {
+    imgSync.renderFinishedSemaphore.reset();
+  }
+  imageSyncObjects_.clear();
 }
 
 bool Renderer::createDepthResources() {
@@ -354,16 +400,19 @@ FrameSyncObjects *Renderer::beginFrame() {
 bool Renderer::endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex) {
   std::lock_guard<std::mutex> lock(renderMutex_);
 
-  if (!gpuDevice_) {
+  if (!gpuDevice_ || imageIndex >= imageSyncObjects_.size()) {
     return false;
   }
 
   // End command buffer
   syncObjects.commandBuffer.end();
 
-  // Submit command buffer
+  // Use per-frame imageAvailableSemaphore (safe: fence wait guarantees
+  // the previous acquire was consumed) and per-image renderFinishedSemaphore
+  // (safe: acquiring this image guarantees its previous present completed).
   vk::Semaphore waitSemaphore = **syncObjects.imageAvailableSemaphore;
-  vk::Semaphore signalSemaphore = **syncObjects.renderFinishedSemaphore;
+  vk::Semaphore signalSemaphore =
+      **imageSyncObjects_[imageIndex].renderFinishedSemaphore;
   std::vector<vk::Semaphore> waitSemaphores = {waitSemaphore};
   std::vector<vk::PipelineStageFlags> waitStages = {
       vk::PipelineStageFlagBits::eColorAttachmentOutput};
@@ -402,6 +451,13 @@ bool Renderer::handleSwapchainRecreation() {
 
   // Destroy framebuffers
   swapchain_->destroyFramebuffers();
+
+  // Destroy and recreate image sync objects (count may change with new
+  // swapchain)
+  destroyImageSyncObjects();
+  if (!createImageSyncObjects()) {
+    return false;
+  }
 
   // Destroy and recreate depth resources
   destroyDepthResources();
