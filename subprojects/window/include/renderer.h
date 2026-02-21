@@ -26,11 +26,33 @@ constexpr uint32_t MAX_FRAMES_IN_FLIGHT =
        // and change it to the one in the config class
 
 /**
- * @brief Per-frame synchronization resources
+ * @brief Per-swapchain-image synchronization objects.
+ *
+ * The renderFinishedSemaphore is indexed by swapchain image rather than by
+ * frame-in-flight. This avoids reuse of a semaphore still held by the
+ * presentation engine: acquiring the same image guarantees its previous
+ * present has completed, so its renderFinishedSemaphore is safe to reuse.
+ *
+ * See: https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html
+ */
+struct WINDOW_API ImageSyncObjects {
+  std::unique_ptr<vk::raii::Semaphore> renderFinishedSemaphore;
+  uint32_t imageIndex = 0;
+};
+
+/**
+ * @brief Per-frame-in-flight synchronization and command resources.
+ *
+ * imageAvailableSemaphore and inFlightFence are per frame-in-flight because
+ * the fence wait guarantees the previous use of these objects has completed
+ * before they are reused. Command buffers are also per frame-in-flight.
+ *
+ * The renderFinishedSemaphore is NOT stored here; it is stored per swapchain
+ * image in ImageSyncObjects to prevent semaphore reuse while the presentation
+ * engine still holds a reference.
  */
 struct WINDOW_API FrameSyncObjects {
   std::unique_ptr<vk::raii::Semaphore> imageAvailableSemaphore;
-  std::unique_ptr<vk::raii::Semaphore> renderFinishedSemaphore;
   std::unique_ptr<vk::raii::Fence> inFlightFence;
   vk::CommandBuffer commandBuffer; // Owned by command pool
   uint32_t frameIndex = 0;
@@ -199,6 +221,8 @@ private:
   void destroyCommandBuffers();
   bool createSyncObjects();
   void destroySyncObjects();
+  bool createImageSyncObjects();
+  void destroyImageSyncObjects();
   bool createDepthResources();
   void destroyDepthResources();
 
@@ -208,7 +232,8 @@ private:
 
   std::unique_ptr<vk::raii::RenderPass> renderPass_;
   std::unique_ptr<vk::raii::CommandPool> commandPool_;
-  std::vector<FrameSyncObjects> frameSyncObjects_;
+  std::vector<FrameSyncObjects> frameSyncObjects_;   // per frame-in-flight
+  std::vector<ImageSyncObjects> imageSyncObjects_;   // per swapchain image
 
   // Depth buffer
   std::unique_ptr<device::AllocatedImage> depthImage_;
