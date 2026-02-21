@@ -1,11 +1,11 @@
-// 3D Triangle shader - renders a colored triangle using geometry shader
-// For 3D objects: UBO contains 4x4 matrices (model, view, proj)
-// For 2D objects, use triangle2d.slang which uses 3x3 matrices.
+// 2D Triangle shader - renders a colored triangle using geometry shader
+// Uses 3x3 matrices for 2D homogeneous coordinate transforms.
+// For 2D objects: UBO contains 3x3 matrices (model, view, proj)
 
 struct UniformBuffer {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
+    float3x3 model;
+    float3x3 view;
+    float3x3 proj;
 };
 ConstantBuffer<UniformBuffer> ubo;
 
@@ -20,7 +20,7 @@ struct GSOutput {
 };
 
 // Vertex shader - outputs vertices with hardcoded triangle positions
-// Transforms positions using the UBO matrices
+// Transforms positions using the 3x3 UBO matrices
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
@@ -36,9 +36,14 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     colors[1] = float3(0.0, 1.0, 0.0);  // Green
     colors[2] = float3(0.0, 0.0, 1.0);  // Blue
 
-    float4 worldPos = mul(ubo.model, float4(positions[vertexID], 0.0, 1.0));
-    float4 viewPos = mul(ubo.view, worldPos);
-    output.pos = mul(ubo.proj, viewPos);
+    // 2D homogeneous coordinates: (x, y, 1)
+    float3 pos2d = float3(positions[vertexID], 1.0);
+    float3 worldPos = mul(ubo.model, pos2d);
+    float3 viewPos = mul(ubo.view, worldPos);
+    float3 clipPos = mul(ubo.proj, viewPos);
+
+    // Convert 2D result to clip space float4
+    output.pos = float4(clipPos.xy, 0.0, 1.0);
     output.color = colors[vertexID];
     return output;
 }

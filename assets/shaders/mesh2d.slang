@@ -2,9 +2,9 @@
 // Demonstrates modern mesh shader pipeline for 2D rendering
 
 struct UniformBuffer {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
+    float3x3 model;
+    float3x3 view;
+    float3x3 proj;
 };
 ConstantBuffer<UniformBuffer> ubo;
 
@@ -49,9 +49,10 @@ void meshMain(
     positions[2] = center + float2( size,  size);
     positions[3] = center + float2(-size,  size);
 
-    // Transform and output vertices
+    // Transform and output vertices using 2D homogeneous coordinates
     for (int i = 0; i < 4; i++) {
-        verts[i].pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(positions[i], 0.0, 1.0))));
+        float3 pos2d = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float3(positions[i], 1.0))));
+        verts[i].pos = float4(pos2d.xy, 0.0, 1.0);
         verts[i].color = color;
     }
 

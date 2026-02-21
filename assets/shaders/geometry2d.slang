@@ -11,9 +11,9 @@ struct VSInput {
 };
 
 struct UniformBuffer {
-    float4x4 model;
-    float4x4 view;
-    float4x4 proj;
+    float3x3 model;
+    float3x3 view;
+    float3x3 proj;
 };
 ConstantBuffer<UniformBuffer> ubo;
 
@@ -65,7 +65,9 @@ void geomMain(
     // First triangle (0, 1, 2)
     for (int i = 0; i < 3; i++) {
         int idx = (i == 0) ? 0 : (i == 1) ? 1 : 2;
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[idx], 0.0, 1.0))));
+        // 2D homogeneous transform then convert to clip space float4
+        float3 pos2d = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float3(corners[idx], 1.0))));
+        output.pos = float4(pos2d.xy, 0.0, 1.0);
         output.color = color;
         outputStream.Append(output);
     }
@@ -74,7 +76,8 @@ void geomMain(
     // Second triangle (0, 2, 3)
     int indices[3] = {0, 2, 3};
     for (int i = 0; i < 3; i++) {
-        output.pos = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float4(corners[indices[i]], 0.0, 1.0))));
+        float3 pos2d = mul(ubo.proj, mul(ubo.view, mul(ubo.model, float3(corners[indices[i]], 1.0))));
+        output.pos = float4(pos2d.xy, 0.0, 1.0);
         output.color = color;
         outputStream.Append(output);
     }

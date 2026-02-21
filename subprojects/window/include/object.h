@@ -1,6 +1,7 @@
 #ifndef OBJECT_H_
 #define OBJECT_H_
 
+#include "glm/ext/matrix_float3x3.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
 #include "vma_allocator.h"
@@ -55,6 +56,74 @@ template <uint32_t Dim> struct UniformBufferData {
   MatType model{1.0f};
   MatType view{1.0f};
   MatType proj{1.0f};
+};
+
+/**
+ * @brief GPU-compatible UBO layout with std140 padding
+ *
+ * In std140 layout, each column of a matrix is aligned to 16 bytes (vec4).
+ * For Dim=3 (mat4): columns are vec4, naturally 16-byte aligned — no padding.
+ * For Dim=2 (mat3): columns are vec3 (12 bytes) but must be padded to 16 bytes.
+ *
+ * This struct ensures the CPU-side data matches the GPU shader UBO layout.
+ *
+ * @tparam Dim Spatial dimension
+ */
+template <uint32_t Dim> struct GPUUniformBufferData {
+  // Default: same layout as UniformBufferData (works for Dim=3/mat4)
+  using UBO = UniformBufferData<Dim>;
+  using MatType = typename UBO::MatType;
+  MatType model{1.0f};
+  MatType view{1.0f};
+  MatType proj{1.0f};
+
+  void fromUBO(const UBO &ubo) {
+    model = ubo.model;
+    view = ubo.view;
+    proj = ubo.proj;
+  }
+};
+
+/**
+ * @brief Specialization for 2D: pads mat3 columns to 16-byte alignment
+ *
+ * Each column of float3x3 in std140 is stored as (vec3 + 4 bytes padding),
+ * giving 48 bytes per matrix (3 columns × 16 bytes).
+ * Total UBO size: 3 matrices × 48 bytes = 144 bytes.
+ */
+template <> struct GPUUniformBufferData<2> {
+  using UBO = UniformBufferData<2>;
+  using MatType = typename UBO::MatType;
+
+  struct Std140Column {
+    float x, y, z;
+    float _pad{0.0f};
+  };
+
+  struct Std140Mat3 {
+    Std140Column col[3];
+  };
+
+  Std140Mat3 model{};
+  Std140Mat3 view{};
+  Std140Mat3 proj{};
+
+  static Std140Mat3 fromMat3(const glm::mat3 &m) {
+    Std140Mat3 result{};
+    for (int c = 0; c < 3; ++c) {
+      result.col[c].x = m[c][0];
+      result.col[c].y = m[c][1];
+      result.col[c].z = m[c][2];
+      result.col[c]._pad = 0.0f;
+    }
+    return result;
+  }
+
+  void fromUBO(const UBO &ubo) {
+    model = fromMat3(ubo.model);
+    view = fromMat3(ubo.view);
+    proj = fromMat3(ubo.proj);
+  }
 };
 
 /**
@@ -117,6 +186,7 @@ template <uint32_t Dim> class Object {
 public:
   static constexpr uint32_t DIMENSION = Dim;
   using UBO = UniformBufferData<Dim>;
+  using GPUUBO = GPUUniformBufferData<Dim>;
   using MatType = typename UBO::MatType;
   using VertexType = Vertex<Dim>;
 
