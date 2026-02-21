@@ -176,112 +176,97 @@ bool Window::create(const WindowConfig &config) {
   return true;
 }
 
-bool Window::pollEvents() {
+void Window::processEvent(const SDL_Event &event) {
   if (!window_) {
-    return false;
+    return;
   }
 
-  SDL_Event event;
-  while (SDL_PollEvent(&event)) {
-    // Check if event is for this window
-    if (event.type >= SDL_EVENT_WINDOW_FIRST &&
-        event.type <= SDL_EVENT_WINDOW_LAST) {
-      if (event.window.windowID != windowId_) {
-        continue; // Not our event
-      }
-
-      WindowEvent windowEvent;
-
-      switch (event.type) {
-      case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-        shouldClose_ = true;
-        windowEvent.type = WindowEventType::Close;
-        break;
-
-      case SDL_EVENT_WINDOW_RESIZED:
-        width_ = event.window.data1;
-        height_ = event.window.data2;
-        windowEvent.type = WindowEventType::Resize;
-        windowEvent.width = width_;
-        windowEvent.height = height_;
-        break;
-
-      case SDL_EVENT_WINDOW_MINIMIZED:
-        minimized_ = true;
-        windowEvent.type = WindowEventType::Minimize;
-        break;
-
-      case SDL_EVENT_WINDOW_MAXIMIZED:
-        minimized_ = false;
-        windowEvent.type = WindowEventType::Maximize;
-        break;
-
-      case SDL_EVENT_WINDOW_RESTORED:
-        minimized_ = false;
-        windowEvent.type = WindowEventType::Restore;
-        break;
-
-      case SDL_EVENT_WINDOW_FOCUS_GAINED:
-        focused_ = true;
-        windowEvent.type = WindowEventType::Focus;
-        break;
-
-      case SDL_EVENT_WINDOW_FOCUS_LOST:
-        focused_ = false;
-        windowEvent.type = WindowEventType::Unfocus;
-        break;
-
-      case SDL_EVENT_WINDOW_MOUSE_ENTER:
-        windowEvent.type = WindowEventType::MouseEnter;
-        break;
-
-      case SDL_EVENT_WINDOW_MOUSE_LEAVE:
-        windowEvent.type = WindowEventType::MouseLeave;
-        break;
-
-      case SDL_EVENT_KEY_DOWN:
-        windowEvent.type = WindowEventType::KeyDown;
-        break;
-
-      case SDL_EVENT_KEY_UP:
-        windowEvent.type = WindowEventType::KeyUp;
-        break;
-
-      case SDL_EVENT_TEXT_INPUT:
-        windowEvent.type = WindowEventType::TextInput;
-        break;
-
-      default:
-        continue;
-      }
-
-      {
-        std::lock_guard<std::mutex> lock(eventCallbackMutex_);
-        auto it = eventCallback_.find(windowEvent.type);
-        if (it != eventCallback_.end()) {
-          for (const auto &func : it->second) {
-            func(windowEvent);
-          }
-        }
-      }
+  // Handle window-specific events
+  if (event.type >= SDL_EVENT_WINDOW_FIRST &&
+      event.type <= SDL_EVENT_WINDOW_LAST) {
+    if (event.window.windowID != windowId_) {
+      return; // Not our event
     }
 
-    // Handle quit event
-    if (event.type == SDL_EVENT_QUIT) {
+    WindowEvent windowEvent;
+
+    switch (event.type) {
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
       shouldClose_ = true;
+      windowEvent.type = WindowEventType::Close;
+      break;
+
+    case SDL_EVENT_WINDOW_RESIZED:
+      width_ = event.window.data1;
+      height_ = event.window.data2;
+      windowEvent.type = WindowEventType::Resize;
+      windowEvent.width = width_;
+      windowEvent.height = height_;
+      break;
+
+    case SDL_EVENT_WINDOW_MINIMIZED:
+      minimized_ = true;
+      windowEvent.type = WindowEventType::Minimize;
+      break;
+
+    case SDL_EVENT_WINDOW_MAXIMIZED:
+      minimized_ = false;
+      windowEvent.type = WindowEventType::Maximize;
+      break;
+
+    case SDL_EVENT_WINDOW_RESTORED:
+      minimized_ = false;
+      windowEvent.type = WindowEventType::Restore;
+      break;
+
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
+      focused_ = true;
+      windowEvent.type = WindowEventType::Focus;
+      break;
+
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+      focused_ = false;
+      windowEvent.type = WindowEventType::Unfocus;
+      break;
+
+    case SDL_EVENT_WINDOW_MOUSE_ENTER:
+      windowEvent.type = WindowEventType::MouseEnter;
+      break;
+
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+      windowEvent.type = WindowEventType::MouseLeave;
+      break;
+
+    default:
+      return;
+    }
+
+    {
       std::lock_guard<std::mutex> lock(eventCallbackMutex_);
-      auto it = eventCallback_.find(WindowEventType::Close);
+      auto it = eventCallback_.find(windowEvent.type);
       if (it != eventCallback_.end()) {
         WindowEvent quitEvent;
         quitEvent.type = WindowEventType::Close;
         for (const auto &func : it->second) {
-          func(quitEvent);
+          func(windowEvent);
         }
       }
     }
   }
 
-  return true;
+  // Handle quit event — close this window
+  if (event.type == SDL_EVENT_QUIT) {
+    shouldClose_ = true;
+    std::lock_guard<std::mutex> lock(eventCallbackMutex_);
+    auto it = eventCallback_.find(WindowEventType::Close);
+    if (it != eventCallback_.end()) {
+      WindowEvent quitEvent;
+      quitEvent.type = WindowEventType::Close;
+      for (const auto &func : it->second) {
+        func(quitEvent);
+      }
+    }
+  }
 }
 
 void Window::setEventCallback(WindowEventCallback callback,
@@ -653,9 +638,29 @@ Window *WindowManager::getPrimaryWindow() {
 }
 
 void WindowManager::pollAllEvents() {
-  // Poll sequentially
-  for (auto &window : windows_) {
-    window->pollEvents();
+  // Centralized event polling: poll all SDL events once and dispatch
+  // to the correct window by SDL window ID. This prevents one window
+  // from consuming events meant for another.
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    // Handle global quit event — close all windows
+    if (event.type == SDL_EVENT_QUIT) {
+      for (auto &window : windows_) {
+        if (window && !window->shouldClose()) {
+          window->processEvent(event);
+        }
+      }
+      continue;
+    }
+
+    // Dispatch window events to the target window by ID
+    if (event.type >= SDL_EVENT_WINDOW_FIRST &&
+        event.type <= SDL_EVENT_WINDOW_LAST) {
+      Window *target = getWindowById(event.window.windowID);
+      if (target) {
+        target->processEvent(event);
+      }
+    }
   }
 }
 

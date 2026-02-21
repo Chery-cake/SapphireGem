@@ -23,19 +23,23 @@
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Shader tag
-static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
-    "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
+// Shader tags
+static constexpr device::ShaderTag TRIANGLE_2D_SHADER_TAG{
+    "triangle2d", "triangle2d.slang", "vertMain", "fragMain", "geomMain"};
+static constexpr device::ShaderTag TRIANGLE_3D_SHADER_TAG{
+    "triangle3d", "triangle.slang", "vertMain", "fragMain", "geomMain"};
 
-// Material tag (dimension-agnostic — the Object<Dim> template handles
-// dimension)
-static constexpr window::MaterialTag TRIANGLE_MATERIAL_TAG{
-    "triangle_material", &TRIANGLE_SHADER_TAG};
+// Material tags (separate for 2D and 3D shaders)
+static constexpr window::MaterialTag TRIANGLE_2D_MATERIAL_TAG{
+    "triangle_material_2d", &TRIANGLE_2D_SHADER_TAG};
+static constexpr window::MaterialTag TRIANGLE_3D_MATERIAL_TAG{
+    "triangle_material_3d", &TRIANGLE_3D_SHADER_TAG};
 
-// Object tags (dimension-agnostic — the Object<Dim> template enforces
-// dimension)
-static constexpr window::ObjectTag TRIANGLE_OBJ_TAG{"triangle_obj",
-                                                    &TRIANGLE_MATERIAL_TAG};
+// Object tags (separate for 2D and 3D materials)
+static constexpr window::ObjectTag TRIANGLE_2D_OBJ_TAG{
+    "triangle_obj_2d", &TRIANGLE_2D_MATERIAL_TAG};
+static constexpr window::ObjectTag TRIANGLE_3D_OBJ_TAG{
+    "triangle_obj_3d", &TRIANGLE_3D_MATERIAL_TAG};
 // Scene tags
 static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
 static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
@@ -61,7 +65,7 @@ public:
     (void)secondaryGPUs;
 
     // Create and initialize base material (acquires shader program)
-    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
+    material_ = std::make_unique<window::Material>(TRIANGLE_2D_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize material", getName());
       return false;
@@ -77,7 +81,7 @@ public:
 
     // Create 2D object — faces auto-calculated from indices
     object_ = std::make_unique<window::Object<2>>(
-        TRIANGLE_OBJ_TAG, std::move(vertices), std::move(indices));
+        TRIANGLE_2D_OBJ_TAG, std::move(vertices), std::move(indices));
 
     // Initialize object (creates pipeline, descriptor sets, UBOs)
     window::PipelineConfig pConfig;
@@ -140,7 +144,7 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
+    material_ = std::make_unique<window::Material>(TRIANGLE_3D_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize material", getName());
       return false;
@@ -156,7 +160,7 @@ public:
 
     // Create 3D object — faces auto-calculated from indices
     object_ = std::make_unique<window::Object<3>>(
-        TRIANGLE_OBJ_TAG, std::move(vertices), std::move(indices));
+        TRIANGLE_3D_OBJ_TAG, std::move(vertices), std::move(indices));
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
@@ -495,7 +499,7 @@ int main(int argc, char *argv[]) {
   }
 
   int frame = 0;
-  while (!wMan.checkWindowsVectorEmpty()) { // TODO improve closing function
+  while (!wMan.checkWindowsVectorEmpty()) {
     std::print("Frame {}\n", frame);
     std::print("\n");
 

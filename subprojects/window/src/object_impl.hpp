@@ -171,8 +171,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Create uniform buffers (one per frame in flight)
-  // UBO size matches the dimension: sizeof(UniformBufferData<Dim>)
-  const vk::DeviceSize uboSize = sizeof(UBO);
+  // UBO size matches the GPU-compatible layout:
+  // sizeof(GPUUniformBufferData<Dim>)
+  const vk::DeviceSize uboSize = sizeof(GPUUBO);
   uniformBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     auto ubo = allocator.createUniformBuffer(
@@ -344,9 +345,13 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
   uboData.view = viewMatrix;
   uboData.proj = projMatrix;
 
+  // Convert to GPU-compatible layout (handles std140 padding for mat3)
+  GPUUBO gpuData{};
+  gpuData.fromUBO(uboData);
+
   void *mapped = uniformBuffers_[frameIndex].map();
   if (mapped) {
-    std::memcpy(mapped, &uboData, sizeof(UBO));
+    std::memcpy(mapped, &gpuData, sizeof(GPUUBO));
     uniformBuffers_[frameIndex].unmap();
   }
 }
