@@ -29,9 +29,12 @@ Window::Window(Window &&other) noexcept
       height_(other.height_), title_(std::move(other.title_)),
       mainGPU(std::exchange(other.mainGPU, nullptr)),
       secondaryGPUs(std::move(other.secondaryGPUs)),
-      renderer_(std::move(other.renderer_)), shouldClose_(other.shouldClose_),
-      minimized_(other.minimized_), focused_(other.focused_),
-      fullscreen_(other.fullscreen_),
+      renderer_(std::move(other.renderer_)),
+      allocator_(std::exchange(other.allocator_, nullptr)),
+      shaderManager_(std::exchange(other.shaderManager_, nullptr)),
+      activeScenes_(std::move(other.activeScenes_)),
+      shouldClose_(other.shouldClose_), minimized_(other.minimized_),
+      focused_(other.focused_), fullscreen_(other.fullscreen_),
       eventCallback_(std::move(other.eventCallback_)) {}
 
 Window &Window::operator=(Window &&other) noexcept {
@@ -45,6 +48,9 @@ Window &Window::operator=(Window &&other) noexcept {
     mainGPU = std::exchange(other.mainGPU, nullptr);
     secondaryGPUs = std::move(other.secondaryGPUs);
     renderer_ = std::move(other.renderer_);
+    allocator_ = std::exchange(other.allocator_, nullptr);
+    shaderManager_ = std::exchange(other.shaderManager_, nullptr);
+    activeScenes_ = std::move(other.activeScenes_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
     focused_ = other.focused_;
@@ -55,6 +61,23 @@ Window &Window::operator=(Window &&other) noexcept {
 }
 
 void Window::destroy() {
+  // Wait for GPU to finish before unloading scenes
+  if (renderer_) {
+    renderer_->waitIdle();
+  }
+
+  // Unload all active scenes (they hold GPU resources)
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    sceneRegistry_.forEach([](const SceneTag *, Scene *scene) {
+      if (scene && scene->isLoaded()) {
+        scene->unload();
+      }
+    });
+    activeScenes_.clear();
+    sceneRegistry_.clear();
+  }
+
   if (renderer_) {
     renderer_.reset();
   }
@@ -68,6 +91,8 @@ void Window::destroy() {
 
   mainGPU = nullptr;
   secondaryGPUs.clear();
+  allocator_ = nullptr;
+  shaderManager_ = nullptr;
 }
 
 bool Window::create(const WindowConfig &config) {
@@ -78,6 +103,8 @@ bool Window::create(const WindowConfig &config) {
 
   mainGPU = config.mainGPU;
   secondaryGPUs = config.secondaryGPUs;
+  allocator_ = config.allocator;
+  shaderManager_ = config.shaderManager;
 
   // Build window flags
   SDL_WindowFlags flags = SDL_WINDOW_VULKAN;
@@ -332,6 +359,217 @@ void Window::setSecondaryGPUs(std::vector<device::GPUDevice *> &devices) {
   if (renderer_ && renderer_->getSwapchain()) {
     renderer_->getSwapchain()->updateSecondaryDevices(devices);
   }
+}
+
+// ============================================================================
+// Scene Management Implementation
+// ============================================================================
+
+void Window::addScene(const SceneTag *tag, std::unique_ptr<Scene> scene) {
+  if (!tag || !scene) {
+    std::println(stderr, "[Window] Cannot add null scene or tag");
+    return;
+  }
+  if (sceneRegistry_.add(tag, std::move(scene))) {
+    std::println("[Window] Added scene: {}", tag->name);
+  } else {
+    std::println(stderr, "[Window] Scene already exists: {}", tag->name);
+  }
+}
+
+void Window::removeScene(const SceneTag *tag) {
+  if (!tag) {
+    return;
+  }
+
+  // Remove from active list
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    auto it = std::find(activeScenes_.begin(), activeScenes_.end(), tag);
+    if (it != activeScenes_.end()) {
+      activeScenes_.erase(it);
+    }
+  }
+
+  // Unload if loaded
+  Scene *scene = sceneRegistry_.get(tag);
+  if (scene && scene->isLoaded()) {
+    if (renderer_) {
+      renderer_->waitIdle();
+    }
+    scene->unload();
+    std::println("[Window] Removed and unloaded scene: {}", tag->name);
+  } else {
+    std::println("[Window] Removed scene: {}", tag->name);
+  }
+
+  sceneRegistry_.remove(tag);
+}
+
+bool Window::presentScene(const SceneTag *tag) {
+  if (!tag) {
+    return false;
+  }
+
+  Scene *scene = sceneRegistry_.get(tag);
+  if (!scene) {
+    std::println(stderr, "[Window] Scene not found: {}", tag->name);
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+
+    // Check if already active
+    for (const auto *active : activeScenes_) {
+      if (active == tag) {
+        return true;
+      }
+    }
+  }
+
+  // Load if not loaded
+  if (!scene->isLoaded()) {
+    if (!mainGPU || !allocator_ || !shaderManager_ || !renderer_) {
+      std::println(stderr,
+                   "[Window] Cannot load scene '{}': missing GPU, allocator, "
+                   "shader manager, or renderer",
+                   tag->name);
+      return false;
+    }
+
+    if (!scene->load(*mainGPU, secondaryGPUs, *allocator_, *shaderManager_,
+                     *renderer_)) {
+      std::println(stderr, "[Window] Failed to load scene: {}", tag->name);
+      return false;
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    activeScenes_.push_back(tag);
+  }
+  std::println("[Window] Presenting scene: {}", tag->name);
+  return true;
+}
+
+void Window::unpresentScene(const SceneTag *tag) {
+  if (!tag) {
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    auto it = std::find(activeScenes_.begin(), activeScenes_.end(), tag);
+    if (it != activeScenes_.end()) {
+      activeScenes_.erase(it);
+    }
+  }
+
+  Scene *scene = sceneRegistry_.get(tag);
+  if (scene && scene->isLoaded()) {
+    if (renderer_) {
+      renderer_->waitIdle();
+    }
+    scene->unload();
+    std::println("[Window] Unpresented and unloaded scene: {}", tag->name);
+  }
+}
+
+bool Window::renderFrame(float deltaTime) {
+  if (!renderer_ || !renderer_->isInitialized()) {
+    return false;
+  }
+  if (isMinimized()) {
+    return true; // Skip rendering when minimized
+  }
+
+  // Collect active loaded scenes under lock
+  std::vector<Scene *> scenesToRender;
+  {
+    std::lock_guard<std::mutex> lock(sceneMutex_);
+    for (const auto *tag : activeScenes_) {
+      Scene *scene = sceneRegistry_.get(tag);
+      if (scene && scene->isLoaded()) {
+        scenesToRender.push_back(scene);
+      }
+    }
+  }
+
+  if (scenesToRender.empty()) {
+    return true;
+  }
+
+  // Update scenes outside the lock
+  for (auto *scene : scenesToRender) { // TODO add multi-thread
+    scene->update(deltaTime);
+  }
+
+  // Begin frame
+  auto *sync = renderer_->beginFrame();
+  if (!sync) {
+    return false;
+  }
+
+  uint32_t imageIndex = renderer_->getCurrentImageIndex();
+  uint32_t frameIndex = renderer_->getCurrentFrame();
+  vk::CommandBuffer cmd = sync->commandBuffer;
+
+  // Verify swapchain and render pass are valid before rendering
+  auto *swapchain = renderer_->getSwapchain();
+  if (!swapchain || !swapchain->isValid()) {
+    std::println(stderr, "[Window] Invalid swapchain for rendering");
+    return false;
+  }
+
+  vk::RenderPass renderPass = renderer_->getRenderPass();
+  if (!renderPass) {
+    std::println(stderr, "[Window] Invalid render pass for rendering");
+    return false;
+  }
+
+  // Begin render pass
+  auto clearValues = renderer_->getClearValues();
+
+  vk::RenderPassBeginInfo renderPassInfo{
+      renderPass, **swapchain->getFrame(imageIndex).framebuffer,
+      vk::Rect2D{{0, 0}, swapchain->getExtent()}, clearValues};
+
+  cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+  // Set dynamic viewport and scissor
+  vk::Viewport viewport{0.0f,
+                        0.0f,
+                        static_cast<float>(swapchain->getExtent().width),
+                        static_cast<float>(swapchain->getExtent().height),
+                        0.0f,
+                        1.0f};
+  cmd.setViewport(0, viewport);
+
+  vk::Rect2D scissor{{0, 0}, swapchain->getExtent()};
+  cmd.setScissor(0, scissor);
+
+  // Draw all active scenes
+  for (auto *scene : scenesToRender) { // TODO add multi-thread if possible
+    scene->draw(cmd, frameIndex);
+  }
+
+  cmd.endRenderPass();
+
+  // End frame and present
+  return renderer_->endFrame(*sync, imageIndex);
+}
+
+Scene *Window::getScene(const SceneTag *tag) {
+  if (!tag) {
+    return nullptr;
+  }
+  return sceneRegistry_.get(tag);
+}
+
+std::vector<const SceneTag *> Window::getActiveSceneTags() const {
+  std::lock_guard<std::mutex> lock(sceneMutex_);
+  return activeScenes_;
 }
 
 // ============================================================================

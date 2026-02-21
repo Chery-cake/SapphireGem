@@ -2,6 +2,8 @@
 #define WINDOW_H_
 
 #include "renderer.h"
+#include "resource_registry.h"
+#include "scene.h"
 #include "swapchain.h"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
@@ -13,13 +15,12 @@
 #include <unordered_map>
 #include <vector>
 
-// Forward declare SDL types to avoid including SDL.h in header
+// Forward declarations
 struct SDL_Window;
-
-// Forward declare device types
 namespace device {
 class GPUDevice;
 class VMAAllocator;
+class ShaderManager;
 } // namespace device
 
 namespace window {
@@ -45,6 +46,7 @@ struct WINDOW_API WindowConfig {
   // Rendering chain initialization parameters
   const vk::raii::Instance *vulkanInstance = nullptr;
   device::VMAAllocator *allocator = nullptr;
+  device::ShaderManager *shaderManager = nullptr;
   SwapchainConfig swapchainConfig = {};
 };
 
@@ -252,6 +254,70 @@ public:
     return renderer_ && renderer_->getSwapchain() != nullptr;
   }
 
+  /**
+   * @brief Add a scene to this window using the tag system
+   *
+   * The scene is registered but not loaded until presentScene() is called.
+   *
+   * @param tag Tag identifying the scene (must have static storage duration)
+   * @param scene Scene to add
+   */
+  void addScene(const SceneTag *tag, std::unique_ptr<Scene> scene);
+
+  /**
+   * @brief Remove a scene from this window by tag
+   *
+   * If the scene is active, it is unpresented (and unloaded) first.
+   *
+   * @param tag Tag identifying the scene
+   */
+  void removeScene(const SceneTag *tag);
+
+  /**
+   * @brief Present a scene (make it active)
+   *
+   * Loads the scene onto GPU if not already loaded. A window can
+   * display multiple scenes at once.
+   *
+   * @param tag Tag identifying the scene
+   * @return true if the scene was successfully presented
+   */
+  bool presentScene(const SceneTag *tag);
+
+  /**
+   * @brief Unpresent a scene (make it inactive)
+   *
+   * Unloads the scene from GPU memory to free resources.
+   *
+   * @param tag Tag identifying the scene
+   */
+  void unpresentScene(const SceneTag *tag);
+
+  /**
+   * @brief Render all active scenes for the current frame
+   *
+   * Updates and draws all active scenes within a single render pass.
+   * Handles frame synchronization, command buffer recording, and
+   * presentation.
+   *
+   * @param deltaTime Time elapsed since last frame in seconds
+   * @return true if rendering succeeded
+   */
+  bool renderFrame(float deltaTime = 0.0f);
+
+  /**
+   * @brief Get a scene by tag
+   * @param tag Scene tag
+   * @return Pointer to scene, or nullptr if not found
+   */
+  Scene *getScene(const SceneTag *tag);
+
+  /**
+   * @brief Get all active (presented) scene tags
+   * @return Vector of active scene tags
+   */
+  [[nodiscard]] std::vector<const SceneTag *> getActiveSceneTags() const;
+
 private:
   SDL_Window *window_ = nullptr;
   uint32_t windowId_ = 0;
@@ -262,6 +328,13 @@ private:
   device::GPUDevice *mainGPU = nullptr;
   std::vector<device::GPUDevice *> secondaryGPUs = {};
   std::unique_ptr<Renderer> renderer_;
+  device::VMAAllocator *allocator_ = nullptr;
+  device::ShaderManager *shaderManager_ = nullptr;
+
+  // Scene management (tag-based)
+  core::ResourceRegistry<SceneTag, Scene> sceneRegistry_;
+  std::vector<const SceneTag *> activeScenes_;
+  mutable std::mutex sceneMutex_;
 
   bool shouldClose_ = false;
   bool minimized_ = false;

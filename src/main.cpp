@@ -20,24 +20,191 @@
 #include <thread>
 
 // ============================================================================
-// Static shader, material, and object tags (must have static storage duration)
+// Static tags (must have static storage duration)
 // ============================================================================
 
-// Shader tags for the triangle shader program
+// Shader tag
 static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
     "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
 
-// Material tags (one per window/object)
-static constexpr window::MaterialTag MATERIAL_WIN1_TAG{"material_win1", 2,
-                                                       &TRIANGLE_SHADER_TAG};
-static constexpr window::MaterialTag MATERIAL_WIN2_TAG{"material_win2", 2,
-                                                       &TRIANGLE_SHADER_TAG};
+// Material tag (dimension-agnostic — the Object<Dim> template handles
+// dimension)
+static constexpr window::MaterialTag TRIANGLE_MATERIAL_TAG{
+    "triangle_material", &TRIANGLE_SHADER_TAG};
 
-// Object tags (2D for window 1, 3D for window 2)
-static constexpr window::ObjectTag OBJECT_WIN1_TAG{"object_win1",
-                                                   &MATERIAL_WIN1_TAG, 2};
-static constexpr window::ObjectTag OBJECT_WIN2_TAG{"object_win2",
-                                                   &MATERIAL_WIN2_TAG, 3};
+// Object tags (dimension-agnostic — the Object<Dim> template enforces
+// dimension)
+static constexpr window::ObjectTag TRIANGLE_OBJ_TAG{"triangle_obj",
+                                                    &TRIANGLE_MATERIAL_TAG};
+// Scene tags
+static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
+static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
+
+// ============================================================================
+// Concrete Scene Implementations
+// ============================================================================
+
+class TriangleScene2D : public window::Scene {
+private:
+  std::unique_ptr<window::Material> material_;
+  std::unique_ptr<window::Object<2>> object_;
+
+public:
+  explicit TriangleScene2D(const window::SceneTag &sceneTag)
+      : Scene(sceneTag) {}
+
+  bool load(device::GPUDevice &device,
+            std::vector<device::GPUDevice *> &secondaryGPUs,
+            device::VMAAllocator &allocator,
+            device::ShaderManager &shaderManager,
+            window::Renderer &renderer) override {
+    (void)secondaryGPUs;
+
+    // Create and initialize base material (acquires shader program)
+    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
+    if (!material_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize material", getName());
+      return false;
+    }
+
+    // Define 2D triangle vertices (3 vertices = 1 face auto-calculated)
+    std::vector<window::Vertex<2>> vertices = {
+        {{{0.0f, -0.5f}}, {{1.0f, 0.0f, 0.0f}}}, // Top, Red
+        {{{0.5f, 0.5f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
+        {{{-0.5f, 0.5f}}, {{0.0f, 0.0f, 1.0f}}}  // Bottom-left, Blue
+    };
+    std::vector<uint32_t> indices = {0, 1, 2};
+
+    // Create 2D object — faces auto-calculated from indices
+    object_ = std::make_unique<window::Object<2>>(
+        TRIANGLE_OBJ_TAG, std::move(vertices), std::move(indices));
+
+    // Initialize object (creates pipeline, descriptor sets, UBOs)
+    window::PipelineConfig pConfig;
+    pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig.cullMode = vk::CullModeFlagBits::eNone;
+    pConfig.depthTestEnable = false;
+
+    if (!object_->initialize(allocator, device, *material_,
+                             renderer.getRenderPass(),
+                             window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+      std::println(stderr, "[{}] Failed to initialize object", getName());
+      return false;
+    }
+
+    setLoaded(true);
+    std::println("[{}] 2D scene loaded ({} faces)", getName(),
+                 object_->getFaceCount());
+    return true;
+  }
+
+  void unload() override {
+    if (object_) {
+      object_->release();
+      object_.reset();
+    }
+    if (material_) {
+      material_->release();
+      material_.reset();
+    }
+    setLoaded(false);
+    std::println("[{}] Scene unloaded", getName());
+  }
+
+  void update(float /*deltaTime*/) override {}
+
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
+    if (object_ && object_->isInitialized()) {
+      // 2D uses 3×3 matrices (glm::mat3)
+      glm::mat3 view(1.0f);
+      glm::mat3 proj(1.0f);
+      object_->updateUniforms(frameIndex, view, proj);
+      object_->draw(cmd, frameIndex);
+    }
+  }
+};
+
+class TriangleScene3D : public window::Scene {
+private:
+  std::unique_ptr<window::Material> material_;
+  std::unique_ptr<window::Object<3>> object_;
+
+public:
+  explicit TriangleScene3D(const window::SceneTag &sceneTag)
+      : Scene(sceneTag) {}
+
+  bool load(device::GPUDevice &device,
+            std::vector<device::GPUDevice *> &secondaryGPUs,
+            device::VMAAllocator &allocator,
+            device::ShaderManager &shaderManager,
+            window::Renderer &renderer) override {
+    (void)secondaryGPUs;
+
+    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
+    if (!material_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize material", getName());
+      return false;
+    }
+
+    // Define 3D triangle vertices (3 vertices = 1 face auto-calculated)
+    std::vector<window::Vertex<3>> vertices = {
+        {{{0.0f, -0.5f, 0.0f}}, {{1.0f, 0.0f, 0.0f}}}, // Top, Red
+        {{{0.5f, 0.5f, 0.0f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
+        {{{-0.5f, 0.5f, 0.0f}}, {{0.0f, 0.0f, 1.0f}}}  // Bottom-left, Blue
+    };
+    std::vector<uint32_t> indices = {0, 1, 2};
+
+    // Create 3D object — faces auto-calculated from indices
+    object_ = std::make_unique<window::Object<3>>(
+        TRIANGLE_OBJ_TAG, std::move(vertices), std::move(indices));
+
+    window::PipelineConfig pConfig;
+    pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig.cullMode = vk::CullModeFlagBits::eNone;
+    pConfig.depthTestEnable = false;
+
+    if (!object_->initialize(allocator, device, *material_,
+                             renderer.getRenderPass(),
+                             window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+      std::println(stderr, "[{}] Failed to initialize object", getName());
+      return false;
+    }
+
+    setLoaded(true);
+    std::println("[{}] 3D scene loaded ({} faces)", getName(),
+                 object_->getFaceCount());
+    return true;
+  }
+
+  void unload() override {
+    if (object_) {
+      object_->release();
+      object_.reset();
+    }
+    if (material_) {
+      material_->release();
+      material_.reset();
+    }
+    setLoaded(false);
+    std::println("[{}] Scene unloaded", getName());
+  }
+
+  void update(float /*deltaTime*/) override {}
+
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
+    if (object_ && object_->isInitialized()) {
+      // 3D uses 4×4 matrices (glm::mat4)
+      glm::mat4 view(1.0f);
+      glm::mat4 proj(1.0f);
+      object_->updateUniforms(frameIndex, view, proj);
+      object_->draw(cmd, frameIndex);
+    }
+  }
+};
+
+// ============================================================================
+// Main Application
+// ============================================================================
 
 int main(int argc, char *argv[]) {
 
@@ -200,6 +367,10 @@ int main(int argc, char *argv[]) {
   device::VMAManager vMan;
   vMan.initialize(inst.getRaiiInstance(), dMan);
 
+  // Initialize shader manager
+  device::ShaderManager sMan;
+  sMan.initialize(dMan.getPrimaryDevice());
+
   window::WindowManager wMan;
   wMan.initialize();
 
@@ -213,12 +384,13 @@ int main(int argc, char *argv[]) {
   window::SwapchainConfig swapConf;
   swapConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
 
-  // Window config with rendering chain initialization
+  // Window config with rendering chain and scene support
   window::WindowConfig wConf;
   wConf.mainGPU = &dMan.getPrimaryDevice();
   wConf.secondaryGPUs = secondaryGPUs;
   wConf.vulkanInstance = &inst.getRaiiInstance();
   wConf.allocator = &vMan.getPrimaryAllocator();
+  wConf.shaderManager = &sMan;
   wConf.swapchainConfig = swapConf;
 
   // Create window 1
@@ -307,75 +479,19 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
-  // Initialize shader manager
-  device::ShaderManager sMan;
-  sMan.initialize(dMan.getPrimaryDevice());
-
-  // Acquire the triangle shader program using the tag system
-  // The shader is compiled when acquired, and shared across materials
-  device::ShaderProgram *triangleProgram = sMan.acquire(&TRIANGLE_SHADER_TAG);
-  if (triangleProgram && triangleProgram->compiled) {
-    std::print("[Main] Triangle shader program acquired successfully\n");
-  } else {
-    std::print(stderr, "[Main] Failed to acquire triangle shader program\n");
+  // Create scenes using the tag system and add them to windows
+  // Window 1: 2D triangle scene (Object<2>)
+  if (win1 && win1->hasRenderer()) {
+    auto scene2d = std::make_unique<TriangleScene2D>(SCENE_2D_TAG);
+    win1->addScene(&SCENE_2D_TAG, std::move(scene2d));
+    win1->presentScene(&SCENE_2D_TAG);
   }
 
-  // Create materials using the tag system
-  // Both materials share the same shader (saving memory) but are independent
-  auto material1 = std::make_unique<window::Material>(MATERIAL_WIN1_TAG);
-  auto material2 = std::make_unique<window::Material>(MATERIAL_WIN2_TAG);
-
-  // Initialize materials (acquires shader programs only, no pipeline yet)
-  material1->initialize(sMan);
-  material2->initialize(sMan);
-
-  // Create objects using the tag system
-  // Window 1: 2D object (rotation only around Z axis)
-  auto object1 = std::make_unique<window::Object<2>>(OBJECT_WIN1_TAG);
-  {
-    window::Transform<2> t2d;
-    t2d.position = {0.0f, 0.0f};
-    t2d.rotation = {0.0f, 0.0f};
-    t2d.scale = {1.0f, 1.0f};
-    object1->setTransform(t2d);
-  }
-
-  // Window 2: 3D object (full 3D rotation)
-  auto object2 = std::make_unique<window::Object<3>>(OBJECT_WIN2_TAG);
-  {
-    window::Transform<3> t3d;
-    t3d.position = {0.0f, 0.0f, 0.0f};
-    t3d.rotation = {0.0f, 0.0f, 0.0f};
-    t3d.scale = {1.0f, 1.0f, 1.0f};
-    object2->setTransform(t3d);
-  }
-
-  // Initialize objects (creates descriptor sets, uniform buffers, and
-  // per-object pipelines from their materials)
-  if (win1 && win1->hasRenderer() && material1->isInitialized()) {
-    window::PipelineConfig pConfig1;
-    pConfig1.topology = vk::PrimitiveTopology::eTriangleList;
-    pConfig1.cullMode = vk::CullModeFlagBits::eNone;
-    pConfig1.depthTestEnable = false;
-
-    if (object1->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                            *material1, win1->getRenderer()->getRenderPass(),
-                            window::MAX_FRAMES_IN_FLIGHT, pConfig1)) {
-      std::print("[Main] Object 1 initialized with material 1\n");
-    }
-  }
-
-  if (win2 && win2->hasRenderer() && material2->isInitialized()) {
-    window::PipelineConfig pConfig2;
-    pConfig2.topology = vk::PrimitiveTopology::eTriangleList;
-    pConfig2.cullMode = vk::CullModeFlagBits::eNone;
-    pConfig2.depthTestEnable = false;
-
-    if (object2->initialize(vMan.getPrimaryAllocator(), dMan.getPrimaryDevice(),
-                            *material2, win2->getRenderer()->getRenderPass(),
-                            window::MAX_FRAMES_IN_FLIGHT, pConfig2)) {
-      std::print("[Main] Object 2 initialized with material 2\n");
-    }
+  // Window 2: 3D triangle scene (Object<3>)
+  if (win2 && win2->hasRenderer()) {
+    auto scene3d = std::make_unique<TriangleScene3D>(SCENE_3D_TAG);
+    win2->addScene(&SCENE_3D_TAG, std::move(scene3d));
+    win2->presentScene(&SCENE_3D_TAG);
   }
 
   int frame = 0;
@@ -384,6 +500,13 @@ int main(int argc, char *argv[]) {
     std::print("\n");
 
     wMan.pollAllEvents();
+
+    // Render active scenes on all windows
+    for (const auto &win : wMan.getWindows()) {
+      if (!win->shouldClose()) {
+        win->renderFrame();
+      }
+    }
 
     // Remove windows that should close
     std::vector<window::Window *> toRemove;

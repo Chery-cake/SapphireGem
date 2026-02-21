@@ -29,14 +29,12 @@ struct TextureTag;
  */
 struct WINDOW_API MaterialTag {
   const char *name;
-  const uint32_t dimension;
   const device::ShaderTag *shaderTag = nullptr; // Tag for the shader program
   const TextureTag *textureTag = nullptr; // Tag for the texture (optional)
 
-  constexpr MaterialTag(const char *n, const uint32_t &dim,
-                        const device::ShaderTag *shader,
+  constexpr MaterialTag(const char *n, const device::ShaderTag *shader,
                         const TextureTag *tex = nullptr)
-      : name(n), dimension(dim), shaderTag(shader), textureTag(tex) {}
+      : name(n), shaderTag(shader), textureTag(tex) {}
 };
 
 /**
@@ -158,7 +156,6 @@ private:
                  ObjectPipeline &out);
 
   std::string name_;
-  uint32_t dimension_;
   const device::ShaderTag *shaderTag_ = nullptr;
   const TextureTag *textureTag_ = nullptr;
 
