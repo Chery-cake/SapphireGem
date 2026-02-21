@@ -17,6 +17,7 @@
 
 // Forward declarations
 struct SDL_Window;
+union SDL_Event;
 namespace device {
 class GPUDevice;
 class VMAAllocator;
@@ -133,8 +134,21 @@ public:
   /**
    * @brief Poll events for this window
    * @return true if there are more events to process
+   * @deprecated Use WindowManager::pollAllEvents() for correct multi-window
+   *             event dispatch. This method is kept for single-window usage.
    */
   bool pollEvents();
+
+  /**
+   * @brief Process a single SDL event for this window
+   *
+   * Called by WindowManager::pollAllEvents() to dispatch events to the
+   * correct window. This avoids the issue where one window consumes
+   * events meant for another when calling SDL_PollEvent per-window.
+   *
+   * @param event The SDL event to process
+   */
+  void processEvent(const SDL_Event &event);
 
   /**
    * @brief Register event callback
