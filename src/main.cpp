@@ -59,10 +59,14 @@ public:
       : Scene(name), matTag_(matTag), objTag_(objTag) {}
 
   bool load(device::GPUDevice &device,
-            std::vector<device::GPUDevice *> & /*secondaryGPUs*/,
+            std::vector<device::GPUDevice *> &secondaryGPUs,
             device::VMAAllocator &allocator,
             device::ShaderManager &shaderManager,
             window::Renderer &renderer) override {
+    // secondaryGPUs can be used for multi-GPU rendering workloads such as
+    // offscreen rendering on secondary devices with result compositing on
+    // the primary device. This basic scene uses the primary GPU only.
+    (void)secondaryGPUs;
     // Create and initialize material (acquires shader program)
     material_ = std::make_unique<window::Material>(matTag_);
     if (!material_->initialize(shaderManager)) {
