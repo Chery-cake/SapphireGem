@@ -301,7 +301,6 @@ bool Renderer::createImageSyncObjects() {
       imageSyncObjects_[i].renderFinishedSemaphore =
           std::make_unique<vk::raii::Semaphore>(gpuDevice_->getRaiiDevice(),
                                                 semaphoreInfo);
-      imageSyncObjects_[i].imageIndex = i;
     }
     return true;
   } catch (const vk::SystemError &e) {

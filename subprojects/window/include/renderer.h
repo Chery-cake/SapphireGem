@@ -37,7 +37,6 @@ constexpr uint32_t MAX_FRAMES_IN_FLIGHT =
  */
 struct WINDOW_API ImageSyncObjects {
   std::unique_ptr<vk::raii::Semaphore> renderFinishedSemaphore;
-  uint32_t imageIndex = 0;
 };
 
 /**
