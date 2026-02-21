@@ -427,23 +427,22 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
 
   // 2. Apply rotations in each axis-pair plane
   // For Dim dimensions, there are Dim*(Dim-1)/2 rotation planes.
-  // We use the rotation_ array entries in order: first entry rotates in
-  // the first axis-pair plane (axes 0,1), second in (0,2) or (1,2), etc.
-  // For Dim=2: rotation_[0] rotates in XY plane
-  // For Dim=3: rotation_[0]=X(YZ plane), rotation_[1]=Y(XZ), rotation_[2]=Z(XY)
+  // The rotation_ array stores one angle per dimension:
+  // For Dim=2: rotation_[0] rotates in the XY plane
+  // For Dim=3: rotation_[0]=around X (YZ plane), [1]=Y (XZ), [2]=Z (XY)
   //
   // We apply them as Givens rotations, which is dimension-agnostic.
-  uint32_t rotIdx = 0;
-  for (uint32_t i = 0; i < Dim && rotIdx < Dim; ++i) {
-    float angle = rotation_[rotIdx];
+  // For Dim >= 3, we use the standard axis-rotation convention.
+  // For Dim > 3, only the first 3 rotation entries are applied as the
+  // standard X/Y/Z rotations; higher-dimensional rotations are not mapped.
+  constexpr uint32_t maxRotations = (Dim < 3) ? Dim : 3;
+  for (uint32_t i = 0; i < maxRotations; ++i) {
+    float angle = rotation_[i];
     if (angle != 0.0f) {
       float c = std::cos(angle);
       float s = std::sin(angle);
 
-      // For Dim=2: rotate in plane (0,1) = XY
-      // For Dim=3: rotation_[0]=around X (plane 1,2),
-      //            rotation_[1]=around Y (plane 0,2),
-      //            rotation_[2]=around Z (plane 0,1)
+      // Determine which axis-pair plane to rotate in
       uint32_t a, b;
       if constexpr (Dim == 1) {
         a = 0;
@@ -451,10 +450,11 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
       } else if constexpr (Dim == 2) {
         a = 0;
         b = 1; // XY plane
-      } else if constexpr (Dim >= 3) {
-        // Standard convention: rotation_[0] around X (affects Y,Z)
-        //                      rotation_[1] around Y (affects X,Z)
-        //                      rotation_[2] around Z (affects X,Y)
+      } else {
+        // Dim >= 3: standard convention
+        // rotation_[0] = around X axis (affects Y,Z plane)
+        // rotation_[1] = around Y axis (affects X,Z plane)
+        // rotation_[2] = around Z axis (affects X,Y plane)
         if (i == 0) {
           a = 1;
           b = 2;
@@ -486,7 +486,6 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
         result = rot * result;
       }
     }
-    ++rotIdx;
   }
 
   // 3. Apply translation: last column

@@ -47,6 +47,9 @@ struct WINDOW_API ObjectTag {
  * @tparam Dim Spatial dimension (1, 2, 3, ...)
  */
 template <uint32_t Dim> struct UniformBufferData {
+  static_assert(Dim >= 1 && Dim <= 3,
+                "Dimension must be 1, 2, or 3 (GLM supports up to mat4)");
+
   // Matrix type: (Dim+1) × (Dim+1) for homogeneous coordinates
   using MatType = glm::mat<Dim + 1, Dim + 1, float, glm::defaultp>;
 
@@ -98,8 +101,7 @@ template <uint32_t Dim> struct Vertex {
  *
  * Objects receive their vertices and indices at construction, and the
  * face count is calculated automatically from the index data (every
- * 3 consecutive indices form one triangular face, or every Dim+1 for
- * higher-dimensional simplices).
+ * 3 consecutive indices form one triangular face).
  *
  * The uniform buffer uses (Dim+1)×(Dim+1) matrices, so a 2D object
  * has a smaller GPU buffer compared to a 3D object.
