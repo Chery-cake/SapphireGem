@@ -28,61 +28,59 @@
 static constexpr device::ShaderTag TRIANGLE_SHADER_TAG{
     "triangle", "triangle.slang", "vertMain", "fragMain", "geomMain"};
 
-// Material tag (no dimension — that belongs to the object)
+// Material tag (dimension-agnostic — the Object<Dim> template handles dimension)
 static constexpr window::MaterialTag TRIANGLE_MATERIAL_TAG{
     "triangle_material", &TRIANGLE_SHADER_TAG};
 
-// Object tags: n-dimensional objects with n faces
-// 2D triangle: 2 dimensions, 1 face (the triangle itself, 3 vertices)
-static constexpr window::ObjectTag TRIANGLE_2D_TAG{
-    "triangle_2d", &TRIANGLE_MATERIAL_TAG, 2, 1};
-// 3D triangle: 3 dimensions, 1 face (3 vertices)
-static constexpr window::ObjectTag TRIANGLE_3D_TAG{
-    "triangle_3d", &TRIANGLE_MATERIAL_TAG, 3, 1};
+// Object tags (dimension-agnostic — the Object<Dim> template enforces dimension)
+static constexpr window::ObjectTag TRIANGLE_OBJ_TAG{
+    "triangle_obj", &TRIANGLE_MATERIAL_TAG};
 
 // Scene tags
 static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
 static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
 
 // ============================================================================
-// Concrete Scene Implementation
+// Concrete Scene Implementations
 // ============================================================================
 
 /**
- * @brief A concrete scene that renders a triangle object
+ * @brief A 2D triangle scene using Object<2>
  *
- * Demonstrates the scene lifecycle: load creates GPU resources (material,
- * object with faces, pipeline), draw issues render commands per face,
- * unload frees GPU memory.
+ * Demonstrates the scene lifecycle with a compile-time 2D object.
+ * Vertices are provided to the Object and faces are auto-calculated.
  */
-class TriangleScene : public window::Scene {
+class TriangleScene2D : public window::Scene {
 public:
-  TriangleScene(const window::SceneTag &sceneTag,
-                const window::ObjectTag &objTag)
-      : Scene(sceneTag), objTag_(objTag) {}
+  explicit TriangleScene2D(const window::SceneTag &sceneTag)
+      : Scene(sceneTag) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
             device::VMAAllocator &allocator,
             device::ShaderManager &shaderManager,
             window::Renderer &renderer) override {
-    // secondaryGPUs can be used for multi-GPU rendering workloads such as
-    // offscreen rendering on secondary devices with result compositing on
-    // the primary device. This basic scene uses the primary GPU only.
     (void)secondaryGPUs;
 
     // Create and initialize base material (acquires shader program)
-    material_ = std::make_unique<window::Material>(*objTag_.baseMaterialTag);
+    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize material", getName());
       return false;
     }
 
-    // Create object with runtime dimension and face count from tag
-    object_ = std::make_unique<window::Object>(objTag_);
+    // Define 2D triangle vertices (3 vertices = 1 face auto-calculated)
+    std::vector<window::Vertex<2>> vertices = {
+        {{{ 0.0f, -0.5f}}, {{1.0f, 0.0f, 0.0f}}},  // Top, Red
+        {{{ 0.5f,  0.5f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
+        {{{-0.5f,  0.5f}}, {{0.0f, 0.0f, 1.0f}}}   // Bottom-left, Blue
+    };
+    std::vector<uint32_t> indices = {0, 1, 2};
 
-    // Configure face 0: the triangle (3 vertices starting at offset 0)
-    object_->setFaceVertices(0, 0, 3);
+    // Create 2D object — faces auto-calculated from indices
+    object_ = std::make_unique<window::Object<2>>(TRIANGLE_OBJ_TAG,
+                                                   std::move(vertices),
+                                                   std::move(indices));
 
     // Initialize object (creates pipeline, descriptor sets, UBOs)
     window::PipelineConfig pConfig;
@@ -98,8 +96,8 @@ public:
     }
 
     setLoaded(true);
-    std::println("[{}] Scene loaded ({}D, {} faces)", getName(),
-                 objTag_.dimension, objTag_.faceCount);
+    std::println("[{}] 2D scene loaded ({} faces)", getName(),
+                 object_->getFaceCount());
     return true;
   }
 
@@ -116,12 +114,96 @@ public:
     std::println("[{}] Scene unloaded", getName());
   }
 
-  void update(float /*deltaTime*/) override {
-    // Update transforms, animations, etc.
-  }
+  void update(float /*deltaTime*/) override {}
 
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
     if (object_ && object_->isInitialized()) {
+      // 2D uses 3×3 matrices (glm::mat3)
+      glm::mat3 view(1.0f);
+      glm::mat3 proj(1.0f);
+      object_->updateUniforms(frameIndex, view, proj);
+      object_->draw(cmd, frameIndex);
+    }
+  }
+
+private:
+  std::unique_ptr<window::Material> material_;
+  std::unique_ptr<window::Object<2>> object_;
+};
+
+/**
+ * @brief A 3D triangle scene using Object<3>
+ *
+ * Demonstrates the scene lifecycle with a compile-time 3D object.
+ * Object<3> and Object<2> are different types — they cannot interact.
+ */
+class TriangleScene3D : public window::Scene {
+public:
+  explicit TriangleScene3D(const window::SceneTag &sceneTag)
+      : Scene(sceneTag) {}
+
+  bool load(device::GPUDevice &device,
+            std::vector<device::GPUDevice *> &secondaryGPUs,
+            device::VMAAllocator &allocator,
+            device::ShaderManager &shaderManager,
+            window::Renderer &renderer) override {
+    (void)secondaryGPUs;
+
+    material_ = std::make_unique<window::Material>(TRIANGLE_MATERIAL_TAG);
+    if (!material_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize material", getName());
+      return false;
+    }
+
+    // Define 3D triangle vertices (3 vertices = 1 face auto-calculated)
+    std::vector<window::Vertex<3>> vertices = {
+        {{{ 0.0f, -0.5f, 0.0f}}, {{1.0f, 0.0f, 0.0f}}},  // Top, Red
+        {{{ 0.5f,  0.5f, 0.0f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
+        {{{-0.5f,  0.5f, 0.0f}}, {{0.0f, 0.0f, 1.0f}}}   // Bottom-left, Blue
+    };
+    std::vector<uint32_t> indices = {0, 1, 2};
+
+    // Create 3D object — faces auto-calculated from indices
+    object_ = std::make_unique<window::Object<3>>(TRIANGLE_OBJ_TAG,
+                                                   std::move(vertices),
+                                                   std::move(indices));
+
+    window::PipelineConfig pConfig;
+    pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig.cullMode = vk::CullModeFlagBits::eNone;
+    pConfig.depthTestEnable = false;
+
+    if (!object_->initialize(allocator, device, *material_,
+                             renderer.getRenderPass(),
+                             window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+      std::println(stderr, "[{}] Failed to initialize object", getName());
+      return false;
+    }
+
+    setLoaded(true);
+    std::println("[{}] 3D scene loaded ({} faces)", getName(),
+                 object_->getFaceCount());
+    return true;
+  }
+
+  void unload() override {
+    if (object_) {
+      object_->release();
+      object_.reset();
+    }
+    if (material_) {
+      material_->release();
+      material_.reset();
+    }
+    setLoaded(false);
+    std::println("[{}] Scene unloaded", getName());
+  }
+
+  void update(float /*deltaTime*/) override {}
+
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
+    if (object_ && object_->isInitialized()) {
+      // 3D uses 4×4 matrices (glm::mat4)
       glm::mat4 view(1.0f);
       glm::mat4 proj(1.0f);
       object_->updateUniforms(frameIndex, view, proj);
@@ -130,9 +212,8 @@ public:
   }
 
 private:
-  const window::ObjectTag &objTag_;
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object> object_;
+  std::unique_ptr<window::Object<3>> object_;
 };
 
 // ============================================================================
@@ -413,18 +494,16 @@ int main(int argc, char *argv[]) {
   }
 
   // Create scenes using the tag system and add them to windows
-  // Window 1: 2D triangle scene
+  // Window 1: 2D triangle scene (Object<2>)
   if (win1 && win1->hasRenderer()) {
-    auto scene2d =
-        std::make_unique<TriangleScene>(SCENE_2D_TAG, TRIANGLE_2D_TAG);
+    auto scene2d = std::make_unique<TriangleScene2D>(SCENE_2D_TAG);
     win1->addScene(&SCENE_2D_TAG, std::move(scene2d));
     win1->presentScene(&SCENE_2D_TAG);
   }
 
-  // Window 2: 3D triangle scene
+  // Window 2: 3D triangle scene (Object<3>)
   if (win2 && win2->hasRenderer()) {
-    auto scene3d =
-        std::make_unique<TriangleScene>(SCENE_3D_TAG, TRIANGLE_3D_TAG);
+    auto scene3d = std::make_unique<TriangleScene3D>(SCENE_3D_TAG);
     win2->addScene(&SCENE_3D_TAG, std::move(scene3d));
     win2->presentScene(&SCENE_3D_TAG);
   }

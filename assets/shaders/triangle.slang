@@ -1,6 +1,18 @@
 // Triangle shader - renders a colored triangle using geometry shader
-// Vertex shader outputs a point, geometry shader expands to triangle,
-// fragment shader colors it.
+// Supports both 2D and 3D rendering via dimension-appropriate UBO.
+// For 2D objects: UBO contains 3x3 matrices (model, view, proj)
+// For 3D objects: UBO contains 4x4 matrices (model, view, proj)
+//
+// This shader uses 4x4 matrices to be compatible with both dimensions.
+// The Object<Dim> class uploads the appropriately-sized UBO, and the
+// shader reads what it needs.
+
+struct UniformBuffer {
+    float4x4 model;
+    float4x4 view;
+    float4x4 proj;
+};
+ConstantBuffer<UniformBuffer> ubo;
 
 struct VSOutput {
     float4 pos : SV_Position;
@@ -13,6 +25,7 @@ struct GSOutput {
 };
 
 // Vertex shader - outputs vertices with hardcoded triangle positions
+// Transforms positions using the UBO matrices
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
@@ -28,7 +41,9 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     colors[1] = float3(0.0, 1.0, 0.0);  // Green
     colors[2] = float3(0.0, 0.0, 1.0);  // Blue
 
-    output.pos = float4(positions[vertexID], 0.0, 1.0);
+    float4 worldPos = mul(ubo.model, float4(positions[vertexID], 0.0, 1.0));
+    float4 viewPos = mul(ubo.view, worldPos);
+    output.pos = mul(ubo.proj, viewPos);
     output.color = colors[vertexID];
     return output;
 }
