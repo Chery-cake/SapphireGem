@@ -20,9 +20,7 @@ Object::~Object() { release(); }
 Object::Object(Object &&other) noexcept {
   std::lock_guard<std::mutex> lock(other.objectMutex_);
   name_ = other.name_;
-  other.name_ = nullptr;
   baseMaterialTag_ = other.baseMaterialTag_;
-  other.baseMaterialTag_ = nullptr;
   dimension_ = other.dimension_;
   position_ = std::move(other.position_);
   rotation_ = std::move(other.rotation_);
@@ -42,9 +40,7 @@ Object &Object::operator=(Object &&other) noexcept {
     std::scoped_lock lock(objectMutex_, other.objectMutex_);
     release();
     name_ = other.name_;
-    other.name_ = nullptr;
     baseMaterialTag_ = other.baseMaterialTag_;
-    other.baseMaterialTag_ = nullptr;
     dimension_ = other.dimension_;
     position_ = std::move(other.position_);
     rotation_ = std::move(other.rotation_);

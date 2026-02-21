@@ -13,7 +13,6 @@ Scene::Scene(Scene &&other) noexcept {
   // both objects may already be shared)
   std::lock_guard<std::mutex> lock(other.sceneMutex_);
   name_ = other.name_;
-  other.name_ = nullptr;
   loaded_ = other.loaded_;
   other.loaded_ = false;
 }
@@ -22,7 +21,6 @@ Scene &Scene::operator=(Scene &&other) noexcept {
   if (this != &other) {
     std::scoped_lock lock(sceneMutex_, other.sceneMutex_);
     name_ = other.name_;
-    other.name_ = nullptr;
     loaded_ = other.loaded_;
     other.loaded_ = false;
   }
