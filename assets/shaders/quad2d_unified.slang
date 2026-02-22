@@ -42,9 +42,10 @@ struct GSOutput {
     float2 modelPos;
 };
 
-// Quad made of 4 triangular faces (8 triangles total for a 2x2 grid)
+// Quad made of 4 quadrant faces (8 triangles total for a 2x2 grid)
 // Each quadrant has a different render mode
-static const float2 quadPositions[16] = {
+// 8 triangles × 3 vertices = 24 positions
+static const float2 quadPositions[24] = {
     // Face 0 (top-left quadrant): plain color - triangle 0
     float2(-0.8,  0.0), float2( 0.0,  0.0), float2( 0.0,  0.8),
     // Face 0: triangle 1
@@ -57,7 +58,10 @@ static const float2 quadPositions[16] = {
     float2(-0.8, -0.8), float2( 0.0, -0.8), float2( 0.0,  0.0),
     // Face 2: triangle 5
     float2(-0.8, -0.8), float2( 0.0,  0.0), float2(-0.8,  0.0),
-    // Face 3 (bottom-right quadrant): wave - not stored, generated inline
+    // Face 3 (bottom-right quadrant): wave - triangle 6
+    float2( 0.0, -0.8), float2( 0.8, -0.8), float2( 0.8,  0.0),
+    // Face 3: triangle 7
+    float2( 0.0, -0.8), float2( 0.8,  0.0), float2( 0.0,  0.0),
 };
 
 // Per-triangle render mode (8 triangles = 4 faces × 2 triangles each)
@@ -83,33 +87,9 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
     uint triIndex = vertexID / 3;
-    uint localVert = vertexID % 3;
 
-    float2 pos;
-    if (triIndex < 6) {
-        // First 6 triangles use quadPositions lookup
-        // But we have 16 positions laid out as 8 groups of 3
-        // (though the array is 16 entries, we use indices differently)
-        uint baseIdx = triIndex * 3 + localVert;
-        if (baseIdx < 18) {
-            pos = quadPositions[min(baseIdx, 15u)];
-        } else {
-            pos = float2(0.0, 0.0);
-        }
-    }
-
-    // Face 3 (bottom-right quadrant): wave - procedurally generated
-    if (triIndex == 6) {
-        float2 facePositions[3] = {
-            float2( 0.0, -0.8), float2( 0.8, -0.8), float2( 0.8,  0.0)
-        };
-        pos = facePositions[localVert];
-    } else if (triIndex == 7) {
-        float2 facePositions[3] = {
-            float2( 0.0, -0.8), float2( 0.8,  0.0), float2( 0.0,  0.0)
-        };
-        pos = facePositions[localVert];
-    }
+    // All 24 positions stored in quadPositions array
+    float2 pos = quadPositions[vertexID];
 
     output.modelPos = pos;
     output.renderMode = (triIndex < 8) ? triRenderMode[triIndex] : 0u;

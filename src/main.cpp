@@ -145,14 +145,15 @@ public:
     cube_ = std::make_unique<window::Object<3>>(
         CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
 
-    // Assign shared textures to cube faces (face pairs = quad faces)
-    // Front face (+Z): checkerboard texture (triangles 0,1)
+    // Assign shared textures to cube faces (triangle indices)
+    // Front face (+Z) = triangles 0,1 (mode 1): checkerboard texture
     cube_->setFaceTexture(0, checkerboardTex_);
     cube_->setFaceTexture(1, checkerboardTex_);
-    // Back face (-Z): atlas layer texture (triangles 2,3)
+    // Back face (-Z) = triangles 2,3 (mode 2): atlas layer texture
     cube_->setFaceTexture(2, atlasLayerTex_);
     cube_->setFaceTexture(3, atlasLayerTex_);
-    // Left/Right/Top/Bottom use procedural rendering (no texture needed)
+    // Left/Right faces (mode 3): gradient + wave (procedural, no texture)
+    // Top/Bottom faces (mode 0): plain color (procedural, no texture)
 
     // Pipeline config with push constants for time animation
     window::PipelineConfig pConfig;
@@ -274,12 +275,13 @@ public:
     quad_ = std::make_unique<window::Object<2>>(
         QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
 
-    // Assign checkerboard texture to face 1 (top-right quadrant, triangles 2,3)
+    // Assign checkerboard texture to face 1 (top-right quadrant)
+    // Triangles 2,3 use render mode 1 (checkerboard texture)
     quad_->setFaceTexture(2, checkerboardTex_);
     quad_->setFaceTexture(3, checkerboardTex_);
-    // Face 0: plain color (no texture)
-    // Face 2: gradient (no texture, procedural)
-    // Face 3: wave (no texture, procedural)
+    // Face 0 (triangles 0,1): plain color (mode 0, no texture)
+    // Face 2 (triangles 4,5): gradient (mode 2, procedural)
+    // Face 3 (triangles 6,7): wave (mode 3, procedural)
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;

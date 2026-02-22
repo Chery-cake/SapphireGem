@@ -204,6 +204,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Build deduplicated texture slot list from face texture assignments
+  // (textureSlots_ is rebuilt here; stale entries from removed face
+  // textures are discarded automatically during initialization)
   textureSlots_.clear();
   for (const auto &[faceIdx, tex] : faceTextures_) {
     if (tex) {
@@ -215,6 +217,14 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
         }
       }
       if (!found) {
+        // Validate that the texture is uploaded and has a valid sampler
+        if (!tex->isUploaded() || !tex->getSampler()) {
+          std::println(stderr,
+                       "[Object] Texture '{}' not uploaded or missing sampler "
+                       "for object: {}",
+                       tex->getName(), name_);
+          return false;
+        }
         textureSlots_.push_back(tex);
       }
     }
