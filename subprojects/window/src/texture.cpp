@@ -119,8 +119,15 @@ bool Texture::upload(device::VMAAllocator &allocator,
     // Transition image layout from UNDEFINED to SHADER_READ_ONLY_OPTIMAL
     // so the image can be sampled in fragment shaders.
     {
+      if (!device.getQueueFamilies().hasGraphics()) {
+        std::println(stderr,
+                     "[Texture] No graphics queue family available for "
+                     "layout transition: {}",
+                     layer.imageTag->name);
+        return false;
+      }
       uint32_t graphicsFamily =
-          device.getQueueFamilies().graphicsFamily.value_or(0);
+          device.getQueueFamilies().graphicsFamily.value();
 
       vk::CommandPoolCreateInfo poolInfo{
           vk::CommandPoolCreateFlagBits::eTransient, graphicsFamily};
