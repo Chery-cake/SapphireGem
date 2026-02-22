@@ -9,6 +9,7 @@
 #include "vulkan_instance.h"
 #include "window.h"
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <memory>
 #include <stop_token>
@@ -16,6 +17,8 @@
 #include "core_export_struct.h"
 #include "hot_reload.h"
 #endif
+#include "glm/ext/matrix_clip_space.hpp"
+#include "glm/ext/matrix_transform.hpp"
 #include <print>
 #include <thread>
 
@@ -40,22 +43,52 @@ static constexpr window::ObjectTag TRIANGLE_2D_OBJ_TAG{
     "triangle_obj_2d", &TRIANGLE_2D_MATERIAL_TAG};
 static constexpr window::ObjectTag TRIANGLE_3D_OBJ_TAG{
     "triangle_obj_3d", &TRIANGLE_3D_MATERIAL_TAG};
+
+// Cube shader tags (vertex + fragment only, no geometry shader)
+static constexpr device::ShaderTag CUBE_COLOR_SHADER_TAG{
+    "cube_color", "cube_color.slang", "vertMain", "fragMain"};
+static constexpr device::ShaderTag CUBE_TEXTURE_SHADER_TAG{
+    "cube_texture", "cube_texture.slang", "vertMain", "fragMain"};
+static constexpr device::ShaderTag CUBE_ATLAS_SHADER_TAG{
+    "cube_atlas", "cube_atlas.slang", "vertMain", "fragMain"};
+static constexpr device::ShaderTag CUBE_WAVE_SHADER_TAG{
+    "cube_wave", "cube_wave.slang", "vertMain", "fragMain"};
+
+// Cube material tags
+static constexpr window::MaterialTag CUBE_COLOR_MATERIAL_TAG{
+    "cube_color_mat", &CUBE_COLOR_SHADER_TAG};
+static constexpr window::MaterialTag CUBE_TEXTURE_MATERIAL_TAG{
+    "cube_texture_mat", &CUBE_TEXTURE_SHADER_TAG};
+static constexpr window::MaterialTag CUBE_ATLAS_MATERIAL_TAG{
+    "cube_atlas_mat", &CUBE_ATLAS_SHADER_TAG};
+static constexpr window::MaterialTag CUBE_WAVE_MATERIAL_TAG{
+    "cube_wave_mat", &CUBE_WAVE_SHADER_TAG};
+
+// Cube object tag (base material = uniform color)
+static constexpr window::ObjectTag CUBE_OBJ_TAG{
+    "cube_obj", &CUBE_COLOR_MATERIAL_TAG};
+
 // Scene tags
-static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
+static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
 static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
 
 // ============================================================================
 // Concrete Scene Implementations
 // ============================================================================
 
-class TriangleScene2D : public window::Scene {
+class CubeScene3D : public window::Scene {
 private:
-  std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<2>> object_;
+  // Materials: base (uniform color) + 3 overrides
+  std::unique_ptr<window::Material> baseMaterial_;     // Uniform color
+  std::unique_ptr<window::Material> textureMaterial_;  // Procedural texture
+  std::unique_ptr<window::Material> atlasMaterial_;    // Atlas layers
+  std::unique_ptr<window::Material> waveMaterial_;     // Gradient + wave
+
+  std::unique_ptr<window::Object<3>> cube_;
+  float totalTime_ = 0.0f;
 
 public:
-  explicit TriangleScene2D(const window::SceneTag &sceneTag)
-      : Scene(sceneTag) {}
+  explicit CubeScene3D(const window::SceneTag &sceneTag) : Scene(sceneTag) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -64,66 +97,134 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Create and initialize base material (acquires shader program)
-    material_ = std::make_unique<window::Material>(TRIANGLE_2D_MATERIAL_TAG);
-    if (!material_->initialize(shaderManager)) {
-      std::println(stderr, "[{}] Failed to initialize material", getName());
+    // Initialize all 4 materials
+    baseMaterial_ =
+        std::make_unique<window::Material>(CUBE_COLOR_MATERIAL_TAG);
+    textureMaterial_ =
+        std::make_unique<window::Material>(CUBE_TEXTURE_MATERIAL_TAG);
+    atlasMaterial_ =
+        std::make_unique<window::Material>(CUBE_ATLAS_MATERIAL_TAG);
+    waveMaterial_ =
+        std::make_unique<window::Material>(CUBE_WAVE_MATERIAL_TAG);
+
+    if (!baseMaterial_->initialize(shaderManager) ||
+        !textureMaterial_->initialize(shaderManager) ||
+        !atlasMaterial_->initialize(shaderManager) ||
+        !waveMaterial_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize cube materials",
+                   getName());
       return false;
     }
 
-    // Define 2D triangle vertices (3 vertices = 1 face auto-calculated)
-    std::vector<window::Vertex<2>> vertices = {
-        {{{0.0f, -0.5f}}, {{1.0f, 0.0f, 0.0f}}}, // Top, Red
-        {{{0.5f, 0.5f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
-        {{{-0.5f, 0.5f}}, {{0.0f, 0.0f, 1.0f}}}  // Bottom-left, Blue
-    };
-    std::vector<uint32_t> indices = {0, 1, 2};
+    // Cube: 8 unique vertices, 36 indices (12 triangles, 6 faces)
+    // Vertices are generated in the shader via SV_VertexID, so we only need
+    // placeholder vertices and proper indices to define the 12 faces.
+    // Each face = 1 triangle in the Object's face system (3 indices each).
+    std::vector<window::Vertex<3>> vertices(36);
+    for (auto &v : vertices) {
+      v.position = {0.0f, 0.0f, 0.0f};
+      v.color = {1.0f, 1.0f, 1.0f};
+    }
 
-    // Create 2D object — faces auto-calculated from indices
-    object_ = std::make_unique<window::Object<2>>(
-        TRIANGLE_2D_OBJ_TAG, std::move(vertices), std::move(indices));
+    // 36 indices forming 12 triangles (same order as in cube shaders)
+    std::vector<uint32_t> indices;
+    indices.reserve(36);
+    for (uint32_t i = 0; i < 36; ++i) {
+      indices.push_back(i);
+    }
 
-    // Initialize object (creates pipeline, descriptor sets, UBOs)
+    cube_ = std::make_unique<window::Object<3>>(CUBE_OBJ_TAG,
+                                                 std::move(vertices),
+                                                 std::move(indices));
+
+    // Assign override materials to face groups BEFORE initialize
+    // Face layout (each face = 1 triangle, 12 total):
+    //   Faces 0-1:  Front  (+Z) → texture material
+    //   Faces 2-3:  Back   (-Z) → atlas material
+    //   Faces 4-5:  Left   (-X) → wave material
+    //   Faces 6-7:  Right  (+X) → wave material
+    //   Faces 8-9:  Top    (+Y) → base (no override)
+    //   Faces 10-11: Bottom(-Y) → base (no override)
+    cube_->setFaceMaterial(0, textureMaterial_.get());
+    cube_->setFaceMaterial(1, textureMaterial_.get());
+    cube_->setFaceMaterial(2, atlasMaterial_.get());
+    cube_->setFaceMaterial(3, atlasMaterial_.get());
+    cube_->setFaceMaterial(4, waveMaterial_.get());
+    cube_->setFaceMaterial(5, waveMaterial_.get());
+    cube_->setFaceMaterial(6, waveMaterial_.get());
+    cube_->setFaceMaterial(7, waveMaterial_.get());
+    // Faces 8-11 use base material (no override)
+
+    // Pipeline config with push constants for time animation
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
-    pConfig.cullMode = vk::CullModeFlagBits::eNone;
-    pConfig.depthTestEnable = false;
+    pConfig.cullMode = vk::CullModeFlagBits::eBack;
+    pConfig.frontFace = vk::FrontFace::eCounterClockwise;
+    pConfig.depthTestEnable = true;
+    pConfig.depthWriteEnable = true;
+    pConfig.pushConstantSize = sizeof(float); // time
+    pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex;
 
-    if (!object_->initialize(allocator, device, *material_,
-                             renderer.getRenderPass(),
-                             window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
-      std::println(stderr, "[{}] Failed to initialize object", getName());
+    if (!cube_->initialize(allocator, device, *baseMaterial_,
+                           renderer.getRenderPass(),
+                           window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+      std::println(stderr, "[{}] Failed to initialize cube", getName());
       return false;
     }
 
     setLoaded(true);
-    std::println("[{}] 2D scene loaded ({} faces)", getName(),
-                 object_->getFaceCount());
+    std::println("[{}] Cube scene loaded ({} faces, 4 materials)", getName(),
+                 cube_->getFaceCount());
     return true;
   }
 
   void unload() override {
-    if (object_) {
-      object_->release();
-      object_.reset();
+    if (cube_) {
+      cube_->release();
+      cube_.reset();
     }
-    if (material_) {
-      material_->release();
-      material_.reset();
+    if (waveMaterial_) {
+      waveMaterial_->release();
+      waveMaterial_.reset();
+    }
+    if (atlasMaterial_) {
+      atlasMaterial_->release();
+      atlasMaterial_.reset();
+    }
+    if (textureMaterial_) {
+      textureMaterial_->release();
+      textureMaterial_.reset();
+    }
+    if (baseMaterial_) {
+      baseMaterial_->release();
+      baseMaterial_.reset();
     }
     setLoaded(false);
-    std::println("[{}] Scene unloaded", getName());
+    std::println("[{}] Cube scene unloaded", getName());
   }
 
-  void update(float /*deltaTime*/) override {}
+  void update(float deltaTime) override { totalTime_ += deltaTime; }
 
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
-    if (object_ && object_->isInitialized()) {
-      // 2D uses 3×3 matrices (glm::mat3)
-      glm::mat3 view(1.0f);
-      glm::mat3 proj(1.0f);
-      object_->updateUniforms(frameIndex, view, proj);
-      object_->draw(cmd, frameIndex);
+    if (cube_ && cube_->isInitialized()) {
+      // Update rotation: spin the cube around Y and X axes
+      float rotY = totalTime_ * 0.5f;
+      float rotX = totalTime_ * 0.3f;
+      cube_->setRotation({rotX, rotY, 0.0f});
+      cube_->setTime(totalTime_);
+
+      // Set up 3D view and projection matrices
+      glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.5f, 2.5f),
+                                    glm::vec3(0.0f, 0.0f, 0.0f),
+                                    glm::vec3(0.0f, 1.0f, 0.0f));
+
+      // Perspective projection (Vulkan clip space: Y inverted)
+      glm::mat4 proj =
+          glm::perspective(glm::radians(45.0f), 16.0f / 9.0f, 0.1f, 100.0f);
+      proj[1][1] *= -1.0f; // Flip Y for Vulkan
+
+      cube_->updateUniforms(frameIndex, view, proj);
+      cube_->draw(cmd, frameIndex);
     }
   }
 };
@@ -484,11 +585,11 @@ int main(int argc, char *argv[]) {
   }
 
   // Create scenes using the tag system and add them to windows
-  // Window 1: 2D triangle scene (Object<2>)
+  // Window 1: 3D cube scene with multiple materials (Object<3>)
   if (win1 && win1->hasRenderer()) {
-    auto scene2d = std::make_unique<TriangleScene2D>(SCENE_2D_TAG);
-    win1->addScene(&SCENE_2D_TAG, std::move(scene2d));
-    win1->presentScene(&SCENE_2D_TAG);
+    auto sceneCube = std::make_unique<CubeScene3D>(SCENE_CUBE_TAG);
+    win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
+    win1->presentScene(&SCENE_CUBE_TAG);
   }
 
   // Window 2: 3D triangle scene (Object<3>)
@@ -499,16 +600,22 @@ int main(int argc, char *argv[]) {
   }
 
   int frame = 0;
+  auto lastTime = std::chrono::steady_clock::now();
   while (!wMan.checkWindowsVectorEmpty()) {
     std::print("Frame {}\n", frame);
     std::print("\n");
+
+    auto now = std::chrono::steady_clock::now();
+    float deltaTime =
+        std::chrono::duration<float>(now - lastTime).count();
+    lastTime = now;
 
     wMan.pollAllEvents();
 
     // Render active scenes on all windows
     for (const auto &win : wMan.getWindows()) {
       if (!win->shouldClose()) {
-        win->renderFrame();
+        win->renderFrame(deltaTime);
       }
     }
 
