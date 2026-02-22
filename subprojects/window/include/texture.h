@@ -162,9 +162,14 @@ public:
 
   /**
    * @brief Upload all layers to the GPU
+   *
+   * Creates GPU images and image views for each layer, then transitions
+   * each image from VK_IMAGE_LAYOUT_UNDEFINED to
+   * VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL using a one-time command
+   * buffer so the images are ready for shader sampling.
+   *
    * @param allocator VMA allocator for image creation
-   * @param device GPU device (reserved for future command buffer operations
-   *               such as image layout transitions and staging uploads)
+   * @param device GPU device for command buffer submission
    * @return true if all layers were uploaded successfully
    */
   bool upload(device::VMAAllocator &allocator, device::GPUDevice &device);
