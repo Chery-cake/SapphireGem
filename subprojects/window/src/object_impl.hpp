@@ -1,6 +1,7 @@
 #pragma once
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
+#include <algorithm>
 #include <print>
 
 namespace window {
@@ -39,6 +40,8 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   vertices_ = std::move(other.vertices_);
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
+  faceTextures_ = std::move(other.faceTextures_);
+  textureSlots_ = std::move(other.textureSlots_);
   objectPipeline_ = std::move(other.objectPipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
@@ -63,6 +66,8 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     vertices_ = std::move(other.vertices_);
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
+    faceTextures_ = std::move(other.faceTextures_);
+    textureSlots_ = std::move(other.textureSlots_);
     objectPipeline_ = std::move(other.objectPipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
@@ -74,6 +79,58 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     other.initialized_ = false;
   }
   return *this;
+}
+
+// ============================================================================
+// Per-face texture management
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::setFaceTexture(uint32_t faceIndex,
+                                 std::shared_ptr<Texture> texture) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (texture) {
+    faceTextures_[faceIndex] = std::move(texture);
+  } else {
+    faceTextures_.erase(faceIndex);
+  }
+}
+
+template <uint32_t Dim>
+std::shared_ptr<Texture> Object<Dim>::getFaceTexture(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  auto it = faceTextures_.find(faceIndex);
+  if (it != faceTextures_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+template <uint32_t Dim>
+std::vector<std::shared_ptr<Texture>> Object<Dim>::getUniqueTextures() const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  std::vector<std::shared_ptr<Texture>> unique;
+  for (const auto &[faceIdx, tex] : faceTextures_) {
+    if (tex) {
+      bool found = false;
+      for (const auto &existing : unique) {
+        if (existing.get() == tex.get()) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        unique.push_back(tex);
+      }
+    }
+  }
+  return unique;
+}
+
+template <uint32_t Dim>
+uint32_t Object<Dim>::getTextureSlotCount() const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  return static_cast<uint32_t>(textureSlots_.size());
 }
 
 // ============================================================================
@@ -146,13 +203,46 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
+  // Build deduplicated texture slot list from face texture assignments
+  textureSlots_.clear();
+  for (const auto &[faceIdx, tex] : faceTextures_) {
+    if (tex) {
+      bool found = false;
+      for (const auto &existing : textureSlots_) {
+        if (existing.get() == tex.get()) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        textureSlots_.push_back(tex);
+      }
+    }
+  }
+  uint32_t texCount = static_cast<uint32_t>(textureSlots_.size());
+
   // Create descriptor set layout (owned by this object)
+  // Binding 0: UBO (uniform buffer)
+  // Binding 1..N: Combined image samplers (one per unique texture)
+  std::vector<vk::DescriptorSetLayoutBinding> bindings;
+  bindings.reserve(1 + texCount);
+
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
           vk::ShaderStageFlagBits::eFragment};
+  bindings.push_back(uboLayoutBinding);
 
-  vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{{}, 1, &uboLayoutBinding};
+  for (uint32_t i = 0; i < texCount; ++i) {
+    vk::DescriptorSetLayoutBinding texBinding{
+        1 + i, vk::DescriptorType::eCombinedImageSampler, 1,
+        vk::ShaderStageFlagBits::eFragment |
+            vk::ShaderStageFlagBits::eGeometry};
+    bindings.push_back(texBinding);
+  }
+
+  vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
+      {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
 
   try {
     descriptorSetLayout_ = std::make_unique<vk::raii::DescriptorSetLayout>(
@@ -164,9 +254,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Create per-object pipeline from base material
+  // Create per-object pipeline from base material (pass texture count)
   objectPipeline_ = baseMaterial.createPipelineForObject(
-      device, renderPass, **descriptorSetLayout_, pipelineConfig);
+      device, renderPass, **descriptorSetLayout_, pipelineConfig, texCount);
   if (!objectPipeline_.isValid()) {
     std::println(stderr, "[Object] Failed to create pipeline for object: {}",
                  name_);
@@ -178,8 +268,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   pipelineConfig_ = pipelineConfig;
 
   // Create uniform buffers (one per frame in flight)
-  // UBO size matches the GPU-compatible layout:
-  // sizeof(GPUUniformBufferData<Dim>)
   const vk::DeviceSize uboSize = sizeof(GPUUBO);
   uniformBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
@@ -195,13 +283,19 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     uniformBuffers_.push_back(std::move(ubo));
   }
 
-  // Create descriptor pool
-  vk::DescriptorPoolSize poolSize{vk::DescriptorType::eUniformBuffer,
-                                  framesInFlight};
+  // Create descriptor pool with enough room for UBO + texture samplers
+  std::vector<vk::DescriptorPoolSize> poolSizes;
+  poolSizes.push_back(
+      {vk::DescriptorType::eUniformBuffer, framesInFlight});
+  if (texCount > 0) {
+    poolSizes.push_back(
+        {vk::DescriptorType::eCombinedImageSampler,
+         framesInFlight * texCount});
+  }
 
   vk::DescriptorPoolCreateInfo poolInfo{
-      vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight, 1,
-      &poolSize};
+      vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
+      static_cast<uint32_t>(poolSizes.size()), poolSizes.data()};
 
   try {
     descriptorPool_ = std::make_unique<vk::raii::DescriptorPool>(
@@ -234,27 +328,53 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers
+  // Update descriptor sets to point to uniform buffers and textures
   for (uint32_t i = 0; i < framesInFlight; ++i) {
+    std::vector<vk::WriteDescriptorSet> writes;
+
+    // UBO binding (binding 0)
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
+    vk::WriteDescriptorSet uboWrite{*descriptorSets_[i],
+                                    0,
+                                    0,
+                                    1,
+                                    vk::DescriptorType::eUniformBuffer,
+                                    nullptr,
+                                    &bufferInfo,
+                                    nullptr};
+    writes.push_back(uboWrite);
 
-    vk::WriteDescriptorSet descriptorWrite{*descriptorSets_[i],
-                                           0,
-                                           0,
-                                           1,
-                                           vk::DescriptorType::eUniformBuffer,
-                                           nullptr,
-                                           &bufferInfo,
-                                           nullptr};
+    // Texture bindings (binding 1..N)
+    std::vector<vk::DescriptorImageInfo> imageInfos(texCount);
+    for (uint32_t t = 0; t < texCount; ++t) {
+      auto &tex = textureSlots_[t];
+      const TextureLayer *layer = tex->getLayer(0);
+      imageInfos[t].sampler = tex->getSampler();
+      imageInfos[t].imageView =
+          (layer && layer->loaded) ? layer->gpuImage.getView()
+                                   : vk::ImageView{};
+      imageInfos[t].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-    device.getRaiiDevice().updateDescriptorSets(descriptorWrite, {});
+      vk::WriteDescriptorSet texWrite{
+          *descriptorSets_[i],
+          1 + t,
+          0,
+          1,
+          vk::DescriptorType::eCombinedImageSampler,
+          &imageInfos[t],
+          nullptr,
+          nullptr};
+      writes.push_back(texWrite);
+    }
+
+    device.getRaiiDevice().updateDescriptorSets(writes, {});
   }
 
   initialized_ = true;
-  std::println("[Object] Initialized '{}' ({}D, {} faces, {} frames, "
-               "UBO={}B)",
-               name_, Dim, faces_.size(), framesInFlight, uboSize);
+  std::println("[Object] Initialized '{}' ({}D, {} faces, {} textures, "
+               "{} frames, UBO={}B)",
+               name_, Dim, faces_.size(), texCount, framesInFlight, uboSize);
   return true;
 }
 
@@ -264,6 +384,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   uniformBuffers_.clear();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
+  textureSlots_.clear();
   initialized_ = false;
 }
 

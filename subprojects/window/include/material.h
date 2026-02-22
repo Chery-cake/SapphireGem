@@ -109,17 +109,21 @@ public:
    * @brief Create a pipeline and pipeline layout for a specific object
    *
    * Each object gets its own pipeline to avoid descriptor set conflicts.
+   * The textureCount parameter determines how many combined image sampler
+   * bindings are included in the pipeline layout (starting at binding 1).
    *
    * @param device GPU device for pipeline creation
    * @param renderPass Render pass for pipeline compatibility
    * @param descriptorSetLayout Layout for the object's descriptor sets
    * @param pipelineConfig Pipeline configuration
+   * @param textureCount Number of texture sampler bindings (0 = no textures)
    * @return ObjectPipeline containing the created pipeline resources
    */
   ObjectPipeline
   createPipelineForObject(device::GPUDevice &device, vk::RenderPass renderPass,
                           vk::DescriptorSetLayout descriptorSetLayout,
-                          const PipelineConfig &pipelineConfig = {});
+                          const PipelineConfig &pipelineConfig = {},
+                          uint32_t textureCount = 0);
 
   /**
    * @brief Release shader references
