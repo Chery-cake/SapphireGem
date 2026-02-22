@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 namespace window {
 
@@ -240,6 +241,12 @@ public:
   bool setFaceMaterial(uint32_t faceIndex, Material *material);
 
   /**
+   * @brief Set the time value for push constant animation
+   * @param time Time value (typically in seconds)
+   */
+  void setTime(float time);
+
+  /**
    * @brief Update uniform buffer data for the current frame
    *
    * Uses dimension-appropriate matrices.
@@ -328,6 +335,18 @@ private:
 
   // Per-object pipeline (created by base material, owned by object)
   ObjectPipeline objectPipeline_;
+
+  // Per-material override pipelines (one per unique override material)
+  std::unordered_map<Material *, ObjectPipeline> overridePipelines_;
+
+  // Stored initialization context for deferred pipeline creation
+  Material *baseMaterial_ = nullptr;
+  device::GPUDevice *device_ = nullptr;
+  vk::RenderPass renderPass_;
+  PipelineConfig pipelineConfig_;
+
+  // Push constant data
+  float time_ = 0.0f;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;

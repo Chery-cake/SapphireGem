@@ -49,6 +49,10 @@ struct WINDOW_API PipelineConfig { // TODO check default config
   bool depthWriteEnable = true;
   bool blendEnable = false;
   float lineWidth = 1.0f;
+
+  // Push constants (0 = no push constants)
+  uint32_t pushConstantSize = 0;
+  vk::ShaderStageFlags pushConstantStages = vk::ShaderStageFlagBits::eVertex;
 };
 
 /**
@@ -148,6 +152,7 @@ public:
 private:
   static bool createPipelineLayout(device::GPUDevice &device,
                                    vk::DescriptorSetLayout descriptorSetLayout,
+                                   const PipelineConfig &config,
                                    ObjectPipeline &out);
   static bool
   createPipeline(device::GPUDevice &device, vk::RenderPass renderPass,
