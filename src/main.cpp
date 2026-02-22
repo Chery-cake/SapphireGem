@@ -25,31 +25,41 @@
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Shader tags
-static constexpr device::ShaderTag TRIANGLE_2D_SHADER_TAG{
-    "triangle2d", "triangle2d.slang", "vertMain", "fragMain", "geomMain"};
-static constexpr device::ShaderTag TRIANGLE_3D_SHADER_TAG{
-    "triangle3d", "triangle.slang", "vertMain", "fragMain", "geomMain"};
-
-// Material tags (separate for 2D and 3D shaders)
-static constexpr window::MaterialTag TRIANGLE_2D_MATERIAL_TAG{
-    "triangle_material_2d", &TRIANGLE_2D_SHADER_TAG};
-static constexpr window::MaterialTag TRIANGLE_3D_MATERIAL_TAG{
-    "triangle_material_3d", &TRIANGLE_3D_SHADER_TAG};
-
-// Object tags (separate for 2D and 3D materials)
-static constexpr window::ObjectTag TRIANGLE_2D_OBJ_TAG{
-    "triangle_obj_2d", &TRIANGLE_2D_MATERIAL_TAG};
-static constexpr window::ObjectTag TRIANGLE_3D_OBJ_TAG{
-    "triangle_obj_3d", &TRIANGLE_3D_MATERIAL_TAG};
-
-// Cube shader tags (vertex + fragment only, no geometry shader)
+// Cube shader tag (vertex + fragment + geometry)
 static constexpr device::ShaderTag CUBE_UNIFIED_SHADER_TAG{
-    "cube_unified", "cube_unified.slang", "vertMain", "fragMain"};
+    "cube_unified", "cube_unified.slang", "vertMain", "fragMain", "geomMain"};
 
 // Cube material tag (single unified material for all faces)
 static constexpr window::MaterialTag CUBE_UNIFIED_MATERIAL_TAG{
     "cube_unified_mat", &CUBE_UNIFIED_SHADER_TAG};
+
+// 2D quad shader tag (vertex + fragment + geometry)
+static constexpr device::ShaderTag QUAD_2D_SHADER_TAG{
+    "quad2d_unified", "quad2d_unified.slang", "vertMain", "fragMain",
+    "geomMain"};
+
+// 2D quad material tag
+static constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{"quad2d_unified_mat",
+                                                          &QUAD_2D_SHADER_TAG};
+
+// 2D quad object tag
+static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
+                                                   &QUAD_2D_MATERIAL_TAG};
+
+// Texture tags for shared assets
+static constexpr window::ImageTag CHECKERBOARD_IMAGE{
+    "checkerboard", "textures/checkerboard.png", 256, 256};
+static constexpr window::ImageTag LAYER_ATLAS_IMAGE{
+    "layer_atlas", "textures/layer_atlas.png", 512, 512};
+
+static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
+    {&CHECKERBOARD_IMAGE}};
+static const window::TextureLayerInfo ATLAS_LAYERS[] = {{&LAYER_ATLAS_IMAGE}};
+
+static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
+                                                     CHECKERBOARD_LAYERS, 1};
+static const window::TextureTag ATLAS_TEX_TAG{"layer_atlas_tex", ATLAS_LAYERS,
+                                              1};
 
 // Cube object tag (uses the unified material)
 static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
@@ -57,7 +67,7 @@ static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
 
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
-static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
+static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
 
 // ============================================================================
 // Concrete Scene Implementations
@@ -71,8 +81,16 @@ private:
   std::unique_ptr<window::Object<3>> cube_;
   float totalTime_ = 0.0f;
 
+  // Shared textures (shared_ptr for memory-efficient sharing across objects)
+  std::shared_ptr<window::Texture> checkerboardTex_;
+  std::shared_ptr<window::Texture> atlasLayerTex_;
+
 public:
-  explicit CubeScene3D(const window::SceneTag &sceneTag) : Scene(sceneTag) {}
+  explicit CubeScene3D(const window::SceneTag &sceneTag,
+                       std::shared_ptr<window::Texture> checkerboard,
+                       std::shared_ptr<window::Texture> atlas)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        atlasLayerTex_(std::move(atlas)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -90,9 +108,26 @@ public:
       return false;
     }
 
+    // Upload shared textures if not already uploaded
+    if (checkerboardTex_ && !checkerboardTex_->isUploaded()) {
+      if (!checkerboardTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload checkerboard texture",
+                     getName());
+        return false;
+      }
+      checkerboardTex_->createSampler(device);
+    }
+
+    if (atlasLayerTex_ && !atlasLayerTex_->isUploaded()) {
+      if (!atlasLayerTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload atlas layer texture",
+                     getName());
+        return false;
+      }
+      atlasLayerTex_->createSampler(device);
+    }
+
     // Cube: 36 vertices (geometry generated in shader via SV_VertexID)
-    // Placeholder vertices and indices define the 12 triangle faces.
-    // Rendering modes are assigned per-face inside the shader itself.
     std::vector<window::Vertex<3>> vertices(36);
     for (auto &v : vertices) {
       v.position = {0.0f, 0.0f, 0.0f};
@@ -107,6 +142,16 @@ public:
 
     cube_ = std::make_unique<window::Object<3>>(
         CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
+
+    // Assign shared textures to cube faces (triangle indices)
+    // Front face (+Z) = triangles 0,1 (mode 1): checkerboard texture
+    cube_->setFaceTexture(0, checkerboardTex_);
+    cube_->setFaceTexture(1, checkerboardTex_);
+    // Back face (-Z) = triangles 2,3 (mode 2): atlas layer texture
+    cube_->setFaceTexture(2, atlasLayerTex_);
+    cube_->setFaceTexture(3, atlasLayerTex_);
+    // Left/Right faces (mode 3): gradient + wave (procedural, no texture)
+    // Top/Bottom faces (mode 0): plain color (procedural, no texture)
 
     // Pipeline config with push constants for time animation
     window::PipelineConfig pConfig;
@@ -126,8 +171,10 @@ public:
     }
 
     setLoaded(true);
-    std::println("[{}] Cube scene loaded ({} faces, 1 unified material)",
-                 getName(), cube_->getFaceCount());
+    std::println("[{}] Cube scene loaded ({} faces, {} textures, "
+                 "1 unified material)",
+                 getName(), cube_->getFaceCount(),
+                 cube_->getTextureSlotCount());
     return true;
   }
 
@@ -141,6 +188,8 @@ public:
       material_.reset();
     }
     setLoaded(false);
+    // Shared textures are not released here - they may be used by other
+    // objects
     std::println("[{}] Cube scene unloaded", getName());
   }
 
@@ -170,14 +219,20 @@ public:
   }
 };
 
-class TriangleScene3D : public window::Scene {
+class Quad2DScene : public window::Scene {
 private:
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<3>> object_;
+
+  // Shared texture (same checkerboard used by the cube - memory efficient)
+  std::shared_ptr<window::Texture> checkerboardTex_;
+
+  std::unique_ptr<window::Object<2>> quad_;
+  float totalTime_ = 0.0f;
 
 public:
-  explicit TriangleScene3D(const window::SceneTag &sceneTag)
-      : Scene(sceneTag) {}
+  explicit Quad2DScene(const window::SceneTag &sceneTag,
+                       std::shared_ptr<window::Texture> checkerboard)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -186,64 +241,93 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    material_ = std::make_unique<window::Material>(TRIANGLE_3D_MATERIAL_TAG);
+    material_ = std::make_unique<window::Material>(QUAD_2D_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
-      std::println(stderr, "[{}] Failed to initialize material", getName());
+      std::println(stderr, "[{}] Failed to initialize 2D material", getName());
       return false;
     }
 
-    // Define 3D triangle vertices (3 vertices = 1 face auto-calculated)
-    std::vector<window::Vertex<3>> vertices = {
-        {{{0.0f, -0.5f, 0.0f}}, {{1.0f, 0.0f, 0.0f}}}, // Top, Red
-        {{{0.5f, 0.5f, 0.0f}}, {{0.0f, 1.0f, 0.0f}}},  // Bottom-right, Green
-        {{{-0.5f, 0.5f, 0.0f}}, {{0.0f, 0.0f, 1.0f}}}  // Bottom-left, Blue
-    };
-    std::vector<uint32_t> indices = {0, 1, 2};
+    // Upload shared texture if not already uploaded (shared with cube
+    // scene)
+    if (checkerboardTex_ && !checkerboardTex_->isUploaded()) {
+      if (!checkerboardTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload checkerboard texture",
+                     getName());
+        return false;
+      }
+      checkerboardTex_->createSampler(device);
+    }
 
-    // Create 3D object — faces auto-calculated from indices
-    object_ = std::make_unique<window::Object<3>>(
-        TRIANGLE_3D_OBJ_TAG, std::move(vertices), std::move(indices));
+    // 2D quad: 4 faces × 2 triangles × 3 vertices = 24 vertices
+    // Each face has a different rendering mode
+    std::vector<window::Vertex<2>> vertices(24);
+    for (auto &v : vertices) {
+      v.position = {0.0f, 0.0f};
+      v.color = {1.0f, 1.0f, 1.0f};
+    }
+
+    std::vector<uint32_t> indices;
+    indices.reserve(24);
+    for (uint32_t i = 0; i < 24; ++i) {
+      indices.push_back(i);
+    }
+
+    quad_ = std::make_unique<window::Object<2>>(
+        QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
+
+    // Assign checkerboard texture to face 1 (top-right quadrant)
+    // Triangles 2,3 use render mode 1 (checkerboard texture)
+    quad_->setFaceTexture(2, checkerboardTex_);
+    quad_->setFaceTexture(3, checkerboardTex_);
+    // Face 0 (triangles 0,1): plain color (mode 0, no texture)
+    // Face 2 (triangles 4,5): gradient (mode 2, procedural)
+    // Face 3 (triangles 6,7): wave (mode 3, procedural)
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eNone;
     pConfig.depthTestEnable = false;
+    pConfig.pushConstantSize = sizeof(float); // time
+    pConfig.pushConstantStages =
+        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
-    if (!object_->initialize(allocator, device, *material_,
-                             renderer.getRenderPass(),
-                             window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
-      std::println(stderr, "[{}] Failed to initialize object", getName());
+    if (!quad_->initialize(allocator, device, *material_,
+                           renderer.getRenderPass(),
+                           window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+      std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
       return false;
     }
 
     setLoaded(true);
-    std::println("[{}] 3D scene loaded ({} faces)", getName(),
-                 object_->getFaceCount());
+    std::println("[{}] 2D scene loaded ({} faces, {} textures)", getName(),
+                 quad_->getFaceCount(), quad_->getTextureSlotCount());
     return true;
   }
 
   void unload() override {
-    if (object_) {
-      object_->release();
-      object_.reset();
+    if (quad_) {
+      quad_->release();
+      quad_.reset();
     }
     if (material_) {
       material_->release();
       material_.reset();
     }
     setLoaded(false);
-    std::println("[{}] Scene unloaded", getName());
+    std::println("[{}] 2D scene unloaded", getName());
   }
 
-  void update(float /*deltaTime*/) override {}
+  void update(float deltaTime) override { totalTime_ += deltaTime; }
 
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
-    if (object_ && object_->isInitialized()) {
-      // 3D uses 4×4 matrices (glm::mat4)
-      glm::mat4 view(1.0f);
-      glm::mat4 proj(1.0f);
-      object_->updateUniforms(frameIndex, view, proj);
-      object_->draw(cmd, frameIndex);
+    if (quad_ && quad_->isInitialized()) {
+      quad_->setTime(totalTime_);
+
+      // 2D uses 3×3 matrices (identity for now)
+      glm::mat3 view(1.0f);
+      glm::mat3 proj(1.0f);
+      quad_->updateUniforms(frameIndex, view, proj);
+      quad_->draw(cmd, frameIndex);
     }
   }
 };
@@ -525,19 +609,26 @@ int main(int argc, char *argv[]) {
         window::WindowEventType::Resize);
   }
 
+  // Create shared textures (shared_ptr ensures memory-efficient sharing)
+  auto checkerboardTex =
+      std::make_shared<window::Texture>(CHECKERBOARD_TEX_TAG);
+  auto atlasLayerTex = std::make_shared<window::Texture>(ATLAS_TEX_TAG);
+
   // Create scenes using the tag system and add them to windows
-  // Window 1: 3D cube scene with multiple materials (Object<3>)
+  // Window 1: 3D cube scene with per-face textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
-    auto sceneCube = std::make_unique<CubeScene3D>(SCENE_CUBE_TAG);
+    auto sceneCube = std::make_unique<CubeScene3D>(
+        SCENE_CUBE_TAG, checkerboardTex, atlasLayerTex);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
 
-  // Window 2: 3D triangle scene (Object<3>)
+  // Window 2: 2D quad scene with multiple render modes (Object<2>)
+  // Shares the checkerboard texture with the cube to save GPU memory
   if (win2 && win2->hasRenderer()) {
-    auto scene3d = std::make_unique<TriangleScene3D>(SCENE_3D_TAG);
-    win2->addScene(&SCENE_3D_TAG, std::move(scene3d));
-    win2->presentScene(&SCENE_3D_TAG);
+    auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex);
+    win2->addScene(&SCENE_2D_TAG, std::move(scene2d));
+    win2->presentScene(&SCENE_2D_TAG);
   }
 
   // int frame = 0;

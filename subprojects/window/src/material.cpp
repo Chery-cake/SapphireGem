@@ -82,11 +82,10 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
   return true;
 }
 
-ObjectPipeline
-Material::createPipelineForObject(device::GPUDevice &device,
-                                  vk::RenderPass renderPass,
-                                  vk::DescriptorSetLayout descriptorSetLayout,
-                                  const PipelineConfig &pipelineConfig) {
+ObjectPipeline Material::createPipelineForObject(
+    device::GPUDevice &device, vk::RenderPass renderPass,
+    vk::DescriptorSetLayout descriptorSetLayout,
+    const PipelineConfig &pipelineConfig, uint32_t textureCount) {
   std::lock_guard<std::mutex> lock(materialMutex_);
 
   ObjectPipeline result;
@@ -124,8 +123,9 @@ Material::createPipelineForObject(device::GPUDevice &device,
     return result;
   }
 
-  std::println("[Material] Created pipeline for object using material: {}",
-               name_);
+  std::println("[Material] Created pipeline for object using material: {} "
+               "({} textures)",
+               name_, textureCount);
   return result;
 }
 

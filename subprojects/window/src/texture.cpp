@@ -116,12 +116,64 @@ bool Texture::upload(device::VMAAllocator &allocator,
       return false;
     }
 
+    // Transition image layout from UNDEFINED to SHADER_READ_ONLY_OPTIMAL
+    // so the image can be sampled in fragment shaders.
+    {
+      if (!device.getQueueFamilies().hasGraphics()) {
+        std::println(stderr,
+                     "[Texture] No graphics queue family available for "
+                     "layout transition: {}",
+                     layer.imageTag->name);
+        return false;
+      }
+      uint32_t graphicsFamily =
+          device.getQueueFamilies().graphicsFamily.value();
+
+      vk::CommandPoolCreateInfo poolInfo{
+          vk::CommandPoolCreateFlagBits::eTransient, graphicsFamily};
+      vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
+
+      vk::CommandBufferAllocateInfo cmdAllocInfo{
+          *cmdPool, vk::CommandBufferLevel::ePrimary, 1};
+      vk::raii::CommandBuffers cmdBuffers(device.getRaiiDevice(), cmdAllocInfo);
+      auto &cmd = cmdBuffers[0];
+
+      vk::CommandBufferBeginInfo beginInfo{
+          vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+      cmd.begin(beginInfo);
+
+      vk::ImageMemoryBarrier barrier{};
+      barrier.oldLayout = vk::ImageLayout::eUndefined;
+      barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.image = layer.gpuImage.getImage();
+      barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+      barrier.subresourceRange.baseMipLevel = 0;
+      barrier.subresourceRange.levelCount = 1;
+      barrier.subresourceRange.baseArrayLayer = 0;
+      barrier.subresourceRange.layerCount = 1;
+      barrier.srcAccessMask = {};
+      barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+      cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                          vk::PipelineStageFlagBits::eFragmentShader, {}, {},
+                          {}, barrier);
+
+      cmd.end();
+
+      vk::SubmitInfo submitInfo{};
+      submitInfo.commandBufferCount = 1;
+      vk::CommandBuffer rawCmd = *cmd;
+      submitInfo.pCommandBuffers = &rawCmd;
+
+      device.getGraphicsQueue().submit(submitInfo);
+      device.getGraphicsQueue().waitIdle();
+    }
+
     layer.loaded = true;
     std::println("[Texture] Uploaded layer: {} ({}x{})", layer.imageTag->name,
                  width, height);
-
-    // Suppress unused parameter warning
-    (void)device;
   }
 
   uploaded_ = true;

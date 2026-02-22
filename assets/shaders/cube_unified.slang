@@ -1,12 +1,14 @@
 // Unified cube shader - single shader supporting per-vertex rendering modes
+// with geometry shader for GPU-side face processing
 //
 // Each vertex carries a renderMode that selects how the fragment is shaded:
 //   Mode 0: Plain uniform color (uses vertex color directly)
-//   Mode 1: Procedural checkerboard texture (uses UV coordinates)
-//   Mode 2: Procedural atlas layers - stripes, dots, gradient (uses UV)
+//   Mode 1: Checkerboard texture (sampled from bound texture slot 0)
+//   Mode 2: Layered atlas texture (sampled from bound texture slot 1)
 //   Mode 3: Gradient + wave displacement visualization (uses model position)
 //
-// All modes share the same wave displacement for vertex consistency.
+// Textures are bound per-face from the Object and passed to the Material
+// pipeline via combined image sampler descriptors.
 
 struct UniformBuffer {
     float4x4 model;
@@ -20,7 +22,22 @@ struct PushData {
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
+// Texture samplers bound from Object's per-face texture assignments
+// Slot 0: checkerboard texture (checkerboard.png)
+// Slot 1: layered atlas texture (layer_atlas.png)
+[[vk::binding(1, 0)]] Sampler2D checkerboardTex;
+[[vk::binding(2, 0)]] Sampler2D atlasLayerTex;
+
 struct VSOutput {
+    float4 pos : SV_Position;
+    nointerpolation uint renderMode;
+    float3 color;
+    float2 uv;
+    float3 modelPos;
+    float waveAmount;
+};
+
+struct GSOutput {
     float4 pos : SV_Position;
     nointerpolation uint renderMode;
     float3 color;
@@ -56,7 +73,7 @@ static const uint cubeIndices[36] = {
 // Index by triangle index (vertexID / 3)
 static const uint faceRenderMode[12] = {
     1, 1,  // Front  (+Z): checkerboard texture
-    2, 2,  // Back   (-Z): atlas layers
+    2, 2,  // Back   (-Z): atlas layer texture
     3, 3,  // Left   (-X): gradient + wave
     3, 3,  // Right  (+X): gradient + wave
     0, 0,  // Top    (+Y): plain color
@@ -112,53 +129,60 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
 }
 
 // ---------------------------------------------------------------------------
+// Geometry shader - passes through triangle vertices with face-level processing
+// Computes face normal on GPU for potential lighting calculations
+// ---------------------------------------------------------------------------
+[shader("geometry")]
+[maxvertexcount(3)]
+void geomMain(
+    triangle VSOutput input[3],
+    inout TriangleStream<GSOutput> outputStream
+) {
+    // Compute face normal from triangle edges (GPU-side calculation)
+    float3 edge1 = input[1].modelPos - input[0].modelPos;
+    float3 edge2 = input[2].modelPos - input[0].modelPos;
+    float3 faceNormal = normalize(cross(edge1, edge2));
+
+    // Simple directional light factor based on face normal
+    float3 lightDir = normalize(float3(0.3, 1.0, 0.5));
+    float lightFactor = max(dot(faceNormal, lightDir), 0.3);
+
+    for (int i = 0; i < 3; i++) {
+        GSOutput output;
+        output.pos = input[i].pos;
+        output.renderMode = input[i].renderMode;
+        output.color = input[i].color * lightFactor;
+        output.uv = input[i].uv;
+        output.modelPos = input[i].modelPos;
+        output.waveAmount = input[i].waveAmount;
+        outputStream.Append(output);
+    }
+    outputStream.RestartStrip();
+}
+
+// ---------------------------------------------------------------------------
 // Fragment mode implementations
 // ---------------------------------------------------------------------------
 
 // Mode 0: Plain uniform color
-float4 modePlainColor(VSOutput input) {
+float4 modePlainColor(GSOutput input) {
     return float4(input.color, 1.0);
 }
 
-// Mode 1: Procedural checkerboard texture
-float4 modeCheckerboard(VSOutput input) {
-    float2 uv = input.uv;
-    float2 grid = floor(uv * 8.0);
-    float checker = fmod(grid.x + grid.y, 2.0);
-
-    float3 color1 = float3(0.9, 0.55, 0.2);   // Orange
-    float3 color2 = float3(0.95, 0.9, 0.8);    // Cream
-    float3 color = lerp(color1, color2, checker);
-    return float4(color, 1.0);
+// Mode 1: Checkerboard texture from bound texture slot 0
+float4 modeCheckerboard(GSOutput input) {
+    float4 texColor = checkerboardTex.Sample(input.uv);
+    return texColor;
 }
 
-// Mode 2: Procedural atlas layers (stripes + dots + gradient)
-float4 modeAtlasLayers(VSOutput input) {
-    float2 uv = input.uv;
-
-    // Layer 1: Horizontal stripes
-    float stripes = step(0.5, fmod(uv.y * 6.0, 1.0));
-    float3 stripeColor = lerp(float3(0.2, 0.4, 0.6), float3(0.3, 0.6, 0.8), stripes);
-
-    // Layer 2: Circular dots pattern
-    float2 dotUV = frac(uv * 4.0) - 0.5;
-    float dotDist = length(dotUV);
-    float dots = 1.0 - smoothstep(0.15, 0.2, dotDist);
-    float3 dotColor = float3(0.9, 0.8, 0.3);  // Gold dots
-
-    // Layer 3: Diagonal gradient
-    float gradient = (uv.x + uv.y) * 0.5;
-    float3 gradColor = lerp(float3(0.1, 0.1, 0.3), float3(0.3, 0.1, 0.4), gradient);
-
-    // Composite
-    float3 color = stripeColor;
-    color = lerp(color, dotColor, dots * 0.7);
-    color += gradColor * 0.3;
-    return float4(saturate(color), 1.0);
+// Mode 2: Layered atlas texture from bound texture slot 1
+float4 modeAtlasLayers(GSOutput input) {
+    float4 texColor = atlasLayerTex.Sample(input.uv);
+    return texColor;
 }
 
 // Mode 3: Gradient + wave displacement visualization
-float4 modeGradientWave(VSOutput input) {
+float4 modeGradientWave(GSOutput input) {
     float t = input.modelPos.y + 0.5;  // Map [-0.5, 0.5] to [0, 1]
 
     float3 bottomColor = float3(0.3, 0.0, 0.5);
@@ -172,7 +196,7 @@ float4 modeGradientWave(VSOutput input) {
 
 // Unified fragment shader: selects mode per-vertex
 [shader("fragment")]
-float4 fragMain(VSOutput input) : SV_TARGET {
+float4 fragMain(GSOutput input) : SV_TARGET {
     switch (input.renderMode) {
         case 1:  return modeCheckerboard(input);
         case 2:  return modeAtlasLayers(input);

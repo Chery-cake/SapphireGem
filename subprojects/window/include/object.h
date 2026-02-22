@@ -3,6 +3,7 @@
 
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
+#include "texture.h"
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
@@ -206,8 +207,44 @@ public:
   Object &operator=(Object &&other) noexcept;
 
   /**
+   * @brief Assign a shared texture to a specific face
+   *
+   * Textures are stored as shared_ptr so that multiple objects and faces
+   * can reference the same GPU texture without duplicating memory.
+   *
+   * @param faceIndex Index of the face (0-based)
+   * @param texture Shared pointer to the texture
+   */
+  void setFaceTexture(uint32_t faceIndex, std::shared_ptr<Texture> texture);
+
+  /**
+   * @brief Get the texture assigned to a specific face
+   * @param faceIndex Index of the face
+   * @return Shared pointer to texture, or nullptr if none assigned
+   */
+  [[nodiscard]] std::shared_ptr<Texture>
+  getFaceTexture(uint32_t faceIndex) const;
+
+  /**
+   * @brief Get all unique textures used by this object
+   * @return Vector of shared textures (deduplicated)
+   */
+  [[nodiscard]] std::vector<std::shared_ptr<Texture>> getUniqueTextures() const;
+
+  /**
+   * @brief Get the number of texture slots used
+   * @return Number of unique textures bound to faces
+   */
+  [[nodiscard]] uint32_t getTextureSlotCount() const;
+
+  /**
    * @brief Initialize descriptor sets, uniform buffers, and per-object
    * pipeline
+   *
+   * Face textures should be assigned before calling this method.
+   * The descriptor set layout will include combined image sampler
+   * bindings for each unique texture assigned to faces.
+   *
    * @param allocator VMA allocator for buffer creation
    * @param device GPU device
    * @param baseMaterial Material to use as the base for all faces
@@ -318,6 +355,11 @@ private:
 
   // Auto-calculated faces
   std::vector<Face> faces_;
+
+  // Per-face texture assignments (face index -> shared texture)
+  std::unordered_map<uint32_t, std::shared_ptr<Texture>> faceTextures_;
+  // Deduplicated texture slots for descriptor binding (ordered)
+  std::vector<std::shared_ptr<Texture>> textureSlots_;
 
   // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;
