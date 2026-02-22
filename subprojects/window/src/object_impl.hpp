@@ -469,7 +469,8 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                            **objectPipeline_.pipelineLayout, 0,
                            {*descriptorSets_[frameIndex]}, {});
-    if (pipelineConfig_.pushConstantSize > 0) {
+    if (pipelineConfig_.pushConstantSize > 0 &&
+        pipelineConfig_.pushConstantSize <= sizeof(time_)) {
       cmd.pushConstants(**objectPipeline_.pipelineLayout,
                         pipelineConfig_.pushConstantStages, 0,
                         pipelineConfig_.pushConstantSize, &time_);
@@ -503,7 +504,8 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                            **pipeline.pipelineLayout, 0,
                            {*descriptorSets_[frameIndex]}, {});
-    if (pipelineConfig_.pushConstantSize > 0) {
+    if (pipelineConfig_.pushConstantSize > 0 &&
+        pipelineConfig_.pushConstantSize <= sizeof(time_)) {
       cmd.pushConstants(**pipeline.pipelineLayout,
                         pipelineConfig_.pushConstantStages, 0,
                         pipelineConfig_.pushConstantSize, &time_);
