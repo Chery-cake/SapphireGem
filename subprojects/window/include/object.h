@@ -126,25 +126,16 @@ template <> struct GPUUniformBufferData<2> {
 };
 
 /**
- * @brief A single face of an object with its own material binding
+ * @brief A single face (triangle) of an object
  *
- * Each face starts with the object's base material. An override material
- * can be assigned per-face for multi-material objects.
+ * Tracks the vertex offset and count for draw calls.
+ * Rendering mode diversity is handled per-vertex in the shader,
+ * not by per-face material overrides.
  */
 struct WINDOW_API Face {
   uint32_t faceIndex = 0;
-  uint32_t vertexOffset = 0;            // First vertex of this face
-  uint32_t vertexCount = 0;             // Number of vertices in this face
-  Material *overrideMaterial = nullptr; // nullptr = use base material
-  // TODO start using the override material
-  /**
-   * @brief Get the effective material for this face
-   * @param baseMaterial The object's base material
-   * @return The material to use for rendering this face
-   */
-  [[nodiscard]] Material *getEffectiveMaterial(Material *baseMaterial) const {
-    return overrideMaterial ? overrideMaterial : baseMaterial;
-  }
+  uint32_t vertexOffset = 0; // First vertex of this face
+  uint32_t vertexCount = 0;  // Number of vertices in this face
 };
 
 /**
@@ -176,6 +167,10 @@ template <uint32_t Dim> struct Vertex {
  * All transform calculations (position, rotation, scale) are
  * dimension-agnostic: the same operations apply across all dimensions,
  * just on arrays of different sizes.
+ *
+ * Rendering mode diversity (different styles per face) is handled
+ * per-vertex in the shader via mode indices, not by per-face material
+ * overrides. Each object uses a single material/pipeline instance.
  *
  * @tparam Dim Spatial dimension (1, 2, 3, ...)
  *
@@ -232,12 +227,10 @@ public:
   void release();
 
   /**
-   * @brief Set an override material for a specific face
-   * @param faceIndex Index of the face to override
-   * @param material Material to use (nullptr to revert to base)
-   * @return true if the face index is valid
+   * @brief Set the time value for push constant animation
+   * @param time Time value (typically in seconds)
    */
-  bool setFaceMaterial(uint32_t faceIndex, Material *material);
+  void setTime(float time);
 
   /**
    * @brief Update uniform buffer data for the current frame
@@ -254,8 +247,8 @@ public:
   /**
    * @brief Draw all faces of this object
    *
-   * Binds the per-object pipeline and descriptor sets, then draws
-   * each face.
+   * Binds the per-object pipeline and descriptor sets, issues
+   * a single draw call for all vertices.
    *
    * @param cmd Command buffer to record draw commands
    * @param frameIndex Current frame in flight index
@@ -326,8 +319,14 @@ private:
   // Auto-calculated faces
   std::vector<Face> faces_;
 
-  // Per-object pipeline (created by base material, owned by object)
+  // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;
+
+  // Pipeline config (for push constants)
+  PipelineConfig pipelineConfig_;
+
+  // Push constant data
+  float time_ = 0.0f;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;

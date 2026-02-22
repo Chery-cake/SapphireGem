@@ -40,6 +40,8 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
   objectPipeline_ = std::move(other.objectPipeline_);
+  pipelineConfig_ = other.pipelineConfig_;
+  time_ = other.time_;
   uniformBuffers_ = std::move(other.uniformBuffers_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
@@ -62,6 +64,8 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
     objectPipeline_ = std::move(other.objectPipeline_);
+    pipelineConfig_ = other.pipelineConfig_;
+    time_ = other.time_;
     uniformBuffers_ = std::move(other.uniformBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
@@ -170,6 +174,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
+  // Store pipeline config for push constants during draw
+  pipelineConfig_ = pipelineConfig;
+
   // Create uniform buffers (one per frame in flight)
   // UBO size matches the GPU-compatible layout:
   // sizeof(GPUUniformBufferData<Dim>)
@@ -261,17 +268,12 @@ template <uint32_t Dim> void Object<Dim>::release() {
 }
 
 // ============================================================================
-// Face material override
+// Time setter for push constant animation
 // ============================================================================
 
-template <uint32_t Dim>
-bool Object<Dim>::setFaceMaterial(uint32_t faceIndex, Material *material) {
+template <uint32_t Dim> void Object<Dim>::setTime(float time) {
   std::lock_guard<std::mutex> lock(objectMutex_);
-  if (faceIndex >= faces_.size()) {
-    return false;
-  }
-  faces_[faceIndex].overrideMaterial = material;
-  return true;
+  time_ = time;
 }
 
 // ============================================================================
@@ -380,21 +382,25 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     return;
   }
 
-  // Bind per-object pipeline
+  // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
                    **objectPipeline_.pipeline);
-
-  // Bind per-object descriptor set for this frame
   cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                          **objectPipeline_.pipelineLayout, 0,
                          {*descriptorSets_[frameIndex]}, {});
 
-  // Draw each face
-  for (const auto &face : faces_) {
-    if (face.vertexCount == 0) {
-      continue;
-    }
-    cmd.draw(face.vertexCount, 1, face.vertexOffset, 0);
+  // Push time constant if configured
+  if (pipelineConfig_.pushConstantSize > 0 &&
+      pipelineConfig_.pushConstantSize <= sizeof(time_)) {
+    cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                      pipelineConfig_.pushConstantStages, 0,
+                      pipelineConfig_.pushConstantSize, &time_);
+  }
+
+  // Single draw call for all vertices
+  uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
+  if (totalVertices > 0) {
+    cmd.draw(totalVertices, 1, 0, 0);
   }
 }
 

@@ -108,7 +108,8 @@ Material::createPipelineForObject(device::GPUDevice &device,
   }
 
   // Create pipeline layout using the object's descriptor set layout
-  if (!createPipelineLayout(device, descriptorSetLayout, result)) {
+  if (!createPipelineLayout(device, descriptorSetLayout, pipelineConfig,
+                            result)) {
     std::println(stderr,
                  "[Material] Failed to create pipeline layout for object: {}",
                  name_);
@@ -130,8 +131,18 @@ Material::createPipelineForObject(device::GPUDevice &device,
 
 bool Material::createPipelineLayout(device::GPUDevice &device,
                                     vk::DescriptorSetLayout descriptorSetLayout,
+                                    const PipelineConfig &config,
                                     ObjectPipeline &out) {
+  vk::PushConstantRange pushRange{};
   vk::PipelineLayoutCreateInfo layoutInfo{{}, 1, &descriptorSetLayout};
+
+  if (config.pushConstantSize > 0) {
+    pushRange.stageFlags = config.pushConstantStages;
+    pushRange.offset = 0;
+    pushRange.size = config.pushConstantSize;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushRange;
+  }
 
   try {
     out.pipelineLayout = std::make_unique<vk::raii::PipelineLayout>(
