@@ -45,28 +45,16 @@ static constexpr window::ObjectTag TRIANGLE_3D_OBJ_TAG{
     "triangle_obj_3d", &TRIANGLE_3D_MATERIAL_TAG};
 
 // Cube shader tags (vertex + fragment only, no geometry shader)
-static constexpr device::ShaderTag CUBE_COLOR_SHADER_TAG{
-    "cube_color", "cube_color.slang", "vertMain", "fragMain"};
-static constexpr device::ShaderTag CUBE_TEXTURE_SHADER_TAG{
-    "cube_texture", "cube_texture.slang", "vertMain", "fragMain"};
-static constexpr device::ShaderTag CUBE_ATLAS_SHADER_TAG{
-    "cube_atlas", "cube_atlas.slang", "vertMain", "fragMain"};
-static constexpr device::ShaderTag CUBE_WAVE_SHADER_TAG{
-    "cube_wave", "cube_wave.slang", "vertMain", "fragMain"};
+static constexpr device::ShaderTag CUBE_UNIFIED_SHADER_TAG{
+    "cube_unified", "cube_unified.slang", "vertMain", "fragMain"};
 
-// Cube material tags
-static constexpr window::MaterialTag CUBE_COLOR_MATERIAL_TAG{
-    "cube_color_mat", &CUBE_COLOR_SHADER_TAG};
-static constexpr window::MaterialTag CUBE_TEXTURE_MATERIAL_TAG{
-    "cube_texture_mat", &CUBE_TEXTURE_SHADER_TAG};
-static constexpr window::MaterialTag CUBE_ATLAS_MATERIAL_TAG{
-    "cube_atlas_mat", &CUBE_ATLAS_SHADER_TAG};
-static constexpr window::MaterialTag CUBE_WAVE_MATERIAL_TAG{
-    "cube_wave_mat", &CUBE_WAVE_SHADER_TAG};
+// Cube material tag (single unified material for all faces)
+static constexpr window::MaterialTag CUBE_UNIFIED_MATERIAL_TAG{
+    "cube_unified_mat", &CUBE_UNIFIED_SHADER_TAG};
 
-// Cube object tag (base material = uniform color)
+// Cube object tag (uses the unified material)
 static constexpr window::ObjectTag CUBE_OBJ_TAG{
-    "cube_obj", &CUBE_COLOR_MATERIAL_TAG};
+    "cube_obj", &CUBE_UNIFIED_MATERIAL_TAG};
 
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
@@ -78,11 +66,8 @@ static constexpr window::SceneTag SCENE_3D_TAG{"scene_3d"};
 
 class CubeScene3D : public window::Scene {
 private:
-  // Materials: base (uniform color) + 3 overrides
-  std::unique_ptr<window::Material> baseMaterial_;     // Uniform color
-  std::unique_ptr<window::Material> textureMaterial_;  // Procedural texture
-  std::unique_ptr<window::Material> atlasMaterial_;    // Atlas layers
-  std::unique_ptr<window::Material> waveMaterial_;     // Gradient + wave
+  // Single unified material for all cube faces
+  std::unique_ptr<window::Material> material_;
 
   std::unique_ptr<window::Object<3>> cube_;
   float totalTime_ = 0.0f;
@@ -97,36 +82,25 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize all 4 materials
-    baseMaterial_ =
-        std::make_unique<window::Material>(CUBE_COLOR_MATERIAL_TAG);
-    textureMaterial_ =
-        std::make_unique<window::Material>(CUBE_TEXTURE_MATERIAL_TAG);
-    atlasMaterial_ =
-        std::make_unique<window::Material>(CUBE_ATLAS_MATERIAL_TAG);
-    waveMaterial_ =
-        std::make_unique<window::Material>(CUBE_WAVE_MATERIAL_TAG);
+    // Initialize the single unified material
+    material_ =
+        std::make_unique<window::Material>(CUBE_UNIFIED_MATERIAL_TAG);
 
-    if (!baseMaterial_->initialize(shaderManager) ||
-        !textureMaterial_->initialize(shaderManager) ||
-        !atlasMaterial_->initialize(shaderManager) ||
-        !waveMaterial_->initialize(shaderManager)) {
-      std::println(stderr, "[{}] Failed to initialize cube materials",
+    if (!material_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize cube material",
                    getName());
       return false;
     }
 
-    // Cube: 8 unique vertices, 36 indices (12 triangles, 6 faces)
-    // Vertices are generated in the shader via SV_VertexID, so we only need
-    // placeholder vertices and proper indices to define the 12 faces.
-    // Each face = 1 triangle in the Object's face system (3 indices each).
+    // Cube: 36 vertices (geometry generated in shader via SV_VertexID)
+    // Placeholder vertices and indices define the 12 triangle faces.
+    // Rendering modes are assigned per-face inside the shader itself.
     std::vector<window::Vertex<3>> vertices(36);
     for (auto &v : vertices) {
       v.position = {0.0f, 0.0f, 0.0f};
       v.color = {1.0f, 1.0f, 1.0f};
     }
 
-    // 36 indices forming 12 triangles (same order as in cube shaders)
     std::vector<uint32_t> indices;
     indices.reserve(36);
     for (uint32_t i = 0; i < 36; ++i) {
@@ -136,24 +110,6 @@ public:
     cube_ = std::make_unique<window::Object<3>>(CUBE_OBJ_TAG,
                                                  std::move(vertices),
                                                  std::move(indices));
-
-    // Assign override materials to face groups BEFORE initialize
-    // Face layout (each face = 1 triangle, 12 total):
-    //   Faces 0-1:  Front  (+Z) → texture material
-    //   Faces 2-3:  Back   (-Z) → atlas material
-    //   Faces 4-5:  Left   (-X) → wave material
-    //   Faces 6-7:  Right  (+X) → wave material
-    //   Faces 8-9:  Top    (+Y) → base (no override)
-    //   Faces 10-11: Bottom(-Y) → base (no override)
-    cube_->setFaceMaterial(0, textureMaterial_.get());
-    cube_->setFaceMaterial(1, textureMaterial_.get());
-    cube_->setFaceMaterial(2, atlasMaterial_.get());
-    cube_->setFaceMaterial(3, atlasMaterial_.get());
-    cube_->setFaceMaterial(4, waveMaterial_.get());
-    cube_->setFaceMaterial(5, waveMaterial_.get());
-    cube_->setFaceMaterial(6, waveMaterial_.get());
-    cube_->setFaceMaterial(7, waveMaterial_.get());
-    // Faces 8-11 use base material (no override)
 
     // Pipeline config with push constants for time animation
     window::PipelineConfig pConfig;
@@ -165,7 +121,7 @@ public:
     pConfig.pushConstantSize = sizeof(float); // time
     pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex;
 
-    if (!cube_->initialize(allocator, device, *baseMaterial_,
+    if (!cube_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
                            window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
       std::println(stderr, "[{}] Failed to initialize cube", getName());
@@ -173,8 +129,8 @@ public:
     }
 
     setLoaded(true);
-    std::println("[{}] Cube scene loaded ({} faces, 4 materials)", getName(),
-                 cube_->getFaceCount());
+    std::println("[{}] Cube scene loaded ({} faces, 1 unified material)",
+                 getName(), cube_->getFaceCount());
     return true;
   }
 
@@ -183,21 +139,9 @@ public:
       cube_->release();
       cube_.reset();
     }
-    if (waveMaterial_) {
-      waveMaterial_->release();
-      waveMaterial_.reset();
-    }
-    if (atlasMaterial_) {
-      atlasMaterial_->release();
-      atlasMaterial_.reset();
-    }
-    if (textureMaterial_) {
-      textureMaterial_->release();
-      textureMaterial_.reset();
-    }
-    if (baseMaterial_) {
-      baseMaterial_->release();
-      baseMaterial_.reset();
+    if (material_) {
+      material_->release();
+      material_.reset();
     }
     setLoaded(false);
     std::println("[{}] Cube scene unloaded", getName());

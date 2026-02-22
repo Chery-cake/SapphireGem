@@ -40,10 +40,6 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
   objectPipeline_ = std::move(other.objectPipeline_);
-  overridePipelines_ = std::move(other.overridePipelines_);
-  baseMaterial_ = other.baseMaterial_;
-  device_ = other.device_;
-  renderPass_ = other.renderPass_;
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -52,8 +48,6 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
   initialized_ = other.initialized_;
   other.initialized_ = false;
-  other.baseMaterial_ = nullptr;
-  other.device_ = nullptr;
 }
 
 template <uint32_t Dim>
@@ -70,10 +64,6 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
     objectPipeline_ = std::move(other.objectPipeline_);
-    overridePipelines_ = std::move(other.overridePipelines_);
-    baseMaterial_ = other.baseMaterial_;
-    device_ = other.device_;
-    renderPass_ = other.renderPass_;
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -82,8 +72,6 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
     other.initialized_ = false;
-    other.baseMaterial_ = nullptr;
-    other.device_ = nullptr;
   }
   return *this;
 }
@@ -186,10 +174,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Store initialization context for deferred override pipeline creation
-  baseMaterial_ = &baseMaterial;
-  device_ = &device;
-  renderPass_ = renderPass;
+  // Store pipeline config for push constants during draw
   pipelineConfig_ = pipelineConfig;
 
   // Create uniform buffers (one per frame in flight)
@@ -266,27 +251,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     device.getRaiiDevice().updateDescriptorSets(descriptorWrite, {});
   }
 
-  // Create pipelines for any pre-assigned face material overrides
-  for (const auto &face : faces_) {
-    if (face.overrideMaterial &&
-        overridePipelines_.find(face.overrideMaterial) ==
-            overridePipelines_.end()) {
-      auto pipeline = face.overrideMaterial->createPipelineForObject(
-          device, renderPass, **descriptorSetLayout_, pipelineConfig);
-      if (pipeline.isValid()) {
-        overridePipelines_[face.overrideMaterial] = std::move(pipeline);
-        std::println(
-            "[Object] Created override pipeline for material '{}' on '{}'",
-            face.overrideMaterial->getName(), name_);
-      } else {
-        std::println(
-            stderr,
-            "[Object] Failed to create override pipeline for material on '{}'",
-            name_);
-      }
-    }
-  }
-
   initialized_ = true;
   std::println("[Object] Initialized '{}' ({}D, {} faces, {} frames, "
                "UBO={}B)",
@@ -299,44 +263,8 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorPool_.reset();
   uniformBuffers_.clear();
   objectPipeline_.reset();
-  overridePipelines_.clear();
   descriptorSetLayout_.reset();
-  baseMaterial_ = nullptr;
-  device_ = nullptr;
-  renderPass_ = {};
   initialized_ = false;
-}
-
-// ============================================================================
-// Face material override
-// ============================================================================
-
-template <uint32_t Dim>
-bool Object<Dim>::setFaceMaterial(uint32_t faceIndex, Material *material) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  if (faceIndex >= faces_.size()) {
-    return false;
-  }
-  faces_[faceIndex].overrideMaterial = material;
-
-  // If initialized and material is new, create a pipeline for it
-  if (initialized_ && material && device_ &&
-      overridePipelines_.find(material) == overridePipelines_.end()) {
-    auto pipeline = material->createPipelineForObject(
-        *device_, renderPass_, **descriptorSetLayout_, pipelineConfig_);
-    if (pipeline.isValid()) {
-      overridePipelines_[material] = std::move(pipeline);
-      std::println(
-          "[Object] Created override pipeline for material '{}' on '{}'",
-          material->getName(), name_);
-    } else {
-      std::println(
-          stderr,
-          "[Object] Failed to create override pipeline for material on '{}'",
-          name_);
-    }
-  }
-  return true;
 }
 
 // ============================================================================
@@ -454,67 +382,25 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     return;
   }
 
-  // Draw faces with base material (skip faces with override materials)
-  bool hasBaseFaces = false;
-  for (const auto &face : faces_) {
-    if (face.overrideMaterial == nullptr && face.vertexCount > 0) {
-      hasBaseFaces = true;
-      break;
-    }
+  // Bind the single pipeline and descriptor sets
+  cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                   **objectPipeline_.pipeline);
+  cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                         **objectPipeline_.pipelineLayout, 0,
+                         {*descriptorSets_[frameIndex]}, {});
+
+  // Push time constant if configured
+  if (pipelineConfig_.pushConstantSize > 0 &&
+      pipelineConfig_.pushConstantSize <= sizeof(time_)) {
+    cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                      pipelineConfig_.pushConstantStages, 0,
+                      pipelineConfig_.pushConstantSize, &time_);
   }
 
-  if (hasBaseFaces) {
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                     **objectPipeline_.pipeline);
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                           **objectPipeline_.pipelineLayout, 0,
-                           {*descriptorSets_[frameIndex]}, {});
-    if (pipelineConfig_.pushConstantSize > 0 &&
-        pipelineConfig_.pushConstantSize <= sizeof(time_)) {
-      cmd.pushConstants(**objectPipeline_.pipelineLayout,
-                        pipelineConfig_.pushConstantStages, 0,
-                        pipelineConfig_.pushConstantSize, &time_);
-    }
-    for (const auto &face : faces_) {
-      if (face.overrideMaterial == nullptr && face.vertexCount > 0) {
-        cmd.draw(face.vertexCount, 1, face.vertexOffset, 0);
-      }
-    }
-  }
-
-  // Draw faces with override materials, grouped by material
-  for (const auto &[material, pipeline] : overridePipelines_) {
-    if (!pipeline.isValid()) {
-      continue;
-    }
-
-    bool hasFaces = false;
-    for (const auto &face : faces_) {
-      if (face.overrideMaterial == material && face.vertexCount > 0) {
-        hasFaces = true;
-        break;
-      }
-    }
-
-    if (!hasFaces) {
-      continue;
-    }
-
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **pipeline.pipeline);
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                           **pipeline.pipelineLayout, 0,
-                           {*descriptorSets_[frameIndex]}, {});
-    if (pipelineConfig_.pushConstantSize > 0 &&
-        pipelineConfig_.pushConstantSize <= sizeof(time_)) {
-      cmd.pushConstants(**pipeline.pipelineLayout,
-                        pipelineConfig_.pushConstantStages, 0,
-                        pipelineConfig_.pushConstantSize, &time_);
-    }
-    for (const auto &face : faces_) {
-      if (face.overrideMaterial == material && face.vertexCount > 0) {
-        cmd.draw(face.vertexCount, 1, face.vertexOffset, 0);
-      }
-    }
+  // Single draw call for all vertices
+  uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
+  if (totalVertices > 0) {
+    cmd.draw(totalVertices, 1, 0, 0);
   }
 }
 
