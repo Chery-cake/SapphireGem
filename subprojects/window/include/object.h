@@ -137,7 +137,7 @@ struct WINDOW_API Face {
   uint32_t vertexOffset = 0;            // First vertex of this face
   uint32_t vertexCount = 0;             // Number of vertices in this face
   Material *overrideMaterial = nullptr; // nullptr = use base material
-  // TODO start using the override material
+
   /**
    * @brief Get the effective material for this face
    * @param baseMaterial The object's base material

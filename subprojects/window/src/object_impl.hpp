@@ -303,6 +303,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorSetLayout_.reset();
   baseMaterial_ = nullptr;
   device_ = nullptr;
+  renderPass_ = {};
   initialized_ = false;
 }
 
@@ -470,8 +471,8 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {*descriptorSets_[frameIndex]}, {});
     if (pipelineConfig_.pushConstantSize > 0) {
       cmd.pushConstants(**objectPipeline_.pipelineLayout,
-                        pipelineConfig_.pushConstantStages, 0, sizeof(float),
-                        &time_);
+                        pipelineConfig_.pushConstantStages, 0,
+                        pipelineConfig_.pushConstantSize, &time_);
     }
     for (const auto &face : faces_) {
       if (face.overrideMaterial == nullptr && face.vertexCount > 0) {
@@ -504,8 +505,8 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {*descriptorSets_[frameIndex]}, {});
     if (pipelineConfig_.pushConstantSize > 0) {
       cmd.pushConstants(**pipeline.pipelineLayout,
-                        pipelineConfig_.pushConstantStages, 0, sizeof(float),
-                        &time_);
+                        pipelineConfig_.pushConstantStages, 0,
+                        pipelineConfig_.pushConstantSize, &time_);
     }
     for (const auto &face : faces_) {
       if (face.overrideMaterial == material && face.vertexCount > 0) {
