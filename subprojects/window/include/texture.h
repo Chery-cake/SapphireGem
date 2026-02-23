@@ -23,7 +23,7 @@ struct WINDOW_API ImageTag {
   const char *path;                          // File path (source images only)
   uint32_t width = 0;                        // 0 = auto-detect from file
   uint32_t height = 0;                       // 0 = auto-detect from file
-  const ImageTag *atlasSource = nullptr;     // Reference to atlas image tag
+  const ImageTag *atlasSource = nullptr;     // Atlas image tag (must outlive this tag)
   uint32_t atlasX = 0;                       // X offset in atlas
   uint32_t atlasY = 0;                       // Y offset in atlas
   uint32_t atlasW = 0;                       // Width in atlas (0 = full image)

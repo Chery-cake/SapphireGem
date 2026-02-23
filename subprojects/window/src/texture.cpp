@@ -83,7 +83,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
   }
 
   // Cache loaded atlas surfaces so the same atlas file is loaded only once
-  std::unordered_map<const char *, SDL_Surface *> atlasCache;
+  std::unordered_map<std::string, SDL_Surface *> atlasCache;
   auto cleanupCache = [&atlasCache]() {
     for (auto &[path, surf] : atlasCache) {
       SDL_DestroySurface(surf);
@@ -118,7 +118,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
 
     if (layer.imageTag->isAtlasRegion && layer.imageTag->atlasSource) {
       // Atlas region: load atlas once, reuse for all regions
-      auto it = atlasCache.find(filePath);
+      auto it = atlasCache.find(std::string(filePath));
       if (it != atlasCache.end()) {
         rgbaSurface = it->second;
       } else {
@@ -146,7 +146,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
           rgbaSurface = loadedSurface;
         }
 
-        atlasCache[filePath] = rgbaSurface;
+        atlasCache[std::string(filePath)] = rgbaSurface;
       }
       // Atlas surfaces are freed by cleanupCache, not per-layer
     } else {

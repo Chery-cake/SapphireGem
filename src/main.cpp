@@ -54,19 +54,31 @@ static constexpr window::ImageTag CHECKERBOARD_IMAGE{
 static constexpr window::ImageTag LAYER_ATLAS_IMAGE{
     "layer_atlas", "assets/textures/layer_atlas.png", 512, 512};
 
-// 6 atlas region images (3 columns × 2 rows, each ~170×256)
+// Atlas grid layout: 3 columns × 2 rows
+static constexpr uint32_t ATLAS_COLS = 3;
+static constexpr uint32_t ATLAS_ROWS = 2;
+static constexpr uint32_t ATLAS_CELL_W = 170;
+static constexpr uint32_t ATLAS_CELL_H = 256;
+static constexpr uint32_t ATLAS_LAST_COL_W = 172; // 512 - 2*170
+
+// 6 atlas region images
 static constexpr window::ImageTag ATLAS_REGION_0{
-    "atlas_region_0", &LAYER_ATLAS_IMAGE, 0, 0, 170, 256};
+    "atlas_region_0", &LAYER_ATLAS_IMAGE, 0, 0, ATLAS_CELL_W, ATLAS_CELL_H};
 static constexpr window::ImageTag ATLAS_REGION_1{
-    "atlas_region_1", &LAYER_ATLAS_IMAGE, 170, 0, 170, 256};
+    "atlas_region_1", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W, 0, ATLAS_CELL_W,
+    ATLAS_CELL_H};
 static constexpr window::ImageTag ATLAS_REGION_2{
-    "atlas_region_2", &LAYER_ATLAS_IMAGE, 340, 0, 172, 256};
+    "atlas_region_2", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W * 2, 0,
+    ATLAS_LAST_COL_W, ATLAS_CELL_H};
 static constexpr window::ImageTag ATLAS_REGION_3{
-    "atlas_region_3", &LAYER_ATLAS_IMAGE, 0, 256, 170, 256};
+    "atlas_region_3", &LAYER_ATLAS_IMAGE, 0, ATLAS_CELL_H, ATLAS_CELL_W,
+    ATLAS_CELL_H};
 static constexpr window::ImageTag ATLAS_REGION_4{
-    "atlas_region_4", &LAYER_ATLAS_IMAGE, 170, 256, 170, 256};
+    "atlas_region_4", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W, ATLAS_CELL_H,
+    ATLAS_CELL_W, ATLAS_CELL_H};
 static constexpr window::ImageTag ATLAS_REGION_5{
-    "atlas_region_5", &LAYER_ATLAS_IMAGE, 340, 256, 172, 256};
+    "atlas_region_5", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W * 2, ATLAS_CELL_H,
+    ATLAS_LAST_COL_W, ATLAS_CELL_H};
 
 static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
     {&CHECKERBOARD_IMAGE}};
