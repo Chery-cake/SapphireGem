@@ -142,7 +142,7 @@ set(SDLIMAGE_TIF ON CACHE BOOL "" FORCE)
 set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_XPM OFF CACHE BOOL "" FORCE)
 set(SDLIMAGE_EXIF OFF CACHE BOOL "" FORCE)
-FetchContent_GetProperties(sdl_image)
+FetchContent_MakeAvailable(sdl_image)
 
 # ==============================================================================
 # SDL_image - Image Loading - doesn't have module
