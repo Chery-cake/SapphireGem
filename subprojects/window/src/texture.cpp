@@ -113,22 +113,36 @@ bool Texture::upload(device::VMAAllocator &allocator,
     // Determine source region and final dimensions
     uint32_t srcX = 0, srcY = 0;
     uint32_t width, height;
+    uint32_t surfW = static_cast<uint32_t>(rgbaSurface->w);
+    uint32_t surfH = static_cast<uint32_t>(rgbaSurface->h);
+
     if (layer.imageTag->isAtlasRegion) {
       srcX = layer.imageTag->atlasX;
       srcY = layer.imageTag->atlasY;
-      width = layer.imageTag->atlasW > 0
-                  ? layer.imageTag->atlasW
-                  : static_cast<uint32_t>(rgbaSurface->w);
-      height = layer.imageTag->atlasH > 0
-                   ? layer.imageTag->atlasH
-                   : static_cast<uint32_t>(rgbaSurface->h);
+      width = layer.imageTag->atlasW > 0 ? layer.imageTag->atlasW : surfW;
+      height = layer.imageTag->atlasH > 0 ? layer.imageTag->atlasH : surfH;
+
+      // Validate atlas region fits within the loaded surface
+      if (srcX + width > surfW || srcY + height > surfH) {
+        std::println(stderr,
+                     "[Texture] Atlas region ({}+{}, {}+{}) exceeds surface "
+                     "dimensions ({}x{}) for: {}",
+                     srcX, width, srcY, height, surfW, surfH,
+                     layer.imageTag->name);
+        SDL_DestroySurface(rgbaSurface);
+        return false;
+      }
     } else {
-      width = layer.imageTag->width > 0
-                  ? layer.imageTag->width
-                  : static_cast<uint32_t>(rgbaSurface->w);
-      height = layer.imageTag->height > 0
-                   ? layer.imageTag->height
-                   : static_cast<uint32_t>(rgbaSurface->h);
+      width = layer.imageTag->width > 0 ? layer.imageTag->width : surfW;
+      height = layer.imageTag->height > 0 ? layer.imageTag->height : surfH;
+
+      // Clamp to actual surface dimensions
+      if (width > surfW) {
+        width = surfW;
+      }
+      if (height > surfH) {
+        height = surfH;
+      }
     }
 
     constexpr uint32_t bytesPerPixel = 4; // RGBA8
@@ -160,7 +174,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
       const auto *srcPixels =
           static_cast<const uint8_t *>(rgbaSurface->pixels);
       auto *dstPixels = static_cast<uint8_t *>(mapped);
-      int srcPitch = rgbaSurface->pitch;
+      size_t srcPitch = static_cast<size_t>(rgbaSurface->pitch);
       uint32_t dstRowSize = width * bytesPerPixel;
 
       for (uint32_t row = 0; row < height; ++row) {
