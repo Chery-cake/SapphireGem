@@ -229,11 +229,17 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
   uint32_t texCount = static_cast<uint32_t>(textureSlots_.size());
 
+  // Calculate total layer count across all textures for descriptor bindings
+  uint32_t totalLayerBindings = 0;
+  for (const auto &tex : textureSlots_) {
+    totalLayerBindings += tex->getLayerCount();
+  }
+
   // Create descriptor set layout (owned by this object)
   // Binding 0: UBO (uniform buffer)
-  // Binding 1..N: Combined image samplers (one per unique texture)
+  // Binding 1..N: Combined image samplers (one per texture layer)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(1 + texCount);
+  bindings.reserve(1 + totalLayerBindings);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
@@ -241,7 +247,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
           vk::ShaderStageFlagBits::eFragment};
   bindings.push_back(uboLayoutBinding);
 
-  for (uint32_t i = 0; i < texCount; ++i) {
+  for (uint32_t i = 0; i < totalLayerBindings; ++i) {
     vk::DescriptorSetLayoutBinding texBinding{
         1 + i, vk::DescriptorType::eCombinedImageSampler, 1,
         vk::ShaderStageFlagBits::eFragment |
@@ -262,9 +268,10 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Create per-object pipeline from base material (pass texture count)
+  // Create per-object pipeline from base material (pass total layer count)
   objectPipeline_ = baseMaterial.createPipelineForObject(
-      device, renderPass, **descriptorSetLayout_, pipelineConfig, texCount);
+      device, renderPass, **descriptorSetLayout_, pipelineConfig,
+      totalLayerBindings);
   if (!objectPipeline_.isValid()) {
     std::println(stderr, "[Object] Failed to create pipeline for object: {}",
                  name_);
@@ -293,12 +300,12 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     uniformBuffers_.push_back(std::move(ubo));
   }
 
-  // Create descriptor pool with enough room for UBO + texture samplers
+  // Create descriptor pool with enough room for UBO + texture layer samplers
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.push_back({vk::DescriptorType::eUniformBuffer, framesInFlight});
-  if (texCount > 0) {
-    poolSizes.push_back(
-        {vk::DescriptorType::eCombinedImageSampler, framesInFlight * texCount});
+  if (totalLayerBindings > 0) {
+    poolSizes.push_back({vk::DescriptorType::eCombinedImageSampler,
+                         framesInFlight * totalLayerBindings});
   }
 
   vk::DescriptorPoolCreateInfo poolInfo{
@@ -336,7 +343,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers and textures
+  // Update descriptor sets to point to uniform buffers and texture layers
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     std::vector<vk::WriteDescriptorSet> writes;
 
@@ -354,26 +361,34 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                     nullptr};
     writes.push_back(uboWrite);
 
-    // Texture bindings (binding 1..N)
-    std::vector<vk::DescriptorImageInfo> imageInfos(texCount);
+    // Texture layer bindings (binding 1..N, one per layer across all
+    // textures)
+    std::vector<vk::DescriptorImageInfo> imageInfos(totalLayerBindings);
+    uint32_t bindingIdx = 0;
     for (uint32_t t = 0; t < texCount; ++t) {
       auto &tex = textureSlots_[t];
-      const TextureLayer *layer = tex->getLayer(0);
-      imageInfos[t].sampler = tex->getSampler();
-      imageInfos[t].imageView = (layer && layer->loaded)
-                                    ? layer->gpuImage.getView()
-                                    : vk::ImageView{};
-      imageInfos[t].imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+      uint32_t layerCount = tex->getLayerCount();
+      for (uint32_t l = 0; l < layerCount; ++l) {
+        const TextureLayer *layer = tex->getLayer(l);
+        imageInfos[bindingIdx].sampler = tex->getSampler();
+        imageInfos[bindingIdx].imageView = (layer && layer->loaded)
+                                               ? layer->gpuImage.getView()
+                                               : vk::ImageView{};
+        imageInfos[bindingIdx].imageLayout =
+            vk::ImageLayout::eShaderReadOnlyOptimal;
 
-      vk::WriteDescriptorSet texWrite{*descriptorSets_[i],
-                                      1 + t,
-                                      0,
-                                      1,
-                                      vk::DescriptorType::eCombinedImageSampler,
-                                      &imageInfos[t],
-                                      nullptr,
-                                      nullptr};
-      writes.push_back(texWrite);
+        vk::WriteDescriptorSet texWrite{
+            *descriptorSets_[i],
+            1 + bindingIdx,
+            0,
+            1,
+            vk::DescriptorType::eCombinedImageSampler,
+            &imageInfos[bindingIdx],
+            nullptr,
+            nullptr};
+        writes.push_back(texWrite);
+        bindingIdx++;
+      }
     }
 
     device.getRaiiDevice().updateDescriptorSets(writes, {});
@@ -381,8 +396,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
 
   initialized_ = true;
   std::println("[Object] Initialized '{}' ({}D, {} faces, {} textures, "
-               "{} frames, UBO={}B)",
-               name_, Dim, faces_.size(), texCount, framesInFlight, uboSize);
+               "{} layer bindings, {} frames, UBO={}B)",
+               name_, Dim, faces_.size(), texCount, totalLayerBindings,
+               framesInFlight, uboSize);
   return true;
 }
 

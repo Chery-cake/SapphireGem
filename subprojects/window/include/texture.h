@@ -20,23 +20,27 @@ namespace window {
  */
 struct WINDOW_API ImageTag {
   const char *name;
-  const char *path;    // File path or atlas source path
+  const char *path;    // File path (source images only)
   uint32_t width = 0;  // 0 = auto-detect from file
   uint32_t height = 0; // 0 = auto-detect from file
-  uint32_t atlasX = 0; // X offset in atlas (0 if not atlas)
-  uint32_t atlasY = 0; // Y offset in atlas (0 if not atlas)
+  const ImageTag *atlasSource =
+      nullptr;         // Atlas image tag (must outlive this tag)
+  uint32_t atlasX = 0; // X offset in atlas
+  uint32_t atlasY = 0; // Y offset in atlas
   uint32_t atlasW = 0; // Width in atlas (0 = full image)
   uint32_t atlasH = 0; // Height in atlas (0 = full image)
   bool isAtlasRegion = false;
 
+  // Standalone image from file
   constexpr ImageTag(const char *n, const char *p, uint32_t w = 0,
                      uint32_t h = 0)
       : name(n), path(p), width(w), height(h) {}
 
-  constexpr ImageTag(const char *n, const char *p, uint32_t ax, uint32_t ay,
-                     uint32_t aw, uint32_t ah)
-      : name(n), path(p), atlasX(ax), atlasY(ay), atlasW(aw), atlasH(ah),
-        isAtlasRegion(true) {}
+  // Atlas region referencing an atlas ImageTag (atlas loaded once, reused)
+  constexpr ImageTag(const char *n, const ImageTag *atlas, uint32_t ax,
+                     uint32_t ay, uint32_t aw, uint32_t ah)
+      : name(n), path(nullptr), atlasSource(atlas), atlasX(ax), atlasY(ay),
+        atlasW(aw), atlasH(ah), isAtlasRegion(true) {}
 };
 
 /**

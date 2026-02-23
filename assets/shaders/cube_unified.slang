@@ -23,10 +23,15 @@ struct PushData {
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
 // Texture samplers bound from Object's per-face texture assignments
-// Slot 0: checkerboard texture (checkerboard.png)
-// Slot 1: layered atlas texture (layer_atlas.png)
+// Slot 0: checkerboard texture (checkerboard.png) — 1 layer
+// Slots 1-6: atlas region layers (layer_atlas.png, 6 regions)
 [[vk::binding(1, 0)]] Sampler2D checkerboardTex;
-[[vk::binding(2, 0)]] Sampler2D atlasLayerTex;
+[[vk::binding(2, 0)]] Sampler2D atlasLayer0;
+[[vk::binding(3, 0)]] Sampler2D atlasLayer1;
+[[vk::binding(4, 0)]] Sampler2D atlasLayer2;
+[[vk::binding(5, 0)]] Sampler2D atlasLayer3;
+[[vk::binding(6, 0)]] Sampler2D atlasLayer4;
+[[vk::binding(7, 0)]] Sampler2D atlasLayer5;
 
 struct VSOutput {
     float4 pos : SV_Position;
@@ -175,10 +180,26 @@ float4 modeCheckerboard(GSOutput input) {
     return texColor;
 }
 
-// Mode 2: Layered atlas texture from bound texture slot 1
+// Mode 2: Layered atlas texture — composites 6 atlas region layers
 float4 modeAtlasLayers(GSOutput input) {
-    float4 texColor = atlasLayerTex.Sample(input.uv);
-    return texColor;
+    float4 result = atlasLayer0.Sample(input.uv);
+
+    float4 layer1 = atlasLayer1.Sample(input.uv);
+    result = lerp(result, layer1, layer1.a);
+
+    float4 layer2 = atlasLayer2.Sample(input.uv);
+    result = lerp(result, layer2, layer2.a);
+
+    float4 layer3 = atlasLayer3.Sample(input.uv);
+    result = lerp(result, layer3, layer3.a);
+
+    float4 layer4 = atlasLayer4.Sample(input.uv);
+    result = lerp(result, layer4, layer4.a);
+
+    float4 layer5 = atlasLayer5.Sample(input.uv);
+    result = lerp(result, layer5, layer5.a);
+
+    return result;
 }
 
 // Mode 3: Gradient + wave displacement visualization
