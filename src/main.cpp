@@ -48,9 +48,9 @@ static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
 
 // Texture tags for shared assets
 static constexpr window::ImageTag CHECKERBOARD_IMAGE{
-    "checkerboard", "textures/checkerboard.png", 256, 256};
+    "checkerboard", "assets/textures/checkerboard.png", 256, 256};
 static constexpr window::ImageTag LAYER_ATLAS_IMAGE{
-    "layer_atlas", "textures/layer_atlas.png", 512, 512};
+    "layer_atlas", "assets/textures/layer_atlas.png", 512, 512};
 
 static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
     {&CHECKERBOARD_IMAGE}};

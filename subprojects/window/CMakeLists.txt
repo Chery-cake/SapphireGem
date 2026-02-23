@@ -43,6 +43,7 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC
         device
         SDL3::SDL3
+        SDL3_image::SDL3_image
         core
         glm::glm
 )

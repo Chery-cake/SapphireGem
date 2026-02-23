@@ -1,4 +1,5 @@
 #include "texture.h"
+#include "SDL3_image/SDL_image.h"
 #include "vulkan_device.h"
 #include <mutex>
 #include <print>
@@ -87,14 +88,105 @@ bool Texture::upload(device::VMAAllocator &allocator,
       continue;
     }
 
-    // Determine dimensions
-    uint32_t width = layer.imageTag->width > 0 ? layer.imageTag->width : 256;
-    uint32_t height = layer.imageTag->height > 0 ? layer.imageTag->height : 256;
+    // Load image from disk using SDL_image
+    SDL_Surface *loadedSurface = IMG_Load(layer.imageTag->path);
+    if (!loadedSurface) {
+      std::println(stderr, "[Texture] Failed to load image '{}': {}",
+                   layer.imageTag->path, SDL_GetError());
+      return false;
+    }
+
+    // Convert to RGBA format if needed (matches VK_FORMAT_R8G8B8A8_SRGB)
+    SDL_Surface *rgbaSurface = loadedSurface;
+    if (loadedSurface->format != SDL_PIXELFORMAT_RGBA32) {
+      rgbaSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+      SDL_DestroySurface(loadedSurface);
+      if (!rgbaSurface) {
+        std::println(stderr,
+                     "[Texture] Failed to convert image '{}' to RGBA: {}",
+                     layer.imageTag->path, SDL_GetError());
+        return false;
+      }
+    }
+
+    // Determine source region and final dimensions
+    uint32_t srcX = 0, srcY = 0;
+    uint32_t width, height;
+    uint32_t surfW = static_cast<uint32_t>(rgbaSurface->w);
+    uint32_t surfH = static_cast<uint32_t>(rgbaSurface->h);
 
     if (layer.imageTag->isAtlasRegion) {
-      width = layer.imageTag->atlasW > 0 ? layer.imageTag->atlasW : width;
-      height = layer.imageTag->atlasH > 0 ? layer.imageTag->atlasH : height;
+      srcX = layer.imageTag->atlasX;
+      srcY = layer.imageTag->atlasY;
+      width = layer.imageTag->atlasW > 0 ? layer.imageTag->atlasW : surfW;
+      height = layer.imageTag->atlasH > 0 ? layer.imageTag->atlasH : surfH;
+
+      // Validate atlas region fits within the loaded surface
+      if (srcX + width > surfW || srcY + height > surfH) {
+        std::println(stderr,
+                     "[Texture] Atlas region ({}+{}, {}+{}) exceeds surface "
+                     "dimensions ({}x{}) for: {}",
+                     srcX, width, srcY, height, surfW, surfH,
+                     layer.imageTag->name);
+        SDL_DestroySurface(rgbaSurface);
+        return false;
+      }
+    } else {
+      width = layer.imageTag->width > 0 ? layer.imageTag->width : surfW;
+      height = layer.imageTag->height > 0 ? layer.imageTag->height : surfH;
+
+      // Clamp to actual surface dimensions
+      if (width > surfW) {
+        width = surfW;
+      }
+      if (height > surfH) {
+        height = surfH;
+      }
     }
+
+    constexpr uint32_t bytesPerPixel = 4; // RGBA8
+    vk::DeviceSize imageSize =
+        static_cast<vk::DeviceSize>(width) * height * bytesPerPixel;
+
+    // Create Vulkan staging buffer for CPU-to-GPU transfer
+    auto stagingBuffer = allocator.createStagingBuffer(
+        imageSize, std::string(layer.imageTag->name) + "_staging");
+    if (!stagingBuffer.isValid()) {
+      std::println(stderr, "[Texture] Failed to create staging buffer for: {}",
+                   layer.imageTag->name);
+      SDL_DestroySurface(rgbaSurface);
+      return false;
+    }
+
+    // Copy pixel data to staging buffer, respecting surface pitch/stride
+    {
+      void *mapped = stagingBuffer.map();
+      if (!mapped) {
+        std::println(stderr, "[Texture] Failed to map staging buffer for: {}",
+                     layer.imageTag->name);
+        SDL_DestroySurface(rgbaSurface);
+        return false;
+      }
+
+      const auto *srcPixels = static_cast<const uint8_t *>(rgbaSurface->pixels);
+      auto *dstPixels = static_cast<uint8_t *>(mapped);
+      size_t srcPitch = static_cast<size_t>(rgbaSurface->pitch);
+      uint32_t dstRowSize = width * bytesPerPixel;
+
+      for (uint32_t row = 0; row < height; ++row) {
+        const uint8_t *srcRow = srcPixels +
+                                static_cast<size_t>(srcY + row) * srcPitch +
+                                static_cast<size_t>(srcX) * bytesPerPixel;
+        uint8_t *dstRow = dstPixels + static_cast<size_t>(row) * dstRowSize;
+        std::memcpy(dstRow, srcRow, dstRowSize);
+      }
+
+      stagingBuffer.flush();
+      stagingBuffer.unmap();
+    }
+
+    // Free CPU-side image data
+    SDL_DestroySurface(rgbaSurface);
 
     // Create GPU image
     layer.gpuImage = allocator.createImage2D(
@@ -116,13 +208,12 @@ bool Texture::upload(device::VMAAllocator &allocator,
       return false;
     }
 
-    // Transition image layout from UNDEFINED to SHADER_READ_ONLY_OPTIMAL
-    // so the image can be sampled in fragment shaders.
+    // Upload staging buffer to GPU image using one-time command buffer
     {
       if (!device.getQueueFamilies().hasGraphics()) {
         std::println(stderr,
                      "[Texture] No graphics queue family available for "
-                     "layout transition: {}",
+                     "upload: {}",
                      layer.imageTag->name);
         return false;
       }
@@ -142,23 +233,63 @@ bool Texture::upload(device::VMAAllocator &allocator,
           vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
       cmd.begin(beginInfo);
 
-      vk::ImageMemoryBarrier barrier{};
-      barrier.oldLayout = vk::ImageLayout::eUndefined;
-      barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-      barrier.image = layer.gpuImage.getImage();
-      barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-      barrier.subresourceRange.baseMipLevel = 0;
-      barrier.subresourceRange.levelCount = 1;
-      barrier.subresourceRange.baseArrayLayer = 0;
-      barrier.subresourceRange.layerCount = 1;
-      barrier.srcAccessMask = {};
-      barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+      // Transition: UNDEFINED -> TRANSFER_DST_OPTIMAL
+      {
+        vk::ImageMemoryBarrier barrier{};
+        barrier.oldLayout = vk::ImageLayout::eUndefined;
+        barrier.newLayout = vk::ImageLayout::eTransferDstOptimal;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = layer.gpuImage.getImage();
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = {};
+        barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
 
-      cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
-                          vk::PipelineStageFlagBits::eFragmentShader, {}, {},
-                          {}, barrier);
+        cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                            vk::PipelineStageFlagBits::eTransfer, {}, {}, {},
+                            barrier);
+      }
+
+      // Copy staging buffer to GPU image
+      vk::BufferImageCopy copyRegion{};
+      copyRegion.bufferOffset = 0;
+      copyRegion.bufferRowLength = 0;   // Tightly packed
+      copyRegion.bufferImageHeight = 0; // Tightly packed
+      copyRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+      copyRegion.imageSubresource.mipLevel = 0;
+      copyRegion.imageSubresource.baseArrayLayer = 0;
+      copyRegion.imageSubresource.layerCount = 1;
+      copyRegion.imageOffset = vk::Offset3D{0, 0, 0};
+      copyRegion.imageExtent = vk::Extent3D{width, height, 1};
+
+      cmd.copyBufferToImage(stagingBuffer.getBuffer(),
+                            layer.gpuImage.getImage(),
+                            vk::ImageLayout::eTransferDstOptimal, copyRegion);
+
+      // Transition: TRANSFER_DST_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
+      {
+        vk::ImageMemoryBarrier barrier{};
+        barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+        barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = layer.gpuImage.getImage();
+        barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+        barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+        cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                            vk::PipelineStageFlagBits::eFragmentShader, {}, {},
+                            {}, barrier);
+      }
 
       cmd.end();
 
@@ -170,6 +301,8 @@ bool Texture::upload(device::VMAAllocator &allocator,
       device.getGraphicsQueue().submit(submitInfo);
       device.getGraphicsQueue().waitIdle();
     }
+    // Staging buffer is automatically freed when it goes out of scope
+    // (RAII)
 
     layer.loaded = true;
     std::println("[Texture] Uploaded layer: {} ({}x{})", layer.imageTag->name,
