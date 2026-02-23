@@ -49,17 +49,35 @@ static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
 // Texture tags for shared assets
 static constexpr window::ImageTag CHECKERBOARD_IMAGE{
     "checkerboard", "assets/textures/checkerboard.png", 256, 256};
+
+// Atlas: loaded once, 6 regions reference it as layers
 static constexpr window::ImageTag LAYER_ATLAS_IMAGE{
     "layer_atlas", "assets/textures/layer_atlas.png", 512, 512};
 
+// 6 atlas region images (3 columns × 2 rows, each ~170×256)
+static constexpr window::ImageTag ATLAS_REGION_0{
+    "atlas_region_0", &LAYER_ATLAS_IMAGE, 0, 0, 170, 256};
+static constexpr window::ImageTag ATLAS_REGION_1{
+    "atlas_region_1", &LAYER_ATLAS_IMAGE, 170, 0, 170, 256};
+static constexpr window::ImageTag ATLAS_REGION_2{
+    "atlas_region_2", &LAYER_ATLAS_IMAGE, 340, 0, 172, 256};
+static constexpr window::ImageTag ATLAS_REGION_3{
+    "atlas_region_3", &LAYER_ATLAS_IMAGE, 0, 256, 170, 256};
+static constexpr window::ImageTag ATLAS_REGION_4{
+    "atlas_region_4", &LAYER_ATLAS_IMAGE, 170, 256, 170, 256};
+static constexpr window::ImageTag ATLAS_REGION_5{
+    "atlas_region_5", &LAYER_ATLAS_IMAGE, 340, 256, 172, 256};
+
 static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
     {&CHECKERBOARD_IMAGE}};
-static const window::TextureLayerInfo ATLAS_LAYERS[] = {{&LAYER_ATLAS_IMAGE}};
+static const window::TextureLayerInfo ATLAS_LAYERS[] = {
+    {&ATLAS_REGION_0}, {&ATLAS_REGION_1}, {&ATLAS_REGION_2},
+    {&ATLAS_REGION_3}, {&ATLAS_REGION_4}, {&ATLAS_REGION_5}};
 
 static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
                                                      CHECKERBOARD_LAYERS, 1};
 static const window::TextureTag ATLAS_TEX_TAG{"layer_atlas_tex", ATLAS_LAYERS,
-                                              1};
+                                              6};
 
 // Cube object tag (uses the unified material)
 static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj",

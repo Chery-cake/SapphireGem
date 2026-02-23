@@ -3,6 +3,7 @@
 #include "vulkan_device.h"
 #include <mutex>
 #include <print>
+#include <unordered_map>
 
 namespace window {
 
@@ -81,6 +82,15 @@ bool Texture::upload(device::VMAAllocator &allocator,
     return true;
   }
 
+  // Cache loaded atlas surfaces so the same atlas file is loaded only once
+  std::unordered_map<const char *, SDL_Surface *> atlasCache;
+  auto cleanupCache = [&atlasCache]() {
+    for (auto &[path, surf] : atlasCache) {
+      SDL_DestroySurface(surf);
+    }
+    atlasCache.clear();
+  };
+
   for (auto &layer : layers_) {
     if (!layer.imageTag) {
       std::println(stderr, "[Texture] Layer has no image tag in texture: {}",
@@ -88,25 +98,82 @@ bool Texture::upload(device::VMAAllocator &allocator,
       continue;
     }
 
-    // Load image from disk using SDL_image
-    SDL_Surface *loadedSurface = IMG_Load(layer.imageTag->path);
-    if (!loadedSurface) {
-      std::println(stderr, "[Texture] Failed to load image '{}': {}",
-                   layer.imageTag->path, SDL_GetError());
+    // Resolve the file path: atlas regions use atlasSource->path
+    const char *filePath = layer.imageTag->path;
+    if (layer.imageTag->isAtlasRegion && layer.imageTag->atlasSource) {
+      filePath = layer.imageTag->atlasSource->path;
+    }
+
+    if (!filePath) {
+      std::println(stderr,
+                   "[Texture] No file path for image '{}' in texture: {}",
+                   layer.imageTag->name, name_);
+      cleanupCache();
       return false;
     }
 
-    // Convert to RGBA format if needed (matches VK_FORMAT_R8G8B8A8_SRGB)
-    SDL_Surface *rgbaSurface = loadedSurface;
-    if (loadedSurface->format != SDL_PIXELFORMAT_RGBA32) {
-      rgbaSurface = SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
-      SDL_DestroySurface(loadedSurface);
-      if (!rgbaSurface) {
-        std::println(stderr,
-                     "[Texture] Failed to convert image '{}' to RGBA: {}",
-                     layer.imageTag->path, SDL_GetError());
+    // Load or reuse cached surface for atlas sources
+    SDL_Surface *rgbaSurface = nullptr;
+    bool ownsSurface = false;
+
+    if (layer.imageTag->isAtlasRegion && layer.imageTag->atlasSource) {
+      // Atlas region: load atlas once, reuse for all regions
+      auto it = atlasCache.find(filePath);
+      if (it != atlasCache.end()) {
+        rgbaSurface = it->second;
+      } else {
+        SDL_Surface *loadedSurface = IMG_Load(filePath);
+        if (!loadedSurface) {
+          std::println(stderr, "[Texture] Failed to load atlas '{}': {}",
+                       filePath, SDL_GetError());
+          cleanupCache();
+          return false;
+        }
+
+        if (loadedSurface->format != SDL_PIXELFORMAT_RGBA32) {
+          rgbaSurface =
+              SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+          SDL_DestroySurface(loadedSurface);
+          if (!rgbaSurface) {
+            std::println(
+                stderr,
+                "[Texture] Failed to convert atlas '{}' to RGBA: {}",
+                filePath, SDL_GetError());
+            cleanupCache();
+            return false;
+          }
+        } else {
+          rgbaSurface = loadedSurface;
+        }
+
+        atlasCache[filePath] = rgbaSurface;
+      }
+      // Atlas surfaces are freed by cleanupCache, not per-layer
+    } else {
+      // Standalone image: load fresh
+      SDL_Surface *loadedSurface = IMG_Load(filePath);
+      if (!loadedSurface) {
+        std::println(stderr, "[Texture] Failed to load image '{}': {}",
+                     filePath, SDL_GetError());
+        cleanupCache();
         return false;
       }
+
+      if (loadedSurface->format != SDL_PIXELFORMAT_RGBA32) {
+        rgbaSurface =
+            SDL_ConvertSurface(loadedSurface, SDL_PIXELFORMAT_RGBA32);
+        SDL_DestroySurface(loadedSurface);
+        if (!rgbaSurface) {
+          std::println(stderr,
+                       "[Texture] Failed to convert image '{}' to RGBA: {}",
+                       filePath, SDL_GetError());
+          cleanupCache();
+          return false;
+        }
+      } else {
+        rgbaSurface = loadedSurface;
+      }
+      ownsSurface = true;
     }
 
     // Determine source region and final dimensions
@@ -128,7 +195,10 @@ bool Texture::upload(device::VMAAllocator &allocator,
                      "dimensions ({}x{}) for: {}",
                      srcX, width, srcY, height, surfW, surfH,
                      layer.imageTag->name);
-        SDL_DestroySurface(rgbaSurface);
+        if (ownsSurface) {
+          SDL_DestroySurface(rgbaSurface);
+        }
+        cleanupCache();
         return false;
       }
     } else {
@@ -154,7 +224,10 @@ bool Texture::upload(device::VMAAllocator &allocator,
     if (!stagingBuffer.isValid()) {
       std::println(stderr, "[Texture] Failed to create staging buffer for: {}",
                    layer.imageTag->name);
-      SDL_DestroySurface(rgbaSurface);
+      if (ownsSurface) {
+        SDL_DestroySurface(rgbaSurface);
+      }
+      cleanupCache();
       return false;
     }
 
@@ -164,7 +237,10 @@ bool Texture::upload(device::VMAAllocator &allocator,
       if (!mapped) {
         std::println(stderr, "[Texture] Failed to map staging buffer for: {}",
                      layer.imageTag->name);
-        SDL_DestroySurface(rgbaSurface);
+        if (ownsSurface) {
+          SDL_DestroySurface(rgbaSurface);
+        }
+        cleanupCache();
         return false;
       }
 
@@ -185,8 +261,10 @@ bool Texture::upload(device::VMAAllocator &allocator,
       stagingBuffer.unmap();
     }
 
-    // Free CPU-side image data
-    SDL_DestroySurface(rgbaSurface);
+    // Free standalone image surfaces (atlas surfaces freed by cleanupCache)
+    if (ownsSurface) {
+      SDL_DestroySurface(rgbaSurface);
+    }
 
     // Create GPU image
     layer.gpuImage = allocator.createImage2D(
@@ -197,6 +275,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
     if (!layer.gpuImage.isValid()) {
       std::println(stderr, "[Texture] Failed to create GPU image for layer: {}",
                    layer.imageTag->name);
+      cleanupCache();
       return false;
     }
 
@@ -205,6 +284,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
       std::println(stderr,
                    "[Texture] Failed to create image view for layer: {}",
                    layer.imageTag->name);
+      cleanupCache();
       return false;
     }
 
@@ -215,6 +295,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
                      "[Texture] No graphics queue family available for "
                      "upload: {}",
                      layer.imageTag->name);
+        cleanupCache();
         return false;
       }
       uint32_t graphicsFamily =
@@ -308,6 +389,9 @@ bool Texture::upload(device::VMAAllocator &allocator,
     std::println("[Texture] Uploaded layer: {} ({}x{})", layer.imageTag->name,
                  width, height);
   }
+
+  // Free all cached atlas surfaces
+  cleanupCache();
 
   uploaded_ = true;
   return true;

@@ -98,6 +98,13 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint uvIdx = vertexID % 6;
     output.uv = quadUVs[uvIdx];
 
+    // Apply wave displacement to gradient quadrant (mode 2) vertices
+    if (output.renderMode == 2u) {
+        float t = pc.time;
+        pos.x += sin(pos.y * 6.0 + t * 2.5) * 0.04;
+        pos.y += cos(pos.x * 5.0 + t * 2.0) * 0.04;
+    }
+
     // 2D homogeneous coordinates: (x, y, 1)
     float3 pos2d = float3(pos, 1.0);
     float3 worldPos = mul(ubo.model, pos2d);
