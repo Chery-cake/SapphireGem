@@ -97,16 +97,38 @@ bool Texture::upload(device::VMAAllocator &allocator,
       continue;
     }
 
-    // Resolve the file path: atlas regions use atlasSource->path
-    const char *filePath = layer.imageTag->path;
-    if (layer.imageTag->isAtlasRegion && layer.imageTag->atlasSource) {
-      filePath = layer.imageTag->atlasSource->path;
-    }
+    // Resolve the file path and region info via the variant
+    const char *filePath = nullptr;
+    bool isAtlas = false;
+    uint32_t srcX = 0, srcY = 0, regionW = 0, regionH = 0;
+    uint32_t fileW = 0, fileH = 0;
+    const char *layerName = layer.imageTag->getName();
+
+    std::visit(
+        [&](const auto &src) {
+          using T = std::decay_t<decltype(src)>;
+          if constexpr (std::is_same_v<T, ImageFromFile>) {
+            filePath = src.path;
+            fileW = src.width;
+            fileH = src.height;
+            isAtlas = false;
+          } else if constexpr (std::is_same_v<T, ImageFromAtlasRegion>) {
+            if (src.atlas) {
+              filePath = src.atlas->path;
+            }
+            srcX = src.x;
+            srcY = src.y;
+            regionW = src.width;
+            regionH = src.height;
+            isAtlas = true;
+          }
+        },
+        layer.imageTag->source);
 
     if (!filePath) {
       std::println(stderr,
                    "[Texture] No file path for image '{}' in texture: {}",
-                   layer.imageTag->name, name_);
+                   layerName, name_);
       cleanupCache();
       return false;
     }
@@ -115,7 +137,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
     SDL_Surface *rgbaSurface = nullptr;
     bool ownsSurface = false;
 
-    if (layer.imageTag->isAtlasRegion && layer.imageTag->atlasSource) {
+    if (isAtlas) {
       // Atlas region: load atlas once, reuse for all regions
       auto it = atlasCache.find(std::string(filePath));
       if (it != atlasCache.end()) {
@@ -175,24 +197,20 @@ bool Texture::upload(device::VMAAllocator &allocator,
     }
 
     // Determine source region and final dimensions
-    uint32_t srcX = 0, srcY = 0;
     uint32_t width, height;
     uint32_t surfW = static_cast<uint32_t>(rgbaSurface->w);
     uint32_t surfH = static_cast<uint32_t>(rgbaSurface->h);
 
-    if (layer.imageTag->isAtlasRegion) {
-      srcX = layer.imageTag->atlasX;
-      srcY = layer.imageTag->atlasY;
-      width = layer.imageTag->atlasW > 0 ? layer.imageTag->atlasW : surfW;
-      height = layer.imageTag->atlasH > 0 ? layer.imageTag->atlasH : surfH;
+    if (isAtlas) {
+      width = regionW > 0 ? regionW : surfW;
+      height = regionH > 0 ? regionH : surfH;
 
       // Validate atlas region fits within the loaded surface
       if (srcX + width > surfW || srcY + height > surfH) {
         std::println(stderr,
                      "[Texture] Atlas region ({}+{}, {}+{}) exceeds surface "
                      "dimensions ({}x{}) for: {}",
-                     srcX, width, srcY, height, surfW, surfH,
-                     layer.imageTag->name);
+                     srcX, width, srcY, height, surfW, surfH, layerName);
         if (ownsSurface) {
           SDL_DestroySurface(rgbaSurface);
         }
@@ -200,8 +218,8 @@ bool Texture::upload(device::VMAAllocator &allocator,
         return false;
       }
     } else {
-      width = layer.imageTag->width > 0 ? layer.imageTag->width : surfW;
-      height = layer.imageTag->height > 0 ? layer.imageTag->height : surfH;
+      width = fileW > 0 ? fileW : surfW;
+      height = fileH > 0 ? fileH : surfH;
 
       // Clamp to actual surface dimensions
       if (width > surfW) {
@@ -218,10 +236,10 @@ bool Texture::upload(device::VMAAllocator &allocator,
 
     // Create Vulkan staging buffer for CPU-to-GPU transfer
     auto stagingBuffer = allocator.createStagingBuffer(
-        imageSize, std::string(layer.imageTag->name) + "_staging");
+        imageSize, std::string(layerName) + "_staging");
     if (!stagingBuffer.isValid()) {
       std::println(stderr, "[Texture] Failed to create staging buffer for: {}",
-                   layer.imageTag->name);
+                   layerName);
       if (ownsSurface) {
         SDL_DestroySurface(rgbaSurface);
       }
@@ -234,7 +252,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
       void *mapped = stagingBuffer.map();
       if (!mapped) {
         std::println(stderr, "[Texture] Failed to map staging buffer for: {}",
-                     layer.imageTag->name);
+                     layerName);
         if (ownsSurface) {
           SDL_DestroySurface(rgbaSurface);
         }
@@ -268,11 +286,11 @@ bool Texture::upload(device::VMAAllocator &allocator,
     layer.gpuImage = allocator.createImage2D(
         width, height, vk::Format::eR8G8B8A8Srgb,
         vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
-        std::string(layer.imageTag->name) + "_image");
+        std::string(layerName) + "_image");
 
     if (!layer.gpuImage.isValid()) {
       std::println(stderr, "[Texture] Failed to create GPU image for layer: {}",
-                   layer.imageTag->name);
+                   layerName);
       cleanupCache();
       return false;
     }
@@ -281,7 +299,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
     if (!allocator.createImageView(layer.gpuImage)) {
       std::println(stderr,
                    "[Texture] Failed to create image view for layer: {}",
-                   layer.imageTag->name);
+                   layerName);
       cleanupCache();
       return false;
     }
@@ -292,7 +310,7 @@ bool Texture::upload(device::VMAAllocator &allocator,
         std::println(stderr,
                      "[Texture] No graphics queue family available for "
                      "upload: {}",
-                     layer.imageTag->name);
+                     layerName);
         cleanupCache();
         return false;
       }
@@ -387,8 +405,8 @@ bool Texture::upload(device::VMAAllocator &allocator,
     cleanupCache();
 
     layer.loaded = true;
-    std::println("[Texture] Uploaded layer: {} ({}x{})", layer.imageTag->name,
-                 width, height);
+    std::println("[Texture] Uploaded layer: {} ({}x{})", layerName, width,
+                 height);
   }
 
   uploaded_ = true;

@@ -9,53 +9,98 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 
 namespace window {
 
 /**
- * @brief Tag for identifying images within a texture
+ * @brief Tag describing a texture atlas (single GPU buffer per atlas)
  *
- * Stores metadata about a single image source. Must have static storage
- * duration (constexpr, static, or global) when used with ResourceRegistry.
+ * An atlas is a single image file that contains multiple sub-images.
+ * The atlas buffer is loaded once and shared across all regions.
+ * Must have static storage duration when used with constexpr tags.
  */
-struct WINDOW_API ImageTag {
+struct WINDOW_API AtlasTag {
   const char *name;
-  const char *path;    // File path (source images only)
-  uint32_t width = 0;  // 0 = auto-detect from file
-  uint32_t height = 0; // 0 = auto-detect from file
-  const ImageTag *atlasSource =
-      nullptr;         // Atlas image tag (must outlive this tag)
-  uint32_t atlasX = 0; // X offset in atlas
-  uint32_t atlasY = 0; // Y offset in atlas
-  uint32_t atlasW = 0; // Width in atlas (0 = full image)
-  uint32_t atlasH = 0; // Height in atlas (0 = full image)
-  bool isAtlasRegion = false;
+  const char *path;
+  uint32_t width;
+  uint32_t height;
 
-  // Standalone image from file
-  constexpr ImageTag(const char *n, const char *p, uint32_t w = 0,
-                     uint32_t h = 0)
+  constexpr AtlasTag(const char *n, const char *p, uint32_t w, uint32_t h)
       : name(n), path(p), width(w), height(h) {}
-
-  // Atlas region referencing an atlas ImageTag (atlas loaded once, reused)
-  constexpr ImageTag(const char *n, const ImageTag *atlas, uint32_t ax,
-                     uint32_t ay, uint32_t aw, uint32_t ah)
-      : name(n), path(nullptr), atlasSource(atlas), atlasX(ax), atlasY(ay),
-        atlasW(aw), atlasH(ah), isAtlasRegion(true) {}
 };
 
 /**
- * @brief Per-layer image transform modifiers
+ * @brief Source descriptor: image loaded from a standalone file
+ */
+struct WINDOW_API ImageFromFile {
+  const char *name;
+  const char *path;
+  uint32_t width = 0;  // 0 = auto-detect from file
+  uint32_t height = 0; // 0 = auto-detect from file
+
+  constexpr ImageFromFile(const char *n, const char *p, uint32_t w = 0,
+                          uint32_t h = 0)
+      : name(n), path(p), width(w), height(h) {}
+};
+
+/**
+ * @brief Source descriptor: image region within an atlas
  *
- * Each layer in a texture can have individual transforms applied.
+ * References an AtlasTag and specifies the sub-region coordinates.
+ * The atlas buffer is reused—never duplicated.
+ */
+struct WINDOW_API ImageFromAtlasRegion {
+  const char *name;
+  const AtlasTag *atlas; // Must outlive this descriptor
+  uint32_t x;
+  uint32_t y;
+  uint32_t width;
+  uint32_t height;
+
+  constexpr ImageFromAtlasRegion(const char *n, const AtlasTag *a, uint32_t ax,
+                                 uint32_t ay, uint32_t aw, uint32_t ah)
+      : name(n), atlas(a), x(ax), y(ay), width(aw), height(ah) {}
+};
+
+/**
+ * @brief Tag for identifying images within a texture
+ *
+ * Uses std::variant to distinguish between standalone file images
+ * and atlas region images. Must have static storage duration when
+ * used with ResourceRegistry.
+ */
+struct WINDOW_API ImageTag {
+  std::variant<ImageFromFile, ImageFromAtlasRegion> source;
+
+  ImageTag(const ImageFromFile &file) : source(file) {}
+  ImageTag(const ImageFromAtlasRegion &region) : source(region) {}
+
+  [[nodiscard]] const char *getName() const {
+    return std::visit([](const auto &s) { return s.name; }, source);
+  }
+
+  [[nodiscard]] bool isAtlasRegion() const {
+    return std::holds_alternative<ImageFromAtlasRegion>(source);
+  }
+};
+
+/**
+ * @brief Per-layer image transform and modifier parameters
+ *
+ * Each layer in a texture can have individual modifiers applied.
+ * These can be set CPU-side and passed to shaders for runtime effects.
  */
 struct WINDOW_API ImageTransform {
-  float rotation = 0.0f;                                // Rotation in radians
-  float scaleX = 1.0f;                                  // Scale X
-  float scaleY = 1.0f;                                  // Scale Y
-  float offsetX = 0.0f;                                 // UV offset X
-  float offsetY = 0.0f;                                 // UV offset Y
-  std::array<float, 4> tint = {1.0f, 1.0f, 1.0f, 1.0f}; // RGBA tint modifier
-  float opacity = 1.0f;                                 // Layer opacity
+  float rotation = 0.0f;                                  // Rotation in radians
+  float scaleX = 1.0f;                                    // Scale X
+  float scaleY = 1.0f;                                    // Scale Y
+  float offsetX = 0.0f;                                   // UV offset X
+  float offsetY = 0.0f;                                   // UV offset Y
+  std::array<float, 4> tint = {1.0f, 1.0f, 1.0f, 1.0f};  // RGBA tint modifier
+  float opacity = 1.0f;                                   // Layer opacity
+  float animSpeed = 0.0f;  // Animation speed (0 = static)
+  float animPhase = 0.0f;  // Animation phase offset
 };
 
 /**
@@ -67,10 +112,9 @@ struct WINDOW_API TextureLayerInfo {
   const ImageTag *imageTag = nullptr;
   ImageTransform defaultTransform;
 
-  constexpr TextureLayerInfo() = default;
-  constexpr TextureLayerInfo(const ImageTag *img) : imageTag(img) {}
-  constexpr TextureLayerInfo(const ImageTag *img,
-                             const ImageTransform &transform)
+  TextureLayerInfo() = default;
+  TextureLayerInfo(const ImageTag *img) : imageTag(img) {}
+  TextureLayerInfo(const ImageTag *img, const ImageTransform &transform)
       : imageTag(img), defaultTransform(transform) {}
 };
 
@@ -84,18 +128,15 @@ struct WINDOW_API TextureLayerInfo {
  *
  * Example:
  * @code
- *   static constexpr ImageTag GRASS_IMAGE{"grass", "textures/grass.png"};
- *   static constexpr ImageTag MOSS_IMAGE{"moss", "textures/moss.png"};
+ *   AtlasTag atlas{"spritesheet", "sprites/sheet.png", 1024, 1024};
+ *   ImageTag heroTag{ImageFromFile{"hero", "hero.png", 64, 64}};
+ *   ImageTag enemyTag{ImageFromAtlasRegion{"enemy", &atlas, 128, 0, 32, 32}};
  *
- *   // Layers defined at tag level
- *   static const TextureLayerInfo TERRAIN_LAYERS[] = {
- *     {&GRASS_IMAGE},
- *     {&MOSS_IMAGE},
- *   };
+ *   static const TextureLayerInfo LAYERS[] = { {&heroTag}, {&enemyTag} };
+ *   static const TextureTag TEX{"my_tex", LAYERS, 2};
  *
- *   static const TextureTag TERRAIN_TEXTURE{
- *     "terrain", TERRAIN_LAYERS, 2
- *   };
+ *   Texture tex(TEX);
+ *   tex.setLayerTransform(1, /* ... modifiers ... */);
  * @endcode
  */
 struct WINDOW_API TextureTag {
@@ -124,6 +165,9 @@ struct WINDOW_API TextureLayer {
  * A texture can contain one or more image layers, where each layer can be
  * individually transformed (rotated, scaled, tinted). Images can come from
  * individual files or from regions of a texture atlas.
+ *
+ * Atlas images are loaded once and shared across all regions referencing them,
+ * avoiding memory duplication.
  *
  * Textures can be shared across materials to save GPU memory.
  *
@@ -171,6 +215,8 @@ public:
    * each image from VK_IMAGE_LAYOUT_UNDEFINED to
    * VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL using a one-time command
    * buffer so the images are ready for shader sampling.
+   *
+   * Atlas images are loaded once and reused for all regions referencing them.
    *
    * @param allocator VMA allocator for image creation
    * @param device GPU device for command buffer submission
