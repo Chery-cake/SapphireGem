@@ -47,6 +47,7 @@ static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
                                                    &QUAD_2D_MATERIAL_TAG};
 
 // Texture tags for shared assets
+// Note: ImageTag uses std::variant internally, so these cannot be constexpr
 static const window::ImageTag CHECKERBOARD_IMAGE{
     window::ImageFromFile{"checkerboard", "assets/textures/checkerboard.png",
                           256, 256}};

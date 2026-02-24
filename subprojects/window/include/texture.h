@@ -107,6 +107,9 @@ struct WINDOW_API ImageTransform {
  * @brief Describes a single layer within a TextureTag
  *
  * Binds an ImageTag with its default transform at tag definition time.
+ *
+ * Note: Constructors are not constexpr because ImageTag contains
+ * std::variant which may not be constexpr-constructible in all contexts.
  */
 struct WINDOW_API TextureLayerInfo {
   const ImageTag *imageTag = nullptr;
