@@ -24,17 +24,26 @@ struct TextureTag;
 /**
  * @brief Tag for identifying materials in the resource system
  *
- * A material tag describes which shaders and texture to use.
+ * A material tag describes which shaders and texture binding plan to use.
+ * The textureBindings array defines the expected descriptor binding order:
+ * each entry maps to consecutive sampler bindings starting at binding 1.
  * Must have static storage duration when used with ResourceRegistry.
  */
 struct WINDOW_API MaterialTag {
   const char *name;
   const device::ShaderTag *shaderTag = nullptr; // Tag for the shader program
-  const TextureTag *textureTag = nullptr; // Tag for the texture (optional)
+  const TextureTag *const *textureBindings =
+      nullptr; // Ordered texture binding plan
+  uint32_t textureBindingCount = 0;
 
   constexpr MaterialTag(const char *n, const device::ShaderTag *shader,
-                        const TextureTag *tex = nullptr)
-      : name(n), shaderTag(shader), textureTag(tex) {}
+                        const TextureTag *const *bindings,
+                        uint32_t bindingCount)
+      : name(n), shaderTag(shader), textureBindings(bindings),
+        textureBindingCount(bindingCount) {}
+
+  constexpr MaterialTag(const char *n, const device::ShaderTag *shader)
+      : name(n), shaderTag(shader) {}
 };
 
 /**
@@ -150,7 +159,12 @@ public:
   [[nodiscard]] const device::ShaderTag *getShaderTag() const {
     return shaderTag_;
   }
-  [[nodiscard]] const TextureTag *getTextureTag() const { return textureTag_; }
+  [[nodiscard]] const TextureTag *const *getTextureBindings() const {
+    return textureBindings_;
+  }
+  [[nodiscard]] uint32_t getTextureBindingCount() const {
+    return textureBindingCount_;
+  }
   [[nodiscard]] bool isInitialized() const { return initialized_; }
 
 private:
@@ -166,7 +180,8 @@ private:
 
   std::string name_;
   const device::ShaderTag *shaderTag_ = nullptr;
-  const TextureTag *textureTag_ = nullptr;
+  const TextureTag *const *textureBindings_ = nullptr;
+  uint32_t textureBindingCount_ = 0;
 
   // Cached shader program (owned by ShaderManager)
   device::ShaderProgram *shaderProgram_ = nullptr;

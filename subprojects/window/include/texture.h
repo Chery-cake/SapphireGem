@@ -245,6 +245,20 @@ public:
   [[nodiscard]] vk::Sampler getSampler() const;
   [[nodiscard]] const TextureLayer *getLayer(uint32_t index) const;
 
+  /**
+   * @brief Create a 1×1 white fallback texture for missing descriptor
+   * bindings
+   *
+   * Used to provide a valid combined image sampler when a texture slot
+   * is unbound, preventing Vulkan validation errors from null descriptors.
+   *
+   * @param allocator VMA allocator for image creation
+   * @param device GPU device for command buffer submission
+   * @return Shared pointer to fallback texture, or nullptr on failure
+   */
+  static std::shared_ptr<Texture>
+  createFallback(device::VMAAllocator &allocator, device::GPUDevice &device);
+
 private:
   std::string name_;
   std::vector<TextureLayer> layers_;

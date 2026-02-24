@@ -29,16 +29,12 @@
 static constexpr device::ShaderTag CUBE_UNIFIED_SHADER_TAG{
     "cube_unified", "cube_unified.slang", "vertMain", "fragMain", "geomMain"};
 
-// Cube material tag (single unified material for all faces)
-static constexpr window::MaterialTag CUBE_UNIFIED_MATERIAL_TAG{
-    "cube_unified_mat", &CUBE_UNIFIED_SHADER_TAG};
-
 // 2D quad shader tag (vertex + fragment + geometry)
 static constexpr device::ShaderTag QUAD_2D_SHADER_TAG{
     "quad2d_unified", "quad2d_unified.slang", "vertMain", "fragMain",
     "geomMain"};
 
-// 2D quad material tag
+// 2D quad material tag (no texture binding plan needed — single texture)
 static constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{"quad2d_unified_mat",
                                                           &QUAD_2D_SHADER_TAG};
 
@@ -86,18 +82,34 @@ static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
 static const window::TextureLayerInfo ATLAS_LAYERS[] = {
     {&ATLAS_REGION_0}, {&ATLAS_REGION_1}, {&ATLAS_REGION_2},
     {&ATLAS_REGION_3}, {&ATLAS_REGION_4}, {&ATLAS_REGION_5}};
-// TODO discover why if ATLAS_REGION_0 is added at index 0 of CHECKERBOAR_LAYERS
-// then the ATLAS_LAYERS start rendering the layers properly. and why the
-// program doesn't start if all the ATLAS_REGION_* aren't in use
+// TODO check why this happens when the amount of images is changed on the
+// ATLAS_LAYERS, tested changing from 6 to 2
+// [Vulkan ERROR] vkCmdDraw(): VkDescriptorSet 0x470000000047 [Set 0, Binding 7,
+// variable "atlasLayer5"] is invalid. The Vulkan spec states: Descriptors in
+// each bound descriptor set, specified via vkCmdBindDescriptorSets, must be
+// valid if they are accessed as described by descriptor validity by the
+// VkPipeline bound to the pipeline bind point used by this command and the
+// bound VkPipeline was not created with
+// VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
+// (https://docs.vulkan.org/spec/latest/chapters/drawing.html#VUID-vkCmdDraw-None-08114)
 
 static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
                                                      CHECKERBOARD_LAYERS, 1};
 static const window::TextureTag ATLAS_TEX_TAG{"layer_atlas_tex", ATLAS_LAYERS,
                                               6};
 
+// Cube material binding plan: shader expects binding 1 = checkerboard,
+// bindings 2..7 = atlas layers 0..5. Order must match cube_unified.slang.
+static const window::TextureTag *const CUBE_BINDING_PLAN[] = {
+    &CHECKERBOARD_TEX_TAG, &ATLAS_TEX_TAG};
+
+// Cube material tag (unified material with explicit texture binding plan)
+static const window::MaterialTag CUBE_UNIFIED_MATERIAL_TAG{
+    "cube_unified_mat", &CUBE_UNIFIED_SHADER_TAG, CUBE_BINDING_PLAN, 2};
+
 // Cube object tag (uses the unified material)
-static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
-                                                &CUBE_UNIFIED_MATERIAL_TAG};
+static const window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
+                                            &CUBE_UNIFIED_MATERIAL_TAG};
 
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
@@ -186,6 +198,11 @@ public:
     cube_->setFaceTexture(3, atlasLayerTex_);
     // Left/Right faces (mode 3): gradient + wave (procedural, no texture)
     // Top/Bottom faces (mode 0): plain color (procedural, no texture)
+
+    // Set explicit texture binding order matching cube_unified.slang:
+    // binding 1: checkerboard (1 layer), bindings 2-7: atlas layers (6
+    // layers)
+    cube_->setTextureBindings({checkerboardTex_, atlasLayerTex_});
 
     // Pipeline config with push constants for time animation
     window::PipelineConfig pConfig;
