@@ -207,6 +207,17 @@ public:
   Object &operator=(Object &&other) noexcept;
 
   /**
+   * @brief Set the ordered list of textures for descriptor binding
+   *
+   * Defines the exact order in which textures are bound to descriptor
+   * set sampler slots (binding 1..N). This order must match the shader's
+   * expected binding layout. Call before initialize().
+   *
+   * @param bindings Ordered list of textures for descriptor binding
+   */
+  void setTextureBindings(std::vector<std::shared_ptr<Texture>> bindings);
+
+  /**
    * @brief Assign a shared texture to a specific face
    *
    * Textures are stored as shared_ptr so that multiple objects and faces
@@ -360,6 +371,8 @@ private:
   std::unordered_map<uint32_t, std::shared_ptr<Texture>> faceTextures_;
   // Deduplicated texture slots for descriptor binding (ordered)
   std::vector<std::shared_ptr<Texture>> textureSlots_;
+  // Fallback texture for unbound descriptor slots (1×1 white)
+  std::shared_ptr<Texture> fallbackTexture_;
 
   // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;

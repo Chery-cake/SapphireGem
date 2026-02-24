@@ -94,7 +94,8 @@ bool Texture::upload(device::VMAAllocator &allocator,
     if (!layer.imageTag) {
       std::println(stderr, "[Texture] Layer has no image tag in texture: {}",
                    name_);
-      continue;
+      cleanupCache();
+      return false;
     }
 
     // Resolve the file path and region info via the variant
@@ -401,12 +402,21 @@ bool Texture::upload(device::VMAAllocator &allocator,
     // Staging buffer is automatically freed when it goes out of scope
     // (RAII)
 
-    // Free all cached atlas surfaces
-    cleanupCache();
-
     layer.loaded = true;
     std::println("[Texture] Uploaded layer: {} ({}x{})", layerName, width,
                  height);
+  }
+
+  // Free all cached atlas surfaces after all layers are processed
+  cleanupCache();
+
+  // Verify all layers uploaded successfully
+  for (const auto &layer : layers_) {
+    if (!layer.loaded) {
+      std::println(stderr,
+                   "[Texture] Not all layers uploaded for texture: {}", name_);
+      return false;
+    }
   }
 
   uploaded_ = true;
@@ -462,6 +472,144 @@ const TextureLayer *Texture::getLayer(uint32_t index) const {
     return nullptr;
   }
   return &layers_[index];
+}
+
+std::shared_ptr<Texture>
+Texture::createFallback(device::VMAAllocator &allocator,
+                        device::GPUDevice &device) {
+  static constexpr TextureTag fallbackTag{"__fallback__", nullptr, 0};
+  auto tex = std::make_shared<Texture>(fallbackTag);
+
+  TextureLayer layer;
+
+  constexpr uint32_t width = 1;
+  constexpr uint32_t height = 1;
+  constexpr uint32_t bytesPerPixel = 4;
+  constexpr vk::DeviceSize imageSize = width * height * bytesPerPixel;
+
+  auto stagingBuffer =
+      allocator.createStagingBuffer(imageSize, "__fallback_staging");
+  if (!stagingBuffer.isValid()) {
+    std::println(stderr, "[Texture] Failed to create fallback staging buffer");
+    return nullptr;
+  }
+
+  void *mapped = stagingBuffer.map();
+  if (!mapped) {
+    std::println(stderr, "[Texture] Failed to map fallback staging buffer");
+    return nullptr;
+  }
+  const uint8_t whitePixel[4] = {255, 255, 255, 255};
+  std::memcpy(mapped, whitePixel, sizeof(whitePixel));
+  stagingBuffer.flush();
+  stagingBuffer.unmap();
+
+  layer.gpuImage = allocator.createImage2D(
+      width, height, vk::Format::eR8G8B8A8Srgb,
+      vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+      "__fallback_image");
+  if (!layer.gpuImage.isValid()) {
+    std::println(stderr, "[Texture] Failed to create fallback GPU image");
+    return nullptr;
+  }
+
+  if (!allocator.createImageView(layer.gpuImage)) {
+    std::println(stderr, "[Texture] Failed to create fallback image view");
+    return nullptr;
+  }
+
+  if (!device.getQueueFamilies().hasGraphics()) {
+    std::println(stderr,
+                 "[Texture] No graphics queue for fallback texture upload");
+    return nullptr;
+  }
+  uint32_t graphicsFamily =
+      device.getQueueFamilies().graphicsFamily.value();
+
+  vk::CommandPoolCreateInfo poolInfo{
+      vk::CommandPoolCreateFlagBits::eTransient, graphicsFamily};
+  vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
+
+  vk::CommandBufferAllocateInfo cmdAllocInfo{
+      *cmdPool, vk::CommandBufferLevel::ePrimary, 1};
+  vk::raii::CommandBuffers cmdBuffers(device.getRaiiDevice(), cmdAllocInfo);
+  auto &cmd = cmdBuffers[0];
+
+  vk::CommandBufferBeginInfo beginInfo{
+      vk::CommandBufferUsageFlagBits::eOneTimeSubmit};
+  cmd.begin(beginInfo);
+
+  {
+    vk::ImageMemoryBarrier barrier{};
+    barrier.oldLayout = vk::ImageLayout::eUndefined;
+    barrier.newLayout = vk::ImageLayout::eTransferDstOptimal;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = layer.gpuImage.getImage();
+    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = {};
+    barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                        vk::PipelineStageFlagBits::eTransfer, {}, {}, {},
+                        barrier);
+  }
+
+  vk::BufferImageCopy copyRegion{};
+  copyRegion.bufferOffset = 0;
+  copyRegion.bufferRowLength = 0;
+  copyRegion.bufferImageHeight = 0;
+  copyRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+  copyRegion.imageSubresource.mipLevel = 0;
+  copyRegion.imageSubresource.baseArrayLayer = 0;
+  copyRegion.imageSubresource.layerCount = 1;
+  copyRegion.imageOffset = vk::Offset3D{0, 0, 0};
+  copyRegion.imageExtent = vk::Extent3D{width, height, 1};
+
+  cmd.copyBufferToImage(stagingBuffer.getBuffer(), layer.gpuImage.getImage(),
+                        vk::ImageLayout::eTransferDstOptimal, copyRegion);
+
+  {
+    vk::ImageMemoryBarrier barrier{};
+    barrier.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+    barrier.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = layer.gpuImage.getImage();
+    barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+    barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {},
+                        barrier);
+  }
+
+  cmd.end();
+
+  vk::SubmitInfo submitInfo{};
+  submitInfo.commandBufferCount = 1;
+  vk::CommandBuffer rawCmd = *cmd;
+  submitInfo.pCommandBuffers = &rawCmd;
+
+  device.getGraphicsQueue().submit(submitInfo);
+  device.getGraphicsQueue().waitIdle();
+
+  layer.loaded = true;
+  tex->layers_.push_back(std::move(layer));
+  tex->uploaded_ = true;
+  tex->createSampler(device);
+
+  std::println("[Texture] Created fallback texture (1x1 white)");
+  return tex;
 }
 
 } // namespace window

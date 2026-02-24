@@ -8,7 +8,9 @@
 namespace window {
 
 Material::Material(const MaterialTag &tag)
-    : name_(tag.name), shaderTag_(tag.shaderTag), textureTag_(tag.textureTag) {}
+    : name_(tag.name), shaderTag_(tag.shaderTag),
+      textureBindings_(tag.textureBindings),
+      textureBindingCount_(tag.textureBindingCount) {}
 
 Material::~Material() { release(); }
 
@@ -16,9 +18,11 @@ Material::Material(Material &&other) noexcept {
   std::lock_guard<std::mutex> lock(other.materialMutex_);
   name_ = std::move(other.name_);
   shaderTag_ = other.shaderTag_;
-  textureTag_ = other.textureTag_;
+  textureBindings_ = other.textureBindings_;
+  textureBindingCount_ = other.textureBindingCount_;
   other.shaderTag_ = nullptr;
-  other.textureTag_ = nullptr;
+  other.textureBindings_ = nullptr;
+  other.textureBindingCount_ = 0;
   shaderProgram_ = other.shaderProgram_;
   other.shaderProgram_ = nullptr;
   initialized_ = other.initialized_;
@@ -31,9 +35,11 @@ Material &Material::operator=(Material &&other) noexcept {
     release();
     name_ = std::move(other.name_);
     shaderTag_ = other.shaderTag_;
-    textureTag_ = other.textureTag_;
+    textureBindings_ = other.textureBindings_;
+    textureBindingCount_ = other.textureBindingCount_;
     other.shaderTag_ = nullptr;
-    other.textureTag_ = nullptr;
+    other.textureBindings_ = nullptr;
+    other.textureBindingCount_ = 0;
     shaderProgram_ = other.shaderProgram_;
     other.shaderProgram_ = nullptr;
     initialized_ = other.initialized_;
