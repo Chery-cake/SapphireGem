@@ -67,6 +67,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 include(BuildConfiguration)
 include(CrossCompiling)
+include(HeadlessMode)
 
 # ==============================================================================
 # Dependencies
@@ -174,6 +175,9 @@ message(STATUS "========================================")
 
 # Print build configuration summary
 print_build_configuration()
+
+# Print headless mode info
+print_headless_mode_info()
 
 # Print cross-compilation info if applicable
 print_cross_compilation_info()

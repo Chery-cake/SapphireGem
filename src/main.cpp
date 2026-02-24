@@ -47,11 +47,12 @@ static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
                                                    &QUAD_2D_MATERIAL_TAG};
 
 // Texture tags for shared assets
-static constexpr window::ImageTag CHECKERBOARD_IMAGE{
-    "checkerboard", "assets/textures/checkerboard.png", 256, 256};
+// Note: ImageTag uses std::variant internally, so these cannot be constexpr
+static const window::ImageTag CHECKERBOARD_IMAGE{window::ImageFromFile{
+    "checkerboard", "assets/textures/checkerboard.png", 256, 256}};
 
 // Atlas: loaded once, 6 regions reference it as layers
-static constexpr window::ImageTag LAYER_ATLAS_IMAGE{
+static const window::AtlasTag LAYER_ATLAS{
     "layer_atlas", "assets/textures/layer_atlas.png", 512, 512};
 
 // Atlas grid layout: 3 columns × 2 rows
@@ -62,29 +63,32 @@ static constexpr uint32_t ATLAS_CELL_H = 256;
 static constexpr uint32_t ATLAS_LAST_COL_W = 172; // 512 - 2*170
 
 // 6 atlas region images
-static constexpr window::ImageTag ATLAS_REGION_0{
-    "atlas_region_0", &LAYER_ATLAS_IMAGE, 0, 0, ATLAS_CELL_W, ATLAS_CELL_H};
-static constexpr window::ImageTag ATLAS_REGION_1{
-    "atlas_region_1", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W, 0,
-    ATLAS_CELL_W,     ATLAS_CELL_H};
-static constexpr window::ImageTag ATLAS_REGION_2{
-    "atlas_region_2", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W * 2, 0,
-    ATLAS_LAST_COL_W, ATLAS_CELL_H};
-static constexpr window::ImageTag ATLAS_REGION_3{
-    "atlas_region_3", &LAYER_ATLAS_IMAGE, 0,
-    ATLAS_CELL_H,     ATLAS_CELL_W,       ATLAS_CELL_H};
-static constexpr window::ImageTag ATLAS_REGION_4{
-    "atlas_region_4", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W,
-    ATLAS_CELL_H,     ATLAS_CELL_W,       ATLAS_CELL_H};
-static constexpr window::ImageTag ATLAS_REGION_5{
-    "atlas_region_5", &LAYER_ATLAS_IMAGE, ATLAS_CELL_W * 2,
-    ATLAS_CELL_H,     ATLAS_LAST_COL_W,   ATLAS_CELL_H};
+static const window::ImageTag ATLAS_REGION_0{window::ImageFromAtlasRegion{
+    "atlas_region_0", &LAYER_ATLAS, 0, 0, ATLAS_CELL_W, ATLAS_CELL_H}};
+static const window::ImageTag ATLAS_REGION_1{
+    window::ImageFromAtlasRegion{"atlas_region_1", &LAYER_ATLAS, ATLAS_CELL_W,
+                                 0, ATLAS_CELL_W, ATLAS_CELL_H}};
+static const window::ImageTag ATLAS_REGION_2{window::ImageFromAtlasRegion{
+    "atlas_region_2", &LAYER_ATLAS, ATLAS_CELL_W * 2, 0, ATLAS_LAST_COL_W,
+    ATLAS_CELL_H}};
+static const window::ImageTag ATLAS_REGION_3{
+    window::ImageFromAtlasRegion{"atlas_region_3", &LAYER_ATLAS, 0,
+                                 ATLAS_CELL_H, ATLAS_CELL_W, ATLAS_CELL_H}};
+static const window::ImageTag ATLAS_REGION_4{
+    window::ImageFromAtlasRegion{"atlas_region_4", &LAYER_ATLAS, ATLAS_CELL_W,
+                                 ATLAS_CELL_H, ATLAS_CELL_W, ATLAS_CELL_H}};
+static const window::ImageTag ATLAS_REGION_5{window::ImageFromAtlasRegion{
+    "atlas_region_5", &LAYER_ATLAS, ATLAS_CELL_W * 2, ATLAS_CELL_H,
+    ATLAS_LAST_COL_W, ATLAS_CELL_H}};
 
 static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
     {&CHECKERBOARD_IMAGE}};
 static const window::TextureLayerInfo ATLAS_LAYERS[] = {
     {&ATLAS_REGION_0}, {&ATLAS_REGION_1}, {&ATLAS_REGION_2},
     {&ATLAS_REGION_3}, {&ATLAS_REGION_4}, {&ATLAS_REGION_5}};
+// TODO discover why if ATLAS_REGION_0 is added at index 0 of CHECKERBOAR_LAYERS
+// then the ATLAS_LAYERS start rendering the layers properly. and why the
+// program doesn't start if all the ATLAS_REGION_* aren't in use
 
 static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
                                                      CHECKERBOARD_LAYERS, 1};
