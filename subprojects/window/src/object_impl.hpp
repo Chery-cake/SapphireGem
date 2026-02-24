@@ -414,12 +414,17 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       for (uint32_t l = 0; l < layerCount; ++l) {
         const TextureLayer *layer = tex->getLayer(l);
         imageInfos[bindingIdx].sampler = tex->getSampler();
-        imageInfos[bindingIdx].imageView =
-            (layer && layer->loaded)
-                ? layer->gpuImage.getView()
-                : (fallbackTexture_ ? fallbackTexture_->getLayer(0)
-                                          ->gpuImage.getView()
-                                    : vk::ImageView{});
+
+        vk::ImageView view{};
+        if (layer && layer->loaded) {
+          view = layer->gpuImage.getView();
+        } else if (fallbackTexture_) {
+          const TextureLayer *fb = fallbackTexture_->getLayer(0);
+          if (fb && fb->loaded) {
+            view = fb->gpuImage.getView();
+          }
+        }
+        imageInfos[bindingIdx].imageView = view;
         imageInfos[bindingIdx].imageLayout =
             vk::ImageLayout::eShaderReadOnlyOptimal;
 
