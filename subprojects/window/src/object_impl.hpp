@@ -1,6 +1,7 @@
 #pragma once
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
+#include "vulkan/vulkan.hpp"
 #include <print>
 
 namespace window {
@@ -39,12 +40,13 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   vertices_ = std::move(other.vertices_);
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
-  faceTextures_ = std::move(other.faceTextures_);
-  textureSlots_ = std::move(other.textureSlots_);
-  fallbackTexture_ = std::move(other.fallbackTexture_);
   objectPipeline_ = std::move(other.objectPipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
+  baseTextureId_ = other.baseTextureId_;
+  submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+  bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
+  other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
@@ -66,12 +68,13 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     vertices_ = std::move(other.vertices_);
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
-    faceTextures_ = std::move(other.faceTextures_);
-    textureSlots_ = std::move(other.textureSlots_);
-    fallbackTexture_ = std::move(other.fallbackTexture_);
     objectPipeline_ = std::move(other.objectPipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
+    baseTextureId_ = other.baseTextureId_;
+    submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+    bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
+    other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
@@ -80,64 +83,6 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     other.initialized_ = false;
   }
   return *this;
-}
-
-// ============================================================================
-// Per-face texture management
-// ============================================================================
-
-template <uint32_t Dim>
-void Object<Dim>::setFaceTexture(uint32_t faceIndex,
-                                 std::shared_ptr<Texture> texture) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  if (texture) {
-    faceTextures_[faceIndex] = std::move(texture);
-  } else {
-    faceTextures_.erase(faceIndex);
-  }
-}
-
-template <uint32_t Dim>
-std::shared_ptr<Texture> Object<Dim>::getFaceTexture(uint32_t faceIndex) const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  auto it = faceTextures_.find(faceIndex);
-  if (it != faceTextures_.end()) {
-    return it->second;
-  }
-  return nullptr;
-}
-
-template <uint32_t Dim>
-std::vector<std::shared_ptr<Texture>> Object<Dim>::getUniqueTextures() const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  std::vector<std::shared_ptr<Texture>> unique;
-  for (const auto &[faceIdx, tex] : faceTextures_) {
-    if (tex) {
-      bool found = false;
-      for (const auto &existing : unique) {
-        if (existing.get() == tex.get()) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        unique.push_back(tex);
-      }
-    }
-  }
-  return unique;
-}
-
-template <uint32_t Dim> uint32_t Object<Dim>::getTextureSlotCount() const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  return static_cast<uint32_t>(textureSlots_.size());
-}
-
-template <uint32_t Dim>
-void Object<Dim>::setTextureBindings(
-    std::vector<std::shared_ptr<Texture>> bindings) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  textureSlots_ = std::move(bindings);
 }
 
 // ============================================================================
@@ -181,7 +126,8 @@ template <uint32_t Dim>
 bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                              device::GPUDevice &device, Material &baseMaterial,
                              vk::RenderPass renderPass, uint32_t framesInFlight,
-                             const PipelineConfig &pipelineConfig) {
+                             const PipelineConfig &pipelineConfig,
+                             vk::DescriptorSetLayout bindlessSetLayout) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
   if (initialized_) {
@@ -210,93 +156,21 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Build texture slot list for descriptor binding.
-  // If setTextureBindings() was called, textureSlots_ is already populated
-  // in the caller-specified order. Otherwise, derive from face textures
-  // (legacy path for simple single-texture objects).
-  if (textureSlots_.empty()) {
-    for (const auto &[faceIdx, tex] : faceTextures_) {
-      if (tex) {
-        bool found = false;
-        for (const auto &existing : textureSlots_) {
-          if (existing.get() == tex.get()) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          textureSlots_.push_back(tex);
-        }
-      }
-    }
-  }
-
-  // Replace any null or unuploaded textures with a valid fallback (1×1 white)
-  for (auto &tex : textureSlots_) {
-    if (!tex || !tex->isUploaded() || !tex->getSampler()) {
-      if (!fallbackTexture_) {
-        fallbackTexture_ = Texture::createFallback(allocator, device);
-        if (!fallbackTexture_) {
-          std::println(stderr,
-                       "[Object] Failed to create fallback texture "
-                       "for object: {}",
-                       name_);
-          return false;
-        }
-      }
-      std::println("[Object] Using fallback texture for missing/unuploaded "
-                   "slot in '{}'",
-                   name_);
-      tex = fallbackTexture_;
-    }
-  }
-  uint32_t texCount = static_cast<uint32_t>(textureSlots_.size());
-
-  // Calculate total layer count across all textures for descriptor bindings
-  uint32_t totalLayerBindings = 0;
-  for (const auto &tex : textureSlots_) {
-    totalLayerBindings += tex->getLayerCount();
-  }
-
   // Log binding table for this object's pipeline
   std::println("[Object] Binding table for '{}':", name_);
   std::println("  [0] UBO ({}D, {}B)", Dim, sizeof(GPUUBO));
-  {
-    uint32_t logIdx = 0;
-    for (uint32_t t = 0; t < texCount; ++t) {
-      auto &tex = textureSlots_[t];
-      uint32_t layerCount = tex->getLayerCount();
-      for (uint32_t l = 0; l < layerCount; ++l) {
-        const TextureLayer *layer = tex->getLayer(l);
-        const char *layerName = (layer && layer->imageTag)
-                                    ? layer->imageTag->getName()
-                                    : "(fallback)";
-        std::println("  [{}] {} (texture '{}', layer {})", 1 + logIdx,
-                     layerName, tex->getName(), l);
-        logIdx++;
-      }
-    }
-  }
 
   // Create descriptor set layout (owned by this object)
-  // Binding 0: UBO (uniform buffer)
-  // Binding 1..N: Combined image samplers (one per texture layer)
+  // Binding 0: UBO (uniform buffer) — textures are accessed via bindless (set
+  // 1)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(1 + totalLayerBindings);
+  bindings.reserve(1);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
           vk::ShaderStageFlagBits::eFragment};
   bindings.push_back(uboLayoutBinding);
-
-  for (uint32_t i = 0; i < totalLayerBindings; ++i) {
-    vk::DescriptorSetLayoutBinding texBinding{
-        1 + i, vk::DescriptorType::eCombinedImageSampler, 1,
-        vk::ShaderStageFlagBits::eFragment |
-            vk::ShaderStageFlagBits::eGeometry};
-    bindings.push_back(texBinding);
-  }
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
       {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
@@ -311,10 +185,10 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Create per-object pipeline from base material (pass total layer count)
+  // Create per-object pipeline from base material
   objectPipeline_ = baseMaterial.createPipelineForObject(
-      device, renderPass, **descriptorSetLayout_, pipelineConfig,
-      totalLayerBindings);
+      device, renderPass, **descriptorSetLayout_, pipelineConfig, 0,
+      bindlessSetLayout);
   if (!objectPipeline_.isValid()) {
     std::println(stderr, "[Object] Failed to create pipeline for object: {}",
                  name_);
@@ -326,8 +200,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   pipelineConfig_ = pipelineConfig;
 
   // Create uniform buffers (one per frame in flight)
-  // UBO size matches the GPU-compatible layout:
-  // sizeof(GPUUniformBufferData<Dim>)
   const vk::DeviceSize uboSize = sizeof(GPUUBO);
   uniformBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
@@ -343,13 +215,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     uniformBuffers_.push_back(std::move(ubo));
   }
 
-  // Create descriptor pool with enough room for UBO + texture layer samplers
+  // Create descriptor pool with enough room for UBO only
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.push_back({vk::DescriptorType::eUniformBuffer, framesInFlight});
-  if (totalLayerBindings > 0) {
-    poolSizes.push_back({vk::DescriptorType::eCombinedImageSampler,
-                         framesInFlight * totalLayerBindings});
-  }
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -386,11 +254,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers and texture layers
+  // Update descriptor sets to point to uniform buffers (UBO only)
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    std::vector<vk::WriteDescriptorSet> writes;
-
-    // UBO binding (binding 0)
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
 
@@ -402,54 +267,13 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                     nullptr,
                                     &bufferInfo,
                                     nullptr};
-    writes.push_back(uboWrite);
 
-    // Texture layer bindings (binding 1..N, one per layer across all
-    // textures). All textures are guaranteed valid (fallback applied
-    // above).
-    std::vector<vk::DescriptorImageInfo> imageInfos(totalLayerBindings);
-    uint32_t bindingIdx = 0;
-    for (uint32_t t = 0; t < texCount; ++t) {
-      auto &tex = textureSlots_[t];
-      uint32_t layerCount = tex->getLayerCount();
-      for (uint32_t l = 0; l < layerCount; ++l) {
-        const TextureLayer *layer = tex->getLayer(l);
-        imageInfos[bindingIdx].sampler = tex->getSampler();
-        vk::ImageView view{};
-        if (layer && layer->loaded) {
-          view = layer->gpuImage.getView();
-        } else if (fallbackTexture_) {
-          const TextureLayer *fb = fallbackTexture_->getLayer(0);
-          if (fb && fb->loaded) {
-            view = fb->gpuImage.getView();
-          }
-        }
-        imageInfos[bindingIdx].imageView = view;
-        imageInfos[bindingIdx].imageLayout =
-            vk::ImageLayout::eShaderReadOnlyOptimal;
-
-        vk::WriteDescriptorSet texWrite{
-            *descriptorSets_[i],
-            1 + bindingIdx,
-            0,
-            1,
-            vk::DescriptorType::eCombinedImageSampler,
-            &imageInfos[bindingIdx],
-            nullptr,
-            nullptr};
-        writes.push_back(texWrite);
-        bindingIdx++;
-      }
-    }
-
-    device.getRaiiDevice().updateDescriptorSets(writes, {});
+    device.getRaiiDevice().updateDescriptorSets({uboWrite}, {});
   }
 
   initialized_ = true;
-  std::println("[Object] Initialized '{}' ({}D, {} faces, {} textures, "
-               "{} layer bindings, {} frames, UBO={}B)",
-               name_, Dim, faces_.size(), texCount, totalLayerBindings,
-               framesInFlight, uboSize);
+  std::println("[Object] Initialized '{}' ({}D, {} faces, {} frames, UBO={}B)",
+               name_, Dim, faces_.size(), framesInFlight, uboSize);
   return true;
 }
 
@@ -459,8 +283,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   uniformBuffers_.clear();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
-  textureSlots_.clear();
-  fallbackTexture_.reset();
+  bindlessDescriptorSet_ = vk::DescriptorSet{};
   initialized_ = false;
 }
 
@@ -471,6 +294,47 @@ template <uint32_t Dim> void Object<Dim>::release() {
 template <uint32_t Dim> void Object<Dim>::setTime(float time) {
   std::lock_guard<std::mutex> lock(objectMutex_);
   time_ = time;
+}
+
+// ============================================================================
+// Bindless texture ID support
+// ============================================================================
+
+template <uint32_t Dim> void Object<Dim>::setTextureId(device::TextureId id) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  baseTextureId_ = id;
+}
+
+template <uint32_t Dim>
+void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
+                                            device::TextureId id) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (id.isValid()) {
+    submeshTextureOverrides_[faceIndex] = id;
+  } else {
+    submeshTextureOverrides_.erase(faceIndex);
+  }
+}
+
+template <uint32_t Dim>
+device::TextureId Object<Dim>::getEffectiveTextureId(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  auto it = submeshTextureOverrides_.find(faceIndex);
+  if (it != submeshTextureOverrides_.end()) {
+    return it->second;
+  }
+  return baseTextureId_;
+}
+
+template <uint32_t Dim> device::TextureId Object<Dim>::getTextureId() const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  return baseTextureId_;
+}
+
+template <uint32_t Dim>
+void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  bindlessDescriptorSet_ = set;
 }
 
 // ============================================================================
@@ -587,11 +451,20 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                          {*descriptorSets_[frameIndex]}, {});
 
   // Push time constant if configured
-  if (pipelineConfig_.pushConstantSize > 0 &&
-      pipelineConfig_.pushConstantSize <= sizeof(time_)) {
+  // Bind global bindless descriptor set (set 1) if available
+  if (bindlessDescriptorSet_) {
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                           **objectPipeline_.pipelineLayout, 1,
+                           {bindlessDescriptorSet_}, {});
+  }
+
+  // Push constants: time + textureId (bindless)
+  if (pipelineConfig_.pushConstantSize >=
+      sizeof(device::BindlessPushConstants)) {
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
-                      pipelineConfig_.pushConstantSize, &time_);
+                      sizeof(device::BindlessPushConstants), &pushData);
   }
 
   // Single draw call for all vertices

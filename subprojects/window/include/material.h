@@ -18,29 +18,15 @@ struct ShaderProgram;
 
 namespace window {
 
-// Forward declaration
-struct TextureTag;
-
 /**
  * @brief Tag for identifying materials in the resource system
  *
- * A material tag describes which shaders and texture binding plan to use.
- * The textureBindings array defines the expected descriptor binding order:
- * each entry maps to consecutive sampler bindings starting at binding 1.
+ * A material tag describes which shaders to use.
  * Must have static storage duration when used with ResourceRegistry.
  */
 struct WINDOW_API MaterialTag {
   const char *name;
   const device::ShaderTag *shaderTag = nullptr; // Tag for the shader program
-  const TextureTag *const *textureBindings =
-      nullptr; // Ordered texture binding plan
-  uint32_t textureBindingCount = 0;
-
-  constexpr MaterialTag(const char *n, const device::ShaderTag *shader,
-                        const TextureTag *const *bindings,
-                        uint32_t bindingCount)
-      : name(n), shaderTag(shader), textureBindings(bindings),
-        textureBindingCount(bindingCount) {}
 
   constexpr MaterialTag(const char *n, const device::ShaderTag *shader)
       : name(n), shaderTag(shader) {}
@@ -123,16 +109,19 @@ public:
    *
    * @param device GPU device for pipeline creation
    * @param renderPass Render pass for pipeline compatibility
-   * @param descriptorSetLayout Layout for the object's descriptor sets
+   * @param descriptorSetLayout Layout for the object's descriptor sets (set
+   * 0)
    * @param pipelineConfig Pipeline configuration
    * @param textureCount Number of texture sampler bindings (0 = no textures)
+   * @param bindlessSetLayout Optional bindless descriptor set layout (set 1)
    * @return ObjectPipeline containing the created pipeline resources
    */
   ObjectPipeline
   createPipelineForObject(device::GPUDevice &device, vk::RenderPass renderPass,
                           vk::DescriptorSetLayout descriptorSetLayout,
                           const PipelineConfig &pipelineConfig = {},
-                          uint32_t textureCount = 0);
+                          uint32_t textureCount = 0,
+                          vk::DescriptorSetLayout bindlessSetLayout = {});
 
   /**
    * @brief Release shader references
@@ -159,19 +148,14 @@ public:
   [[nodiscard]] const device::ShaderTag *getShaderTag() const {
     return shaderTag_;
   }
-  [[nodiscard]] const TextureTag *const *getTextureBindings() const {
-    return textureBindings_;
-  }
-  [[nodiscard]] uint32_t getTextureBindingCount() const {
-    return textureBindingCount_;
-  }
   [[nodiscard]] bool isInitialized() const { return initialized_; }
 
 private:
-  static bool createPipelineLayout(device::GPUDevice &device,
-                                   vk::DescriptorSetLayout descriptorSetLayout,
-                                   const PipelineConfig &config,
-                                   ObjectPipeline &out);
+  static bool
+  createPipelineLayout(device::GPUDevice &device,
+                       vk::DescriptorSetLayout descriptorSetLayout,
+                       const PipelineConfig &config, ObjectPipeline &out,
+                       vk::DescriptorSetLayout bindlessSetLayout = {});
   static bool
   createPipeline(device::GPUDevice &device, vk::RenderPass renderPass,
                  const PipelineConfig &config,
@@ -180,8 +164,6 @@ private:
 
   std::string name_;
   const device::ShaderTag *shaderTag_ = nullptr;
-  const TextureTag *const *textureBindings_ = nullptr;
-  uint32_t textureBindingCount_ = 0;
 
   // Cached shader program (owned by ShaderManager)
   device::ShaderProgram *shaderProgram_ = nullptr;

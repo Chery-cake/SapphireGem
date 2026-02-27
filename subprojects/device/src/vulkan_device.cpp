@@ -105,27 +105,34 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
     queueCreateInfos.push_back(queueCreateInfo);
   }
 
+  // TODO pass this set up to config class
   // Get device features
   vk::PhysicalDeviceFeatures deviceFeatures{};
-  deviceFeatures.samplerAnisotropy = vk::True;
-  deviceFeatures.fillModeNonSolid = vk::True;
-  deviceFeatures.wideLines = vk::True;
-  deviceFeatures.geometryShader = vk::True;
-  deviceFeatures.tessellationShader = vk::True;
+  deviceFeatures.setSamplerAnisotropy(vk::True);
+  deviceFeatures.setFillModeNonSolid(vk::True);
+  deviceFeatures.setWideLines(vk::True);
+  deviceFeatures.setGeometryShader(vk::True);
+  deviceFeatures.setTessellationShader(vk::True);
 
   vk::PhysicalDeviceVulkan11Features deviceFeatures11{};
   deviceFeatures11.sType = vk::StructureType::ePhysicalDeviceVulkan11Features;
-  deviceFeatures11.shaderDrawParameters = vk::True;
+  deviceFeatures11.setShaderDrawParameters(vk::True);
 
   vk::PhysicalDeviceVulkan12Features deviceFeatures12{};
-  deviceFeatures12.pNext = &deviceFeatures11;
+  deviceFeatures12.setDescriptorIndexing(vk::True);
+  deviceFeatures12.setShaderSampledImageArrayNonUniformIndexing(vk::True);
+  deviceFeatures12.setRuntimeDescriptorArray(vk::True);
+  deviceFeatures12.setDescriptorBindingPartiallyBound(vk::True);
+  deviceFeatures12.setDescriptorBindingVariableDescriptorCount(vk::True);
+  deviceFeatures12.setDescriptorBindingSampledImageUpdateAfterBind(vk::True);
+  deviceFeatures12.setPNext(&deviceFeatures11);
 
   vk::PhysicalDeviceVulkan13Features deviceFeatures13{};
-  deviceFeatures13.dynamicRendering = vk::True;
-  deviceFeatures13.pNext = &deviceFeatures12;
+  deviceFeatures13.setDynamicRendering(vk::True);
+  deviceFeatures13.setPNext(&deviceFeatures12);
 
   vk::PhysicalDeviceVulkan14Features deviceFeatures14{};
-  deviceFeatures14.pNext = &deviceFeatures13;
+  deviceFeatures14.setPNext(&deviceFeatures13);
 
   // Prepare extensions
   std::vector<const char *> enabledExtensions;

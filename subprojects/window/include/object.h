@@ -1,6 +1,7 @@
 #ifndef OBJECT_H_
 #define OBJECT_H_
 
+#include "bindless_types.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
 #include "texture.h"
@@ -14,7 +15,6 @@
 #include <gbm.h>
 #include <memory>
 #include <mutex>
-#include <string>
 
 namespace window {
 
@@ -207,54 +207,11 @@ public:
   Object &operator=(Object &&other) noexcept;
 
   /**
-   * @brief Set the ordered list of textures for descriptor binding
-   *
-   * Defines the exact order in which textures are bound to descriptor
-   * set sampler slots (binding 1..N). This order must match the shader's
-   * expected binding layout. Call before initialize().
-   *
-   * @param bindings Ordered list of textures for descriptor binding
-   */
-  void setTextureBindings(std::vector<std::shared_ptr<Texture>> bindings);
-
-  /**
-   * @brief Assign a shared texture to a specific face
-   *
-   * Textures are stored as shared_ptr so that multiple objects and faces
-   * can reference the same GPU texture without duplicating memory.
-   *
-   * @param faceIndex Index of the face (0-based)
-   * @param texture Shared pointer to the texture
-   */
-  void setFaceTexture(uint32_t faceIndex, std::shared_ptr<Texture> texture);
-
-  /**
-   * @brief Get the texture assigned to a specific face
-   * @param faceIndex Index of the face
-   * @return Shared pointer to texture, or nullptr if none assigned
-   */
-  [[nodiscard]] std::shared_ptr<Texture>
-  getFaceTexture(uint32_t faceIndex) const;
-
-  /**
-   * @brief Get all unique textures used by this object
-   * @return Vector of shared textures (deduplicated)
-   */
-  [[nodiscard]] std::vector<std::shared_ptr<Texture>> getUniqueTextures() const;
-
-  /**
-   * @brief Get the number of texture slots used
-   * @return Number of unique textures bound to faces
-   */
-  [[nodiscard]] uint32_t getTextureSlotCount() const;
-
-  /**
    * @brief Initialize descriptor sets, uniform buffers, and per-object
    * pipeline
    *
-   * Face textures should be assigned before calling this method.
-   * The descriptor set layout will include combined image sampler
-   * bindings for each unique texture assigned to faces.
+   * Creates the UBO descriptor set layout (set 0) and per-object pipeline.
+   * Textures are accessed via the bindless descriptor set (set 1).
    *
    * @param allocator VMA allocator for buffer creation
    * @param device GPU device
@@ -262,12 +219,14 @@ public:
    * @param renderPass Render pass for pipeline compatibility
    * @param framesInFlight Number of frames in flight
    * @param pipelineConfig Pipeline configuration
+   * @param bindlessSetLayout Optional bindless descriptor set layout (set 1)
    * @return true if initialization succeeded
    */
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
                   Material &baseMaterial, vk::RenderPass renderPass,
                   uint32_t framesInFlight,
-                  const PipelineConfig &pipelineConfig = {});
+                  const PipelineConfig &pipelineConfig = {},
+                  vk::DescriptorSetLayout bindlessSetLayout = {});
 
   /**
    * @brief Release all GPU resources
@@ -302,6 +261,55 @@ public:
    * @param frameIndex Current frame in flight index
    */
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+
+  // =========================================================================
+  // Bindless texture ID support
+  // =========================================================================
+
+  /**
+   * @brief Set the base TextureId for the whole object
+   *
+   * This is the index into the GPU TextureRecord SSBO that the shader
+   * will use to look up layers.  In the bindless path the shader
+   * receives this via push constants.
+   *
+   * @param id  TextureId (index into TextureRecord[])
+   */
+  void setTextureId(device::TextureId id);
+
+  /**
+   * @brief Override the TextureId for a specific submesh / face range
+   *
+   * If set, this override takes priority over the base TextureId
+   * during draw for the given face index.
+   *
+   * @param faceIndex  Face (triangle) index
+   * @param id         Overriding TextureId
+   */
+  void setSubmeshTextureOverride(uint32_t faceIndex, device::TextureId id);
+
+  /**
+   * @brief Get the effective TextureId for a face
+   *
+   * Returns the submesh override if present, otherwise the base id.
+   */
+  [[nodiscard]] device::TextureId
+  getEffectiveTextureId(uint32_t faceIndex) const;
+
+  /**
+   * @brief Get the base TextureId
+   */
+  [[nodiscard]] device::TextureId getTextureId() const;
+
+  /**
+   * @brief Set the global bindless descriptor set to bind at draw time
+   *
+   * This descriptor set (set 1) contains the bindless image arrays and
+   * texture table SSBOs.  It is shared across all objects on a device.
+   *
+   * @param set  Descriptor set from ImageArrayRegistry
+   */
+  void setBindlessDescriptorSet(vk::DescriptorSet set);
 
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
@@ -367,13 +375,6 @@ private:
   // Auto-calculated faces
   std::vector<Face> faces_;
 
-  // Per-face texture assignments (face index -> shared texture)
-  std::unordered_map<uint32_t, std::shared_ptr<Texture>> faceTextures_;
-  // Deduplicated texture slots for descriptor binding (ordered)
-  std::vector<std::shared_ptr<Texture>> textureSlots_;
-  // Fallback texture for unbound descriptor slots (1×1 white)
-  std::shared_ptr<Texture> fallbackTexture_;
-
   // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;
 
@@ -382,6 +383,13 @@ private:
 
   // Push constant data
   float time_ = 0.0f;
+
+  // Bindless texture ID (index into TextureRecord SSBO)
+  device::TextureId baseTextureId_;
+  // Per-face texture ID overrides (submesh overrides)
+  std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
+  // Global bindless descriptor set (set 1), set externally
+  vk::DescriptorSet bindlessDescriptorSet_;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
