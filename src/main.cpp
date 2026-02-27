@@ -175,7 +175,7 @@ public:
     pConfig.frontFace = vk::FrontFace::eCounterClockwise;
     pConfig.depthTestEnable = true;
     pConfig.depthWriteEnable = true;
-    pConfig.pushConstantSize = sizeof(float) + sizeof(uint32_t); // time + textureId
+    pConfig.pushConstantSize = sizeof(device::BindlessPushConstants); // time + textureId
     pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
                                  vk::ShaderStageFlagBits::eFragment;
 
@@ -333,7 +333,7 @@ public:
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eNone;
     pConfig.depthTestEnable = false;
-    pConfig.pushConstantSize = sizeof(float) + sizeof(uint32_t); // time + textureId
+    pConfig.pushConstantSize = sizeof(device::BindlessPushConstants); // time + textureId
     pConfig.pushConstantStages =
         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 

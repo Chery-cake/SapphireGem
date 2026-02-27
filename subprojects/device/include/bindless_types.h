@@ -86,6 +86,17 @@ enum class ProcessingType : uint32_t {
   eCount
 };
 
+/**
+ * @brief Push constant data for bindless shaders
+ *
+ * Matches the PushData struct in bindless shader files.
+ * Used by Object::draw() to push time + textureId.
+ */
+struct DEVICE_API BindlessPushConstants {
+  float time = 0.0f;
+  uint32_t textureId = TextureId::INVALID;
+};
+
 } // namespace device
 
 #endif // BINDLESS_TYPES_H_
