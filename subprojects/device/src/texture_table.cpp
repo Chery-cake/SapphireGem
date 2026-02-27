@@ -57,6 +57,38 @@ bool TextureTableManager::uploadToGPU(VMAAllocator &allocator,
     return true;
   }
 
+  auto qf = device.getQueueFamilies();
+  if (!qf.hasGraphics()) {
+    std::println(stderr,
+                 "[TextureTable] Device has no graphics queue family");
+    return false;
+  }
+  uint32_t queueFamily = qf.graphicsFamily.value();
+
+  // Helper: one-shot staging buffer copy to device-local buffer
+  auto copyBuffer = [&](const AllocatedBuffer &src,
+                        const AllocatedBuffer &dst,
+                        vk::DeviceSize size) -> bool {
+    vk::CommandPoolCreateInfo poolInfo{
+        vk::CommandPoolCreateFlagBits::eTransient, queueFamily};
+    vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
+    vk::CommandBufferAllocateInfo cmdAlloc(
+        *cmdPool, vk::CommandBufferLevel::ePrimary, 1);
+    auto cmdBufs = vk::raii::CommandBuffers(device.getRaiiDevice(), cmdAlloc);
+    auto &cmd = cmdBufs[0];
+
+    cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+    vk::BufferCopy region{0, 0, size};
+    cmd.copyBuffer(src.getBuffer(), dst.getBuffer(), region);
+    cmd.end();
+
+    vk::SubmitInfo submit{};
+    submit.setCommandBuffers(*cmd);
+    device.getGraphicsQueue().submit(submit);
+    device.getGraphicsQueue().waitIdle();
+    return true;
+  };
+
   // --- Record SSBO ---
   {
     vk::DeviceSize size = records_.size() * sizeof(GPUTextureRecord);
@@ -78,25 +110,9 @@ bool TextureTableManager::uploadToGPU(VMAAllocator &allocator,
       return false;
     }
 
-    // Copy staging → device-local via one-shot command buffer
-    auto qf = device.getQueueFamilies();
-    vk::CommandPoolCreateInfo poolInfo{
-        vk::CommandPoolCreateFlagBits::eTransient,
-        qf.graphicsFamily.value_or(0)};
-    vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
-    vk::CommandBufferAllocateInfo cmdAlloc(*cmdPool, vk::CommandBufferLevel::ePrimary, 1);
-    auto cmdBufs = vk::raii::CommandBuffers(device.getRaiiDevice(), cmdAlloc);
-    auto &cmd = cmdBufs[0];
-
-    cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    vk::BufferCopy region{0, 0, size};
-    cmd.copyBuffer(staging.getBuffer(), recordBuffer_.getBuffer(), region);
-    cmd.end();
-
-    vk::SubmitInfo submit{};
-    submit.setCommandBuffers(*cmd);
-    device.getGraphicsQueue().submit(submit);
-    device.getGraphicsQueue().waitIdle();
+    if (!copyBuffer(staging, recordBuffer_, size)) {
+      return false;
+    }
   }
 
   // --- Layer SSBO ---
@@ -120,24 +136,9 @@ bool TextureTableManager::uploadToGPU(VMAAllocator &allocator,
       return false;
     }
 
-    auto qf = device.getQueueFamilies();
-    vk::CommandPoolCreateInfo poolInfo{
-        vk::CommandPoolCreateFlagBits::eTransient,
-        qf.graphicsFamily.value_or(0)};
-    vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
-    vk::CommandBufferAllocateInfo cmdAlloc(*cmdPool, vk::CommandBufferLevel::ePrimary, 1);
-    auto cmdBufs = vk::raii::CommandBuffers(device.getRaiiDevice(), cmdAlloc);
-    auto &cmd = cmdBufs[0];
-
-    cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
-    vk::BufferCopy region{0, 0, size};
-    cmd.copyBuffer(staging.getBuffer(), layerBuffer_.getBuffer(), region);
-    cmd.end();
-
-    vk::SubmitInfo submit{};
-    submit.setCommandBuffers(*cmd);
-    device.getGraphicsQueue().submit(submit);
-    device.getGraphicsQueue().waitIdle();
+    if (!copyBuffer(staging, layerBuffer_, size)) {
+      return false;
+    }
   }
 
   uploaded_ = true;

@@ -159,33 +159,32 @@ void ImageArrayRegistry::commitDescriptors(
   // --- Image array bindings (bindings 0, 1, 2) ---
   for (uint32_t k = 0; k < kKindCount; ++k) {
     auto &arr = imageArrays_[k];
-    auto &infos = allImageInfos[k];
-    infos.reserve(arr.size());
-
-    for (size_t i = 0; i < arr.size(); ++i) {
-      if (!arr[i].committed) {
-        vk::DescriptorImageInfo imgInfo;
-        imgInfo.imageView = arr[i].view;
-        imgInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-        infos.push_back(imgInfo);
-        arr[i].committed = true;
-      }
-    }
-
-    if (infos.empty()) {
+    if (arr.empty()) {
       continue;
     }
 
-    // Write all images for this kind at once
-    // For incremental updates, we'd track the starting dstArrayElement;
-    // here we write from element 0 for simplicity (full overwrite).
-    // Re-collect all infos for a full write:
-    infos.clear();
+    // Check if any entries are uncommitted (dirty)
+    bool hasPending = false;
+    for (auto &entry : arr) {
+      if (!entry.committed) {
+        hasPending = true;
+        break;
+      }
+    }
+
+    if (!hasPending) {
+      continue;
+    }
+
+    // Build image info for all entries (full overwrite)
+    auto &infos = allImageInfos[k];
+    infos.reserve(arr.size());
     for (auto &entry : arr) {
       vk::DescriptorImageInfo imgInfo;
       imgInfo.imageView = entry.view;
       imgInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
       infos.push_back(imgInfo);
+      entry.committed = true;
     }
 
     vk::WriteDescriptorSet w{};

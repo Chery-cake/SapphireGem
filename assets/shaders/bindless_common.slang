@@ -74,6 +74,9 @@ struct TextureLayer {
 // ---------------------------------------------------------------------------
 static const uint MAX_LAYER_LOOP = 8;
 
+// Minimum scale to avoid division by zero
+static const float MIN_SCALE = 0.001;
+
 // ---------------------------------------------------------------------------
 // Helper: apply 2D rotation to UV around (0.5, 0.5)
 // ---------------------------------------------------------------------------
@@ -135,8 +138,8 @@ float4 sampleBindlessTexture(uint textureId, float2 uv, float time) {
 
         // Apply layer scale
         layerUV = (layerUV - float2(0.5, 0.5)) *
-                  float2(1.0 / max(layer.scaleX, 0.001),
-                         1.0 / max(layer.scaleY, 0.001)) +
+                  float2(1.0 / max(layer.scaleX, MIN_SCALE),
+                         1.0 / max(layer.scaleY, MIN_SCALE)) +
                   float2(0.5, 0.5);
 
         // Apply layer rotation

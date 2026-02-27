@@ -54,10 +54,10 @@ public:
   static constexpr uint32_t kBindingTextureRecords = 4;
   static constexpr uint32_t kBindingTextureLayers = 5;
 
-  /// Default upper bound for the variable-count descriptor arrays.
-  /// This is NOT a fixed limit on live textures — only the pool /
-  /// layout reservation.  The actual descriptor count grows with
-  /// registrations up to this cap.
+  /// Upper bound for the variable-count descriptor arrays.
+  /// The descriptor pool is sized for this many images per kind.
+  /// Exceeding this count requires recreating the pool.  The actual
+  /// descriptor count grows with registrations up to this cap.
   static constexpr uint32_t kMaxImages = 4096;
 
   ImageArrayRegistry() = default;

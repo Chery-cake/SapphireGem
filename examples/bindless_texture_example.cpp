@@ -31,6 +31,8 @@ namespace example {
 // ============================================================================
 
 // Atlas containing multiple sub-images (512×512, 3×2 grid)
+// NOTE: These paths reference assets that ship with the engine.
+// Replace with your own asset files as needed.
 static const window::AtlasTag EXAMPLE_ATLAS{
     "example_atlas", "assets/textures/layer_atlas.png", 512, 512};
 
