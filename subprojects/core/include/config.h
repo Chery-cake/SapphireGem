@@ -51,6 +51,16 @@ struct CORE_API VulkanConfig {
   uint32_t engineVersion = VK_MAKE_VERSION(0, 1, 0);
   uint32_t minApiVersion = VK_API_VERSION_1_3;
 
+  /// Request Vulkan 1.2 descriptor-indexing features for bindless textures.
+  /// When true the device-creation path should enable:
+  ///   descriptorIndexing, shaderSampledImageArrayNonUniformIndexing,
+  ///   runtimeDescriptorArray, descriptorBindingPartiallyBound,
+  ///   descriptorBindingVariableDescriptorCount,
+  ///   descriptorBindingSampledImageUpdateAfterBind.
+  /// If the physical device does not support these features the engine
+  /// should fall back to a fixed-size descriptor array.
+  bool enableDescriptorIndexing = true;
+
   bool operator==(const VulkanConfig &other) const {
     return instanceExtensions == other.instanceExtensions &&
            deviceExtensions == other.deviceExtensions &&
@@ -60,7 +70,8 @@ struct CORE_API VulkanConfig {
            optionalInstanceLayers == other.optionalInstanceLayers &&
            engineName == other.engineName &&
            engineVersion == other.engineVersion &&
-           minApiVersion == other.minApiVersion;
+           minApiVersion == other.minApiVersion &&
+           enableDescriptorIndexing == other.enableDescriptorIndexing;
   }
 
   bool operator!=(const VulkanConfig &other) const { return !(*this == other); }

@@ -1,6 +1,7 @@
 #ifndef OBJECT_H_
 #define OBJECT_H_
 
+#include "bindless_types.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
 #include "texture.h"
@@ -304,6 +305,45 @@ public:
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
   // =========================================================================
+  // Bindless texture ID support
+  // =========================================================================
+
+  /**
+   * @brief Set the base TextureId for the whole object
+   *
+   * This is the index into the GPU TextureRecord SSBO that the shader
+   * will use to look up layers.  In the bindless path the shader
+   * receives this via push constants.
+   *
+   * @param id  TextureId (index into TextureRecord[])
+   */
+  void setTextureId(device::TextureId id);
+
+  /**
+   * @brief Override the TextureId for a specific submesh / face range
+   *
+   * If set, this override takes priority over the base TextureId
+   * during draw for the given face index.
+   *
+   * @param faceIndex  Face (triangle) index
+   * @param id         Overriding TextureId
+   */
+  void setSubmeshTextureOverride(uint32_t faceIndex, device::TextureId id);
+
+  /**
+   * @brief Get the effective TextureId for a face
+   *
+   * Returns the submesh override if present, otherwise the base id.
+   */
+  [[nodiscard]] device::TextureId
+  getEffectiveTextureId(uint32_t faceIndex) const;
+
+  /**
+   * @brief Get the base TextureId
+   */
+  [[nodiscard]] device::TextureId getTextureId() const;
+
+  // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
   // =========================================================================
 
@@ -382,6 +422,11 @@ private:
 
   // Push constant data
   float time_ = 0.0f;
+
+  // Bindless texture ID (index into TextureRecord SSBO)
+  device::TextureId baseTextureId_;
+  // Per-face texture ID overrides (submesh overrides)
+  std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;

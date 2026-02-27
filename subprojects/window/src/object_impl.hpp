@@ -474,6 +474,43 @@ template <uint32_t Dim> void Object<Dim>::setTime(float time) {
 }
 
 // ============================================================================
+// Bindless texture ID support
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::setTextureId(device::TextureId id) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  baseTextureId_ = id;
+}
+
+template <uint32_t Dim>
+void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
+                                            device::TextureId id) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (id.isValid()) {
+    submeshTextureOverrides_[faceIndex] = id;
+  } else {
+    submeshTextureOverrides_.erase(faceIndex);
+  }
+}
+
+template <uint32_t Dim>
+device::TextureId Object<Dim>::getEffectiveTextureId(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  auto it = submeshTextureOverrides_.find(faceIndex);
+  if (it != submeshTextureOverrides_.end()) {
+    return it->second;
+  }
+  return baseTextureId_;
+}
+
+template <uint32_t Dim>
+device::TextureId Object<Dim>::getTextureId() const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  return baseTextureId_;
+}
+
+// ============================================================================
 // Transform accessors (dimension-agnostic)
 // ============================================================================
 
