@@ -23,10 +23,10 @@ namespace device {
  * composite.
  */
 struct DEVICE_API GPUTextureRecord {
-  uint32_t firstLayer; ///< Index into TextureLayer[]
-  uint32_t layerCount; ///< Number of layers to composite
-  uint32_t flags;      ///< Reserved / per-texture flags
-  uint32_t _pad0;      ///< Padding to 16-byte alignment
+  uint32_t firstLayer = 0; ///< Index into TextureLayer[]
+  uint32_t layerCount = 0; ///< Number of layers to composite
+  uint32_t flags = 0;      ///< Reserved / per-texture flags
+  uint32_t _pad0 = 0;      ///< Padding to 16-byte alignment
 };
 static_assert(sizeof(GPUTextureRecord) == 16,
               "GPUTextureRecord must be 16 bytes (std430)");
@@ -40,34 +40,34 @@ static_assert(alignof(GPUTextureRecord) == 4,
  */
 struct DEVICE_API GPUTextureLayer {
   // --- group 0 (ivec4): image references ---
-  int32_t image2DIndex;   ///< Index into images2D[],   -1 = none
-  int32_t atlasIndex;     ///< Index into atlases[],     -1 = none
-  int32_t mapIndex;       ///< Index into maps[],        -1 = none
-  int32_t processingType; ///< ProcessingType enum value
+  int32_t image2DIndex = -1;   ///< Index into images2D[],   -1 = none
+  int32_t atlasIndex = -1;     ///< Index into atlases[],     -1 = none
+  int32_t mapIndex = -1;       ///< Index into maps[],        -1 = none
+  int32_t processingType = 0;  ///< ProcessingType enum value (0 = none)
 
   // --- group 1 (vec4): atlas UV rect transform ---
-  float atlasUvOffsetX;
-  float atlasUvOffsetY;
-  float atlasUvScaleX;
-  float atlasUvScaleY;
+  float atlasUvOffsetX = 0.0f;
+  float atlasUvOffsetY = 0.0f;
+  float atlasUvScaleX = 1.0f;
+  float atlasUvScaleY = 1.0f;
 
   // --- group 2 (vec4): tint colour ---
-  float tintR;
-  float tintG;
-  float tintB;
-  float tintA;
+  float tintR = 1.0f;
+  float tintG = 1.0f;
+  float tintB = 1.0f;
+  float tintA = 1.0f;
 
   // --- group 3 (vec4): transform + blend mode ---
-  float rotation; ///< Rotation in radians
-  float scaleX;
-  float scaleY;
-  uint32_t blendMode; ///< BlendMode enum value
+  float rotation = 0.0f;   ///< Rotation in radians
+  float scaleX = 1.0f;
+  float scaleY = 1.0f;
+  uint32_t blendMode = 0;  ///< BlendMode enum value (0 = alpha)
 
   // --- group 4 (vec4): processing parameters ---
-  float procAmplitude;
-  float procFrequency;
-  float procPhase;
-  float procSpeed;
+  float procAmplitude = 0.0f;
+  float procFrequency = 0.0f;
+  float procPhase = 0.0f;
+  float procSpeed = 0.0f;
 };
 static_assert(sizeof(GPUTextureLayer) == 80,
               "GPUTextureLayer must be 80 bytes (5 × vec4, std430)");

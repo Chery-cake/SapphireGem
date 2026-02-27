@@ -8,9 +8,7 @@
 namespace window {
 
 Material::Material(const MaterialTag &tag)
-    : name_(tag.name), shaderTag_(tag.shaderTag),
-      textureBindings_(tag.textureBindings),
-      textureBindingCount_(tag.textureBindingCount) {}
+    : name_(tag.name), shaderTag_(tag.shaderTag) {}
 
 Material::~Material() { release(); }
 
@@ -18,11 +16,7 @@ Material::Material(Material &&other) noexcept {
   std::lock_guard<std::mutex> lock(other.materialMutex_);
   name_ = std::move(other.name_);
   shaderTag_ = other.shaderTag_;
-  textureBindings_ = other.textureBindings_;
-  textureBindingCount_ = other.textureBindingCount_;
   other.shaderTag_ = nullptr;
-  other.textureBindings_ = nullptr;
-  other.textureBindingCount_ = 0;
   shaderProgram_ = other.shaderProgram_;
   other.shaderProgram_ = nullptr;
   initialized_ = other.initialized_;
@@ -35,11 +29,7 @@ Material &Material::operator=(Material &&other) noexcept {
     release();
     name_ = std::move(other.name_);
     shaderTag_ = other.shaderTag_;
-    textureBindings_ = other.textureBindings_;
-    textureBindingCount_ = other.textureBindingCount_;
     other.shaderTag_ = nullptr;
-    other.textureBindings_ = nullptr;
-    other.textureBindingCount_ = 0;
     shaderProgram_ = other.shaderProgram_;
     other.shaderProgram_ = nullptr;
     initialized_ = other.initialized_;
@@ -91,7 +81,8 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
 ObjectPipeline Material::createPipelineForObject(
     device::GPUDevice &device, vk::RenderPass renderPass,
     vk::DescriptorSetLayout descriptorSetLayout,
-    const PipelineConfig &pipelineConfig, uint32_t textureCount) {
+    const PipelineConfig &pipelineConfig, uint32_t textureCount,
+    vk::DescriptorSetLayout bindlessSetLayout) {
   std::lock_guard<std::mutex> lock(materialMutex_);
 
   ObjectPipeline result;
@@ -114,7 +105,7 @@ ObjectPipeline Material::createPipelineForObject(
 
   // Create pipeline layout using the object's descriptor set layout
   if (!createPipelineLayout(device, descriptorSetLayout, pipelineConfig,
-                            result)) {
+                            result, bindlessSetLayout)) {
     std::println(stderr,
                  "[Material] Failed to create pipeline layout for object: {}",
                  name_);
@@ -138,9 +129,19 @@ ObjectPipeline Material::createPipelineForObject(
 bool Material::createPipelineLayout(device::GPUDevice &device,
                                     vk::DescriptorSetLayout descriptorSetLayout,
                                     const PipelineConfig &config,
-                                    ObjectPipeline &out) {
+                                    ObjectPipeline &out,
+                                    vk::DescriptorSetLayout bindlessSetLayout) {
   vk::PushConstantRange pushRange{};
-  vk::PipelineLayoutCreateInfo layoutInfo{{}, 1, &descriptorSetLayout};
+
+  // Build the descriptor set layout array: set 0 = per-object, set 1 = bindless (optional)
+  std::vector<vk::DescriptorSetLayout> layouts;
+  layouts.push_back(descriptorSetLayout);
+  if (bindlessSetLayout) {
+    layouts.push_back(bindlessSetLayout);
+  }
+
+  vk::PipelineLayoutCreateInfo layoutInfo{
+      {}, static_cast<uint32_t>(layouts.size()), layouts.data()};
 
   if (config.pushConstantSize > 0) {
     pushRange.stageFlags = config.pushConstantStages;

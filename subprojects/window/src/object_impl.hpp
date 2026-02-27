@@ -45,6 +45,10 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   objectPipeline_ = std::move(other.objectPipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
+  baseTextureId_ = other.baseTextureId_;
+  submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+  bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
+  other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
@@ -72,6 +76,10 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     objectPipeline_ = std::move(other.objectPipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
+    baseTextureId_ = other.baseTextureId_;
+    submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+    bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
+    other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
@@ -181,7 +189,8 @@ template <uint32_t Dim>
 bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                              device::GPUDevice &device, Material &baseMaterial,
                              vk::RenderPass renderPass, uint32_t framesInFlight,
-                             const PipelineConfig &pipelineConfig) {
+                             const PipelineConfig &pipelineConfig,
+                             vk::DescriptorSetLayout bindlessSetLayout) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
   if (initialized_) {
@@ -314,7 +323,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   // Create per-object pipeline from base material (pass total layer count)
   objectPipeline_ = baseMaterial.createPipelineForObject(
       device, renderPass, **descriptorSetLayout_, pipelineConfig,
-      totalLayerBindings);
+      totalLayerBindings, bindlessSetLayout);
   if (!objectPipeline_.isValid()) {
     std::println(stderr, "[Object] Failed to create pipeline for object: {}",
                  name_);
@@ -461,6 +470,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorSetLayout_.reset();
   textureSlots_.clear();
   fallbackTexture_.reset();
+  bindlessDescriptorSet_ = vk::DescriptorSet{};
   initialized_ = false;
 }
 
@@ -508,6 +518,12 @@ template <uint32_t Dim>
 device::TextureId Object<Dim>::getTextureId() const {
   std::lock_guard<std::mutex> lock(objectMutex_);
   return baseTextureId_;
+}
+
+template <uint32_t Dim>
+void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  bindlessDescriptorSet_ = set;
 }
 
 // ============================================================================
@@ -623,12 +639,29 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                          **objectPipeline_.pipelineLayout, 0,
                          {*descriptorSets_[frameIndex]}, {});
 
-  // Push time constant if configured
-  if (pipelineConfig_.pushConstantSize > 0 &&
-      pipelineConfig_.pushConstantSize <= sizeof(time_)) {
-    cmd.pushConstants(**objectPipeline_.pipelineLayout,
-                      pipelineConfig_.pushConstantStages, 0,
-                      pipelineConfig_.pushConstantSize, &time_);
+  // Bind global bindless descriptor set (set 1) if available
+  if (bindlessDescriptorSet_) {
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                           **objectPipeline_.pipelineLayout, 1,
+                           {bindlessDescriptorSet_}, {});
+  }
+
+  // Push constants: time + textureId (for bindless), or just time (legacy)
+  if (pipelineConfig_.pushConstantSize > 0) {
+    struct PushData {
+      float time;
+      uint32_t textureId;
+    };
+    if (pipelineConfig_.pushConstantSize >= sizeof(PushData)) {
+      PushData pushData{time_, baseTextureId_.index};
+      cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                        pipelineConfig_.pushConstantStages, 0,
+                        sizeof(PushData), &pushData);
+    } else if (pipelineConfig_.pushConstantSize <= sizeof(time_)) {
+      cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                        pipelineConfig_.pushConstantStages, 0,
+                        pipelineConfig_.pushConstantSize, &time_);
+    }
   }
 
   // Single draw call for all vertices

@@ -215,6 +215,7 @@ public:
    * expected binding layout. Call before initialize().
    *
    * @param bindings Ordered list of textures for descriptor binding
+   * @deprecated Use setTextureId() with the bindless system instead
    */
   void setTextureBindings(std::vector<std::shared_ptr<Texture>> bindings);
 
@@ -226,6 +227,7 @@ public:
    *
    * @param faceIndex Index of the face (0-based)
    * @param texture Shared pointer to the texture
+   * @deprecated Use setTextureId() / setSubmeshTextureOverride() instead
    */
   void setFaceTexture(uint32_t faceIndex, std::shared_ptr<Texture> texture);
 
@@ -233,6 +235,7 @@ public:
    * @brief Get the texture assigned to a specific face
    * @param faceIndex Index of the face
    * @return Shared pointer to texture, or nullptr if none assigned
+   * @deprecated Use getEffectiveTextureId() instead
    */
   [[nodiscard]] std::shared_ptr<Texture>
   getFaceTexture(uint32_t faceIndex) const;
@@ -240,12 +243,14 @@ public:
   /**
    * @brief Get all unique textures used by this object
    * @return Vector of shared textures (deduplicated)
+   * @deprecated Legacy API; not used in bindless path
    */
   [[nodiscard]] std::vector<std::shared_ptr<Texture>> getUniqueTextures() const;
 
   /**
    * @brief Get the number of texture slots used
    * @return Number of unique textures bound to faces
+   * @deprecated Legacy API; not used in bindless path
    */
   [[nodiscard]] uint32_t getTextureSlotCount() const;
 
@@ -263,12 +268,14 @@ public:
    * @param renderPass Render pass for pipeline compatibility
    * @param framesInFlight Number of frames in flight
    * @param pipelineConfig Pipeline configuration
+   * @param bindlessSetLayout Optional bindless descriptor set layout (set 1)
    * @return true if initialization succeeded
    */
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
                   Material &baseMaterial, vk::RenderPass renderPass,
                   uint32_t framesInFlight,
-                  const PipelineConfig &pipelineConfig = {});
+                  const PipelineConfig &pipelineConfig = {},
+                  vk::DescriptorSetLayout bindlessSetLayout = {});
 
   /**
    * @brief Release all GPU resources
@@ -342,6 +349,16 @@ public:
    * @brief Get the base TextureId
    */
   [[nodiscard]] device::TextureId getTextureId() const;
+
+  /**
+   * @brief Set the global bindless descriptor set to bind at draw time
+   *
+   * This descriptor set (set 1) contains the bindless image arrays and
+   * texture table SSBOs.  It is shared across all objects on a device.
+   *
+   * @param set  Descriptor set from ImageArrayRegistry
+   */
+  void setBindlessDescriptorSet(vk::DescriptorSet set);
 
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
@@ -427,6 +444,8 @@ private:
   device::TextureId baseTextureId_;
   // Per-face texture ID overrides (submesh overrides)
   std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
+  // Global bindless descriptor set (set 1), set externally
+  vk::DescriptorSet bindlessDescriptorSet_;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
