@@ -458,8 +458,7 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
   }
 
   // Push constants: time + textureId (bindless)
-  if (pipelineConfig_.pushConstantSize > 0 &&
-      pipelineConfig_.pushConstantSize >= sizeof(device::BindlessPushConstants)) {
+  if (pipelineConfig_.pushConstantSize >= sizeof(device::BindlessPushConstants)) {
     device::BindlessPushConstants pushData{time_, baseTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
