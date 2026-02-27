@@ -5,6 +5,7 @@
 #include "renderer.h"
 #include "shader_manager.h"
 #include "swapchain.h"
+#include "texture.h"
 #include "texture_table.h"
 #include "thread_manager.h"
 #include "vma_allocator.h"
