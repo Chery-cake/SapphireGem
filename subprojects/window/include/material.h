@@ -18,9 +18,6 @@ struct ShaderProgram;
 
 namespace window {
 
-// Forward declaration
-struct TextureTag;
-
 /**
  * @brief Tag for identifying materials in the resource system
  *

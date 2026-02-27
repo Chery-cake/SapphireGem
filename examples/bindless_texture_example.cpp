@@ -90,39 +90,13 @@ void createLayeredTexture(device::ImageArrayRegistry &registry,
 
   std::vector<device::GPUTextureLayer> layers(3);
 
-  // Layer 0: base colour image, no transform
-  layers[0] = {};
+  // Layer 0: base colour image with warm tint (other fields use defaults)
   layers[0].image2DIndex = static_cast<int32_t>(baseHandle.index);
-  layers[0].atlasIndex = -1;
-  layers[0].mapIndex = -1;
-  layers[0].processingType = 0; // none
-  layers[0].atlasUvOffsetX = 0.0f;
-  layers[0].atlasUvOffsetY = 0.0f;
-  layers[0].atlasUvScaleX = 1.0f;
-  layers[0].atlasUvScaleY = 1.0f;
-  layers[0].tintR = 1.0f;
   layers[0].tintG = 0.8f; // warm tint
   layers[0].tintB = 0.6f;
-  layers[0].tintA = 1.0f;
-  layers[0].rotation = 0.0f;
-  layers[0].scaleX = 1.0f;
-  layers[0].scaleY = 1.0f;
-  layers[0].blendMode = 0; // alpha
-  layers[0].procAmplitude = 0.0f;
-  layers[0].procFrequency = 0.0f;
-  layers[0].procPhase = 0.0f;
-  layers[0].procSpeed = 0.0f;
 
   // Layer 1: overlay image with rotation and blue tint
-  layers[1] = {};
   layers[1].image2DIndex = static_cast<int32_t>(overlayHandle.index);
-  layers[1].atlasIndex = -1;
-  layers[1].mapIndex = -1;
-  layers[1].processingType = 0;
-  layers[1].atlasUvOffsetX = 0.0f;
-  layers[1].atlasUvOffsetY = 0.0f;
-  layers[1].atlasUvScaleX = 1.0f;
-  layers[1].atlasUvScaleY = 1.0f;
   layers[1].tintR = 0.5f;
   layers[1].tintG = 0.7f;
   layers[1].tintB = 1.0f; // blue tint
@@ -130,17 +104,10 @@ void createLayeredTexture(device::ImageArrayRegistry &registry,
   layers[1].rotation = 0.785f; // 45 degrees
   layers[1].scaleX = 0.8f;
   layers[1].scaleY = 0.8f;
-  layers[1].blendMode = 0; // alpha
-  layers[1].procAmplitude = 0.0f;
-  layers[1].procFrequency = 0.0f;
-  layers[1].procPhase = 0.0f;
-  layers[1].procSpeed = 0.0f;
 
   // Layer 2: atlas heart with wave processing
-  layers[2] = {};
   layers[2].image2DIndex = -1; // not a standalone image
   layers[2].atlasIndex = static_cast<int32_t>(atlasHandle.index);
-  layers[2].mapIndex = -1;
   layers[2].processingType = 1; // wave
   // Atlas UV rect for the heart region (row 1, col 0 of 3×2 grid)
   layers[2].atlasUvOffsetX = 0.0f;
@@ -151,14 +118,9 @@ void createLayeredTexture(device::ImageArrayRegistry &registry,
   layers[2].tintG = 0.3f;
   layers[2].tintB = 0.3f; // reddish tint for heart
   layers[2].tintA = 0.8f;
-  layers[2].rotation = 0.0f;
-  layers[2].scaleX = 1.0f;
-  layers[2].scaleY = 1.0f;
-  layers[2].blendMode = 0;
   // Wave processing params
   layers[2].procAmplitude = 0.02f;
   layers[2].procFrequency = 8.0f;
-  layers[2].procPhase = 0.0f;
   layers[2].procSpeed = 2.0f;
 
   table.setLayers(texId, layers);
@@ -184,27 +146,10 @@ void overrideSubmeshTexture(device::TextureTableManager &table) {
   device::TextureId overrideTexId = table.addRecord(1);
 
   std::vector<device::GPUTextureLayer> overrideLayers(1);
-  overrideLayers[0] = {};
   overrideLayers[0].image2DIndex = 1; // images2D[1] – different image
-  overrideLayers[0].atlasIndex = -1;
-  overrideLayers[0].mapIndex = -1;
-  overrideLayers[0].processingType = 0;
-  overrideLayers[0].atlasUvOffsetX = 0.0f;
-  overrideLayers[0].atlasUvOffsetY = 0.0f;
-  overrideLayers[0].atlasUvScaleX = 1.0f;
-  overrideLayers[0].atlasUvScaleY = 1.0f;
   overrideLayers[0].tintR = 0.2f;
   overrideLayers[0].tintG = 1.0f;
   overrideLayers[0].tintB = 0.2f; // green tint
-  overrideLayers[0].tintA = 1.0f;
-  overrideLayers[0].rotation = 0.0f;
-  overrideLayers[0].scaleX = 1.0f;
-  overrideLayers[0].scaleY = 1.0f;
-  overrideLayers[0].blendMode = 0;
-  overrideLayers[0].procAmplitude = 0.0f;
-  overrideLayers[0].procFrequency = 0.0f;
-  overrideLayers[0].procPhase = 0.0f;
-  overrideLayers[0].procSpeed = 0.0f;
 
   table.setLayers(overrideTexId, overrideLayers);
 
@@ -229,10 +174,8 @@ void atlasWithWaveProcessing(device::TextureTableManager &table) {
   device::TextureId waveTexId = table.addRecord(1);
 
   std::vector<device::GPUTextureLayer> waveLayers(1);
-  waveLayers[0] = {};
   waveLayers[0].image2DIndex = -1;
   waveLayers[0].atlasIndex = 0; // atlases[0]
-  waveLayers[0].mapIndex = -1;
   waveLayers[0].processingType = 1; // wave
 
   // UV rect: star shape at column 1, row 0 of 3×2 atlas
@@ -241,19 +184,9 @@ void atlasWithWaveProcessing(device::TextureTableManager &table) {
   waveLayers[0].atlasUvScaleX = 170.0f / 512.0f;
   waveLayers[0].atlasUvScaleY = 256.0f / 512.0f;
 
-  waveLayers[0].tintR = 1.0f;
-  waveLayers[0].tintG = 1.0f;
-  waveLayers[0].tintB = 1.0f;
-  waveLayers[0].tintA = 1.0f;
-  waveLayers[0].rotation = 0.0f;
-  waveLayers[0].scaleX = 1.0f;
-  waveLayers[0].scaleY = 1.0f;
-  waveLayers[0].blendMode = 0;
-
   // Wave parameters: gentle ripple
   waveLayers[0].procAmplitude = 0.03f;
   waveLayers[0].procFrequency = 6.0f;
-  waveLayers[0].procPhase = 0.0f;
   waveLayers[0].procSpeed = 1.5f;
 
   table.setLayers(waveTexId, waveLayers);

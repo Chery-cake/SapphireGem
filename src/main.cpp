@@ -1,8 +1,11 @@
+#include "bindless_types.h"
+#include "image_array_registry.h"
 #include "material.h"
 #include "object.h"
 #include "renderer.h"
 #include "shader_manager.h"
 #include "swapchain.h"
+#include "texture_table.h"
 #include "thread_manager.h"
 #include "vma_allocator.h"
 #include "vulkan_device.h"
@@ -25,91 +28,36 @@
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Cube shader tag (vertex + fragment + geometry)
-static constexpr device::ShaderTag CUBE_UNIFIED_SHADER_TAG{
-    "cube_unified", "cube_unified.slang", "vertMain", "fragMain", "geomMain"};
+// Bindless cube shader tag (vertex + fragment + geometry)
+static constexpr device::ShaderTag CUBE_BINDLESS_SHADER_TAG{
+    "cube_bindless", "cube_bindless.slang", "vertMain", "fragMain", "geomMain"};
 
-// 2D quad shader tag (vertex + fragment + geometry)
-static constexpr device::ShaderTag QUAD_2D_SHADER_TAG{
-    "quad2d_unified", "quad2d_unified.slang", "vertMain", "fragMain",
+// Bindless 2D quad shader tag (vertex + fragment + geometry)
+static constexpr device::ShaderTag QUAD_2D_BINDLESS_SHADER_TAG{
+    "quad2d_bindless", "quad2d_bindless.slang", "vertMain", "fragMain",
     "geomMain"};
 
-// 2D quad material tag (no texture binding plan needed — single texture)
-static constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{"quad2d_unified_mat",
-                                                          &QUAD_2D_SHADER_TAG};
+// Material tags (no texture binding plan — textures accessed via bindless)
+static constexpr window::MaterialTag CUBE_MATERIAL_TAG{"cube_bindless_mat",
+                                                       &CUBE_BINDLESS_SHADER_TAG};
+static constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{
+    "quad2d_bindless_mat", &QUAD_2D_BINDLESS_SHADER_TAG};
 
-// 2D quad object tag
+// Object tags
+static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
+                                                &CUBE_MATERIAL_TAG};
 static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
                                                    &QUAD_2D_MATERIAL_TAG};
 
-// Texture tags for shared assets
-// Note: ImageTag uses std::variant internally, so these cannot be constexpr
+// Texture tags for shared assets (still used for CPU-side image loading)
 static const window::ImageTag CHECKERBOARD_IMAGE{window::ImageFromFile{
     "checkerboard", "assets/textures/checkerboard.png", 256, 256}};
 
-// Atlas: loaded once, 6 regions reference it as layers
-static const window::AtlasTag LAYER_ATLAS{
-    "layer_atlas", "assets/textures/layer_atlas.png", 512, 512};
-
-// Atlas grid layout: 3 columns × 2 rows
-static constexpr uint32_t ATLAS_COLS = 3;
-static constexpr uint32_t ATLAS_ROWS = 2;
-static constexpr uint32_t ATLAS_CELL_W = 170;
-static constexpr uint32_t ATLAS_CELL_H = 256;
-static constexpr uint32_t ATLAS_LAST_COL_W = 172; // 512 - 2*170
-
-// 6 atlas region images
-static const window::ImageTag ATLAS_REGION_0{window::ImageFromAtlasRegion{
-    "atlas_region_0", &LAYER_ATLAS, 0, 0, ATLAS_CELL_W, ATLAS_CELL_H}};
-static const window::ImageTag ATLAS_REGION_1{
-    window::ImageFromAtlasRegion{"atlas_region_1", &LAYER_ATLAS, ATLAS_CELL_W,
-                                 0, ATLAS_CELL_W, ATLAS_CELL_H}};
-static const window::ImageTag ATLAS_REGION_2{window::ImageFromAtlasRegion{
-    "atlas_region_2", &LAYER_ATLAS, ATLAS_CELL_W * 2, 0, ATLAS_LAST_COL_W,
-    ATLAS_CELL_H}};
-static const window::ImageTag ATLAS_REGION_3{
-    window::ImageFromAtlasRegion{"atlas_region_3", &LAYER_ATLAS, 0,
-                                 ATLAS_CELL_H, ATLAS_CELL_W, ATLAS_CELL_H}};
-static const window::ImageTag ATLAS_REGION_4{
-    window::ImageFromAtlasRegion{"atlas_region_4", &LAYER_ATLAS, ATLAS_CELL_W,
-                                 ATLAS_CELL_H, ATLAS_CELL_W, ATLAS_CELL_H}};
-static const window::ImageTag ATLAS_REGION_5{window::ImageFromAtlasRegion{
-    "atlas_region_5", &LAYER_ATLAS, ATLAS_CELL_W * 2, ATLAS_CELL_H,
-    ATLAS_LAST_COL_W, ATLAS_CELL_H}};
-
 static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
     {&CHECKERBOARD_IMAGE}};
-static const window::TextureLayerInfo ATLAS_LAYERS[] = {
-    {&ATLAS_REGION_0}, {&ATLAS_REGION_1}, {&ATLAS_REGION_2},
-    {&ATLAS_REGION_3}, {&ATLAS_REGION_4}, {&ATLAS_REGION_5}};
-// TODO check why this happens when the amount of images is changed on the
-// ATLAS_LAYERS, tested changing from 6 to 2
-// [Vulkan ERROR] vkCmdDraw(): VkDescriptorSet 0x470000000047 [Set 0, Binding 7,
-// variable "atlasLayer5"] is invalid. The Vulkan spec states: Descriptors in
-// each bound descriptor set, specified via vkCmdBindDescriptorSets, must be
-// valid if they are accessed as described by descriptor validity by the
-// VkPipeline bound to the pipeline bind point used by this command and the
-// bound VkPipeline was not created with
-// VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT
-// (https://docs.vulkan.org/spec/latest/chapters/drawing.html#VUID-vkCmdDraw-None-08114)
 
 static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
                                                      CHECKERBOARD_LAYERS, 1};
-static const window::TextureTag ATLAS_TEX_TAG{"layer_atlas_tex", ATLAS_LAYERS,
-                                              6};
-
-// Cube material binding plan: shader expects binding 1 = checkerboard,
-// bindings 2..7 = atlas layers 0..5. Order must match cube_unified.slang.
-static const window::TextureTag *const CUBE_BINDING_PLAN[] = {
-    &CHECKERBOARD_TEX_TAG, &ATLAS_TEX_TAG};
-
-// Cube material tag (unified material with explicit texture binding plan)
-static const window::MaterialTag CUBE_UNIFIED_MATERIAL_TAG{
-    "cube_unified_mat", &CUBE_UNIFIED_SHADER_TAG, CUBE_BINDING_PLAN, 2};
-
-// Cube object tag (uses the unified material)
-static const window::ObjectTag CUBE_OBJ_TAG{"cube_obj",
-                                            &CUBE_UNIFIED_MATERIAL_TAG};
 
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
@@ -121,22 +69,22 @@ static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
 
 class CubeScene3D : public window::Scene {
 private:
-  // Single unified material for all cube faces
   std::unique_ptr<window::Material> material_;
-
   std::unique_ptr<window::Object<3>> cube_;
   float totalTime_ = 0.0f;
 
-  // Shared textures (shared_ptr for memory-efficient sharing across objects)
+  // Shared texture (for CPU-side image loading/upload)
   std::shared_ptr<window::Texture> checkerboardTex_;
-  std::shared_ptr<window::Texture> atlasLayerTex_;
+
+  // Bindless GPU resources
+  device::ImageArrayRegistry imageRegistry_;
+  device::TextureTableManager textureTable_;
+  device::TextureId cubeTextureId_;
 
 public:
   explicit CubeScene3D(const window::SceneTag &sceneTag,
-                       std::shared_ptr<window::Texture> checkerboard,
-                       std::shared_ptr<window::Texture> atlas)
-      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
-        atlasLayerTex_(std::move(atlas)) {}
+                       std::shared_ptr<window::Texture> checkerboard)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -145,16 +93,22 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize the single unified material
-    material_ = std::make_unique<window::Material>(CUBE_UNIFIED_MATERIAL_TAG);
+    // Initialize bindless image registry for this device
+    if (!imageRegistry_.initialize(device)) {
+      std::println(stderr, "[{}] Failed to initialize image registry",
+                   getName());
+      return false;
+    }
 
+    // Initialize the material (compiles bindless shaders)
+    material_ = std::make_unique<window::Material>(CUBE_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize cube material",
                    getName());
       return false;
     }
 
-    // Upload shared textures if not already uploaded
+    // Upload checkerboard texture to GPU
     if (checkerboardTex_ && !checkerboardTex_->isUploaded()) {
       if (!checkerboardTex_->upload(allocator, device)) {
         std::println(stderr, "[{}] Failed to upload checkerboard texture",
@@ -164,22 +118,43 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    if (atlasLayerTex_ && !atlasLayerTex_->isUploaded()) {
-      if (!atlasLayerTex_->upload(allocator, device)) {
-        std::println(stderr, "[{}] Failed to upload atlas layer texture",
-                     getName());
-        return false;
+    // Register the uploaded image in the bindless registry
+    device::ImageHandle checkerHandle;
+    if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
+      const auto *layer = checkerboardTex_->getLayer(0);
+      if (layer && layer->loaded) {
+        checkerHandle = imageRegistry_.registerImage(
+            device::ImageKind::eImage2D, layer->gpuImage.getView());
       }
-      atlasLayerTex_->createSampler(device);
     }
 
-    // Cube: 36 vertices (geometry generated in shader via SV_VertexID)
+    // Build a texture record with one layer (checkerboard image)
+    cubeTextureId_ = textureTable_.addRecord(1);
+
+    device::GPUTextureLayer cubeLayer;
+    cubeLayer.image2DIndex =
+        checkerHandle.isValid() ? static_cast<int32_t>(checkerHandle.index) : -1;
+    textureTable_.setLayers(cubeTextureId_, {cubeLayer});
+
+    // Upload texture tables to GPU
+    if (!textureTable_.uploadToGPU(allocator, device)) {
+      std::println(stderr, "[{}] Failed to upload texture tables", getName());
+      return false;
+    }
+
+    // Commit descriptors (images + SSBOs)
+    if (checkerboardTex_ && checkerboardTex_->getSampler()) {
+      imageRegistry_.commitDescriptors(
+          device, checkerboardTex_->getSampler(),
+          &textureTable_.getRecordBuffer(), &textureTable_.getLayerBuffer());
+    }
+
+    // Create cube geometry (36 vertices for 12 triangles)
     std::vector<window::Vertex<3>> vertices(36);
     for (auto &v : vertices) {
       v.position = {0.0f, 0.0f, 0.0f};
       v.color = {1.0f, 1.0f, 1.0f};
     }
-
     std::vector<uint32_t> indices;
     indices.reserve(36);
     for (uint32_t i = 0; i < 36; ++i) {
@@ -189,43 +164,32 @@ public:
     cube_ = std::make_unique<window::Object<3>>(
         CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
 
-    // Assign shared textures to cube faces (triangle indices)
-    // Front face (+Z) = triangles 0,1 (mode 1): checkerboard texture
-    cube_->setFaceTexture(0, checkerboardTex_);
-    cube_->setFaceTexture(1, checkerboardTex_);
-    // Back face (-Z) = triangles 2,3 (mode 2): atlas layer texture
-    cube_->setFaceTexture(2, atlasLayerTex_);
-    cube_->setFaceTexture(3, atlasLayerTex_);
-    // Left/Right faces (mode 3): gradient + wave (procedural, no texture)
-    // Top/Bottom faces (mode 0): plain color (procedural, no texture)
+    // Set the bindless texture ID and descriptor set
+    cube_->setTextureId(cubeTextureId_);
+    cube_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
 
-    // Set explicit texture binding order matching cube_unified.slang:
-    // binding 1: checkerboard (1 layer), bindings 2-7: atlas layers (6
-    // layers)
-    cube_->setTextureBindings({checkerboardTex_, atlasLayerTex_});
-
-    // Pipeline config with push constants for time animation
+    // Pipeline config with push constants for time + textureId
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eBack;
     pConfig.frontFace = vk::FrontFace::eCounterClockwise;
     pConfig.depthTestEnable = true;
     pConfig.depthWriteEnable = true;
-    pConfig.pushConstantSize = sizeof(float); // time
-    pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex;
+    pConfig.pushConstantSize = sizeof(float) + sizeof(uint32_t); // time + textureId
+    pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
+                                 vk::ShaderStageFlagBits::eFragment;
 
     if (!cube_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
-                           window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+                           window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                           imageRegistry_.getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize cube", getName());
       return false;
     }
 
     setLoaded(true);
-    std::println("[{}] Cube scene loaded ({} faces, {} textures, "
-                 "1 unified material)",
-                 getName(), cube_->getFaceCount(),
-                 cube_->getTextureSlotCount());
+    std::println("[{}] Cube scene loaded (bindless, textureId={})",
+                 getName(), cubeTextureId_.index);
     return true;
   }
 
@@ -238,9 +202,9 @@ public:
       material_->release();
       material_.reset();
     }
+    imageRegistry_.shutdown();
+    textureTable_.clear();
     setLoaded(false);
-    // Shared textures are not released here - they may be used by other
-    // objects
     std::println("[{}] Cube scene unloaded", getName());
   }
 
@@ -248,18 +212,14 @@ public:
 
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
     if (cube_ && cube_->isInitialized()) {
-      // Update rotation: spin the cube around Y and X axes
       float rotY = totalTime_ * 0.5f;
       float rotX = totalTime_ * 0.3f;
       cube_->setRotation({rotX, rotY, 0.0f});
       cube_->setTime(totalTime_);
 
-      // Set up 3D view and projection matrices
       glm::mat4 view =
           glm::lookAt(glm::vec3(0.0f, 0.5f, 2.5f), glm::vec3(0.0f, 0.0f, 0.0f),
                       glm::vec3(0.0f, 1.0f, 0.0f));
-
-      // Perspective projection (Vulkan clip space: Y inverted)
       glm::mat4 proj =
           glm::perspective(glm::radians(45.0f), 16.0f / 9.0f, 0.1f, 100.0f);
       proj[1][1] *= -1.0f; // Flip Y for Vulkan
@@ -273,12 +233,16 @@ public:
 class Quad2DScene : public window::Scene {
 private:
   std::unique_ptr<window::Material> material_;
-
-  // Shared texture (same checkerboard used by the cube - memory efficient)
-  std::shared_ptr<window::Texture> checkerboardTex_;
-
   std::unique_ptr<window::Object<2>> quad_;
   float totalTime_ = 0.0f;
+
+  // Shared texture (for CPU-side image loading/upload)
+  std::shared_ptr<window::Texture> checkerboardTex_;
+
+  // Bindless GPU resources
+  device::ImageArrayRegistry imageRegistry_;
+  device::TextureTableManager textureTable_;
+  device::TextureId quadTextureId_;
 
 public:
   explicit Quad2DScene(const window::SceneTag &sceneTag,
@@ -292,14 +256,20 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
+    // Initialize bindless image registry for this device
+    if (!imageRegistry_.initialize(device)) {
+      std::println(stderr, "[{}] Failed to initialize image registry",
+                   getName());
+      return false;
+    }
+
     material_ = std::make_unique<window::Material>(QUAD_2D_MATERIAL_TAG);
     if (!material_->initialize(shaderManager)) {
       std::println(stderr, "[{}] Failed to initialize 2D material", getName());
       return false;
     }
 
-    // Upload shared texture if not already uploaded (shared with cube
-    // scene)
+    // Upload shared texture if not already uploaded
     if (checkerboardTex_ && !checkerboardTex_->isUploaded()) {
       if (!checkerboardTex_->upload(allocator, device)) {
         std::println(stderr, "[{}] Failed to upload checkerboard texture",
@@ -309,14 +279,43 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    // 2D quad: 4 faces × 2 triangles × 3 vertices = 24 vertices
-    // Each face has a different rendering mode
+    // Register the uploaded image in the bindless registry
+    device::ImageHandle checkerHandle;
+    if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
+      const auto *layer = checkerboardTex_->getLayer(0);
+      if (layer && layer->loaded) {
+        checkerHandle = imageRegistry_.registerImage(
+            device::ImageKind::eImage2D, layer->gpuImage.getView());
+      }
+    }
+
+    // Build a texture record with one layer (checkerboard image)
+    quadTextureId_ = textureTable_.addRecord(1);
+
+    device::GPUTextureLayer quadLayer;
+    quadLayer.image2DIndex =
+        checkerHandle.isValid() ? static_cast<int32_t>(checkerHandle.index) : -1;
+    textureTable_.setLayers(quadTextureId_, {quadLayer});
+
+    // Upload texture tables to GPU
+    if (!textureTable_.uploadToGPU(allocator, device)) {
+      std::println(stderr, "[{}] Failed to upload texture tables", getName());
+      return false;
+    }
+
+    // Commit descriptors
+    if (checkerboardTex_ && checkerboardTex_->getSampler()) {
+      imageRegistry_.commitDescriptors(
+          device, checkerboardTex_->getSampler(),
+          &textureTable_.getRecordBuffer(), &textureTable_.getLayerBuffer());
+    }
+
+    // 2D quad: 24 vertices (4 faces × 2 triangles × 3 vertices)
     std::vector<window::Vertex<2>> vertices(24);
     for (auto &v : vertices) {
       v.position = {0.0f, 0.0f};
       v.color = {1.0f, 1.0f, 1.0f};
     }
-
     std::vector<uint32_t> indices;
     indices.reserve(24);
     for (uint32_t i = 0; i < 24; ++i) {
@@ -326,32 +325,29 @@ public:
     quad_ = std::make_unique<window::Object<2>>(
         QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
 
-    // Assign checkerboard texture to face 1 (top-right quadrant)
-    // Triangles 2,3 use render mode 1 (checkerboard texture)
-    quad_->setFaceTexture(2, checkerboardTex_);
-    quad_->setFaceTexture(3, checkerboardTex_);
-    // Face 0 (triangles 0,1): plain color (mode 0, no texture)
-    // Face 2 (triangles 4,5): gradient (mode 2, procedural)
-    // Face 3 (triangles 6,7): wave (mode 3, procedural)
+    // Set the bindless texture ID and descriptor set
+    quad_->setTextureId(quadTextureId_);
+    quad_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eNone;
     pConfig.depthTestEnable = false;
-    pConfig.pushConstantSize = sizeof(float); // time
+    pConfig.pushConstantSize = sizeof(float) + sizeof(uint32_t); // time + textureId
     pConfig.pushConstantStages =
         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
     if (!quad_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
-                           window::MAX_FRAMES_IN_FLIGHT, pConfig)) {
+                           window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                           imageRegistry_.getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
       return false;
     }
 
     setLoaded(true);
-    std::println("[{}] 2D scene loaded ({} faces, {} textures)", getName(),
-                 quad_->getFaceCount(), quad_->getTextureSlotCount());
+    std::println("[{}] 2D scene loaded (bindless, textureId={})",
+                 getName(), quadTextureId_.index);
     return true;
   }
 
@@ -364,6 +360,8 @@ public:
       material_->release();
       material_.reset();
     }
+    imageRegistry_.shutdown();
+    textureTable_.clear();
     setLoaded(false);
     std::println("[{}] 2D scene unloaded", getName());
   }
@@ -374,7 +372,6 @@ public:
     if (quad_ && quad_->isInitialized()) {
       quad_->setTime(totalTime_);
 
-      // 2D uses 3×3 matrices (identity for now)
       glm::mat3 view(1.0f);
       glm::mat3 proj(1.0f);
       quad_->updateUniforms(frameIndex, view, proj);
@@ -663,18 +660,17 @@ int main(int argc, char *argv[]) {
   // Create shared textures (shared_ptr ensures memory-efficient sharing)
   auto checkerboardTex =
       std::make_shared<window::Texture>(CHECKERBOARD_TEX_TAG);
-  auto atlasLayerTex = std::make_shared<window::Texture>(ATLAS_TEX_TAG);
 
   // Create scenes using the tag system and add them to windows
-  // Window 1: 3D cube scene with per-face textures (Object<3>)
+  // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
     auto sceneCube = std::make_unique<CubeScene3D>(
-        SCENE_CUBE_TAG, checkerboardTex, atlasLayerTex);
+        SCENE_CUBE_TAG, checkerboardTex);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
 
-  // Window 2: 2D quad scene with multiple render modes (Object<2>)
+  // Window 2: 2D quad scene with bindless textures (Object<2>)
   // Shares the checkerboard texture with the cube to save GPU memory
   if (win2 && win2->hasRenderer()) {
     auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex);
