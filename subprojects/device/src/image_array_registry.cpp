@@ -63,8 +63,9 @@ bool ImageArrayRegistry::initialize(GPUDevice &device) {
     };
 
     vk::DescriptorPoolCreateInfo poolInfo{
-        vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind, 1,
-        static_cast<uint32_t>(poolSizes.size()), poolSizes.data()};
+        vk::DescriptorPoolCreateFlagBits::eUpdateAfterBind |
+            vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        1, static_cast<uint32_t>(poolSizes.size()), poolSizes.data()};
 
     try {
         descriptorPool_ = std::make_unique<vk::raii::DescriptorPool>(
@@ -157,7 +158,8 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
     // We need to keep imageInfos alive until updateDescriptorSets
     std::vector<std::vector<vk::DescriptorImageInfo>> allImageInfos(kKindCount);
 
-    // --- Image array bindings (bindings 0, 1, 2) ---
+    // --- Image array bindings (bindings kBindingImages2D, kBindingAtlases,
+    //     kBindingMaps – i.e. 3, 4, 5) ---
     for (uint32_t k = 0; k < kKindCount; ++k) {
         auto &arr = imageArrays_[k];
         if (arr.empty()) {
@@ -190,7 +192,7 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
 
         vk::WriteDescriptorSet w{};
         w.dstSet = *descriptorSets_[0];
-        w.dstBinding = k; // binding 0/1/2 for each kind
+        w.dstBinding = kBindingImages2D + k; // binding 3/4/5 for each kind
         w.dstArrayElement = 0;
         w.descriptorCount = static_cast<uint32_t>(infos.size());
         w.descriptorType = vk::DescriptorType::eSampledImage;
@@ -198,7 +200,7 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
         writes.push_back(w);
     }
 
-    // --- Sampler binding (binding 3) ---
+    // --- Sampler binding (binding 0) ---
     vk::DescriptorImageInfo samplerInfo;
     samplerInfo.sampler = sampler;
     {
@@ -212,7 +214,7 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
         writes.push_back(w);
     }
 
-    // --- SSBO bindings (binding 4, 5) ---
+    // --- SSBO bindings (binding 1, 2) ---
     vk::DescriptorBufferInfo recBufInfo{};
     if (recordBuffer && recordBuffer->isValid()) {
         recBufInfo.buffer = recordBuffer->getBuffer();
@@ -308,34 +310,13 @@ ImageArrayRegistry::createBindlessSetLayout(GPUDevice &device,
 
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
-    // Binding 0: images2D[]
-    bindings.push_back({kBindingImages2D, vk::DescriptorType::eSampledImage,
-                        maxCount,
-                        vk::ShaderStageFlagBits::eFragment |
-                            vk::ShaderStageFlagBits::eCompute});
-    bindingFlags.push_back(imageFlags);
-
-    // Binding 1: atlases[]
-    bindings.push_back({kBindingAtlases, vk::DescriptorType::eSampledImage,
-                        maxCount,
-                        vk::ShaderStageFlagBits::eFragment |
-                            vk::ShaderStageFlagBits::eCompute});
-    bindingFlags.push_back(imageFlags);
-
-    // Binding 2: maps[] – last image array, uses variable count
-    bindings.push_back({kBindingMaps, vk::DescriptorType::eSampledImage,
-                        maxCount,
-                        vk::ShaderStageFlagBits::eFragment |
-                            vk::ShaderStageFlagBits::eCompute});
-    bindingFlags.push_back(lastImageFlags);
-
-    // Binding 3: shared sampler
+    // Binding 0: shared sampler  (placed first, before image arrays)
     bindings.push_back({kBindingSampler, vk::DescriptorType::eSampler, 1,
                         vk::ShaderStageFlagBits::eFragment |
                             vk::ShaderStageFlagBits::eCompute});
     bindingFlags.push_back(noFlags);
 
-    // Binding 4: TextureRecord SSBO
+    // Binding 1: TextureRecord SSBO
     bindings.push_back(
         {kBindingTextureRecords, vk::DescriptorType::eStorageBuffer, 1,
          vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
@@ -343,13 +324,37 @@ ImageArrayRegistry::createBindlessSetLayout(GPUDevice &device,
              vk::ShaderStageFlagBits::eCompute});
     bindingFlags.push_back(noFlags);
 
-    // Binding 5: TextureLayer SSBO
+    // Binding 2: TextureLayer SSBO
     bindings.push_back(
         {kBindingTextureLayers, vk::DescriptorType::eStorageBuffer, 1,
          vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
              vk::ShaderStageFlagBits::eFragment |
              vk::ShaderStageFlagBits::eCompute});
     bindingFlags.push_back(noFlags);
+
+    // Binding 3: images2D[]
+    bindings.push_back({kBindingImages2D, vk::DescriptorType::eSampledImage,
+                        maxCount,
+                        vk::ShaderStageFlagBits::eFragment |
+                            vk::ShaderStageFlagBits::eCompute});
+    bindingFlags.push_back(imageFlags);
+
+    // Binding 4: atlases[]
+    bindings.push_back({kBindingAtlases, vk::DescriptorType::eSampledImage,
+                        maxCount,
+                        vk::ShaderStageFlagBits::eFragment |
+                            vk::ShaderStageFlagBits::eCompute});
+    bindingFlags.push_back(imageFlags);
+
+    // Binding 5: maps[] – last image array, highest binding number.
+    // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT must only be
+    // set on the binding with the highest binding number in the layout
+    // (VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004).
+    bindings.push_back({kBindingMaps, vk::DescriptorType::eSampledImage,
+                        maxCount,
+                        vk::ShaderStageFlagBits::eFragment |
+                            vk::ShaderStageFlagBits::eCompute});
+    bindingFlags.push_back(lastImageFlags);
 
     vk::DescriptorSetLayoutBindingFlagsCreateInfo flagsInfo{
         static_cast<uint32_t>(bindingFlags.size()), bindingFlags.data()};

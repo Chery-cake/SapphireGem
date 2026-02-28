@@ -111,3 +111,4 @@ build/
 
 bin/
 *.clangd
+build/

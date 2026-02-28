@@ -1,9 +1,19 @@
 // Bindless cube shader – uses the GPU texture table and bindless descriptor
 // arrays instead of per-material combined-image-sampler bindings.
 //
-// Each vertex carries a textureId that selects a TextureRecord from the
-// SSBO.  The fragment shader composites layers via sampleBindlessTexture().
-// All objects share this pipeline regardless of which textures they use.
+// Each vertex carries a renderMode that selects how the fragment is shaded:
+//   Mode 0: Plain uniform color (uses vertex color directly)
+//   Mode 1: Texture from file (sampled via bindless image2D)
+//   Mode 2: Layered atlas texture (sampled via bindless atlas layers)
+//   Mode 3: Gradient + wave displacement visualization (uses model position)
+//
+// Face assignment:
+//   Front  (+Z): Mode 1 – texture from file
+//   Back   (-Z): Mode 2 – layered atlas texture
+//   Left   (-X): Mode 3 – gradient + wave
+//   Right  (+X): Mode 3 – gradient + wave
+//   Top    (+Y): Mode 0 – plain color
+//   Bottom (-Y): Mode 0 – plain color
 //
 // Descriptor set 0: per-object UBO + push constants (unchanged)
 // Descriptor set 1: global bindless set (images, samplers, SSBOs)
@@ -25,6 +35,7 @@ struct PushData {
 
 struct VSOutput {
     float4 pos : SV_Position;
+    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
@@ -34,6 +45,7 @@ struct VSOutput {
 
 struct GSOutput {
     float4 pos : SV_Position;
+    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
@@ -63,6 +75,16 @@ static const uint cubeIndices[36] = {
     4, 5, 1,  4, 1, 0,   // Bottom (-Y)
 };
 
+// Per-face render mode (6 faces × 2 triangles each = 12 entries)
+static const uint faceRenderMode[12] = {
+    1, 1,  // Front  (+Z): texture from file
+    2, 2,  // Back   (-Z): atlas layer texture
+    3, 3,  // Left   (-X): gradient + wave
+    3, 3,  // Right  (+X): gradient + wave
+    0, 0,  // Top    (+Y): plain color
+    0, 0,  // Bottom (-Y): plain color
+};
+
 // UV coordinates per vertex within a face
 static const float2 faceUVs[6] = {
     float2(0.0, 1.0),
@@ -73,6 +95,7 @@ static const float2 faceUVs[6] = {
     float2(0.0, 0.0),
 };
 
+// Wave displacement applied to gradient faces (mode 3)
 float3 waveDisplacement(float3 pos, float t) {
     float wave = sin(pos.x * 4.0 + t * 2.0) * 0.05;
     wave += cos(pos.z * 4.0 + t * 1.5) * 0.05;
@@ -87,8 +110,16 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     float3 pos = cubePositions[idx];
     output.modelPos = pos;
 
-    float3 disp = waveDisplacement(pos, pc.time);
-    pos += disp;
+    // Per-face render mode
+    uint triIndex = vertexID / 3;
+    output.renderMode = faceRenderMode[triIndex];
+
+    // Apply wave displacement only to gradient+wave faces (mode 3)
+    float3 disp = float3(0.0, 0.0, 0.0);
+    if (output.renderMode == 3u) {
+        disp = waveDisplacement(pos, pc.time);
+        pos += disp;
+    }
     output.waveAmount = disp.y;
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
@@ -121,6 +152,7 @@ void geomMain(
     for (int i = 0; i < 3; i++) {
         GSOutput output;
         output.pos        = input[i].pos;
+        output.renderMode = input[i].renderMode;
         output.color      = input[i].color * lightFactor;
         output.uv         = input[i].uv;
         output.modelPos   = input[i].modelPos;
@@ -131,14 +163,47 @@ void geomMain(
     outputStream.RestartStrip();
 }
 
-// Fragment shader – uses bindless texture sampling
+// ---------------------------------------------------------------------------
+// Fragment mode implementations
+// ---------------------------------------------------------------------------
+
+// Mode 0: Plain uniform color
+float4 modePlainColor(GSOutput input) {
+    return float4(input.color, 1.0);
+}
+
+// Mode 1: Texture from file via bindless sampling
+float4 modeTexture(GSOutput input) {
+    float4 texColor = sampleBindlessTexture(input.textureId, input.uv, pc.time);
+    return texColor;
+}
+
+// Mode 2: Layered atlas texture via bindless sampling
+float4 modeAtlasLayers(GSOutput input) {
+    float4 texColor = sampleBindlessTexture(input.textureId, input.uv, pc.time);
+    return texColor;
+}
+
+// Mode 3: Gradient + wave displacement visualization
+float4 modeGradientWave(GSOutput input) {
+    float t = input.modelPos.y + 0.5;  // Map [-0.5, 0.5] to [0, 1]
+
+    float3 bottomColor = float3(0.3, 0.0, 0.5);
+    float3 topColor = float3(0.0, 0.8, 0.9);
+    float3 color = lerp(bottomColor, topColor, t);
+
+    float waveBrightness = input.waveAmount * 5.0 + 0.5;
+    color *= waveBrightness;
+    return float4(saturate(color), 1.0);
+}
+
+// Unified fragment shader: selects mode per-vertex
 [shader("fragment")]
 float4 fragMain(GSOutput input) : SV_TARGET {
-    // Sample via the GPU texture table
-    float4 texColor = sampleBindlessTexture(input.textureId, input.uv, pc.time);
-
-    // Apply lighting
-    texColor.rgb *= input.color;
-
-    return texColor;
+    switch (input.renderMode) {
+        case 1:  return modeTexture(input);
+        case 2:  return modeAtlasLayers(input);
+        case 3:  return modeGradientWave(input);
+        default: return modePlainColor(input);
+    }
 }

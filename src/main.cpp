@@ -73,15 +73,17 @@ private:
   // Shared texture (for CPU-side image loading/upload)
   std::shared_ptr<window::Texture> checkerboardTex_;
 
-  // Bindless GPU resources
-  device::ImageArrayRegistry imageRegistry_;
+  // Shared bindless image registry (per-device, shared across scenes)
+  std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   device::TextureTableManager textureTable_;
   device::TextureId cubeTextureId_;
 
 public:
   explicit CubeScene3D(const window::SceneTag &sceneTag,
-                       std::shared_ptr<window::Texture> checkerboard)
-      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
+                       std::shared_ptr<window::Texture> checkerboard,
+                       std::shared_ptr<device::ImageArrayRegistry> registry)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        imageRegistry_(std::move(registry)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -90,11 +92,13 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize bindless image registry for this device
-    if (!imageRegistry_.initialize(device)) {
-      std::println(stderr, "[{}] Failed to initialize image registry",
-                   getName());
-      return false;
+    // Initialize shared image registry if not already initialized
+    if (!imageRegistry_->isInitialized()) {
+      if (!imageRegistry_->initialize(device)) {
+        std::println(stderr, "[{}] Failed to initialize image registry",
+                     getName());
+        return false;
+      }
     }
 
     // Initialize the material (compiles bindless shaders)
@@ -115,12 +119,12 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    // Register the uploaded image in the bindless registry
+    // Register the uploaded image in the shared bindless registry
     device::ImageHandle checkerHandle;
     if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
       const auto *layer = checkerboardTex_->getLayer(0);
       if (layer && layer->loaded) {
-        checkerHandle = imageRegistry_.registerImage(
+        checkerHandle = imageRegistry_->registerImage(
             device::ImageKind::eImage2D, layer->gpuImage.getView());
       }
     }
@@ -142,7 +146,7 @@ public:
 
     // Commit descriptors (images + SSBOs)
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
-      imageRegistry_.commitDescriptors(device, checkerboardTex_->getSampler(),
+      imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
                                        &textureTable_.getRecordBuffer(),
                                        &textureTable_.getLayerBuffer());
     }
@@ -165,7 +169,7 @@ public:
 
     // Set the bindless texture ID and descriptor set
     cube_->setTextureId(cubeTextureId_);
-    cube_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
+    cube_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
     // Pipeline config with push constants for time + textureId
     window::PipelineConfig pConfig;
@@ -182,7 +186,7 @@ public:
     if (!cube_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                           imageRegistry_.getDescriptorSetLayout())) {
+                           imageRegistry_->getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize cube", getName());
       return false;
     }
@@ -202,7 +206,7 @@ public:
       material_->release();
       material_.reset();
     }
-    imageRegistry_.shutdown();
+    // Don't shut down the shared image registry — it's owned externally
     textureTable_.clear();
     setLoaded(false);
     std::println("[{}] Cube scene unloaded", getName());
@@ -243,15 +247,17 @@ private:
   // Shared texture (for CPU-side image loading/upload)
   std::shared_ptr<window::Texture> checkerboardTex_;
 
-  // Bindless GPU resources
-  device::ImageArrayRegistry imageRegistry_;
+  // Shared bindless image registry (per-device, shared across scenes)
+  std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   device::TextureTableManager textureTable_;
   device::TextureId quadTextureId_;
 
 public:
   explicit Quad2DScene(const window::SceneTag &sceneTag,
-                       std::shared_ptr<window::Texture> checkerboard)
-      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
+                       std::shared_ptr<window::Texture> checkerboard,
+                       std::shared_ptr<device::ImageArrayRegistry> registry)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        imageRegistry_(std::move(registry)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -260,11 +266,13 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize bindless image registry for this device
-    if (!imageRegistry_.initialize(device)) {
-      std::println(stderr, "[{}] Failed to initialize image registry",
-                   getName());
-      return false;
+    // Initialize shared image registry if not already initialized
+    if (!imageRegistry_->isInitialized()) {
+      if (!imageRegistry_->initialize(device)) {
+        std::println(stderr, "[{}] Failed to initialize image registry",
+                     getName());
+        return false;
+      }
     }
 
     material_ = std::make_unique<window::Material>(QUAD_2D_MATERIAL_TAG);
@@ -283,12 +291,12 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    // Register the uploaded image in the bindless registry
+    // Register the uploaded image in the shared bindless registry
     device::ImageHandle checkerHandle;
     if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
       const auto *layer = checkerboardTex_->getLayer(0);
       if (layer && layer->loaded) {
-        checkerHandle = imageRegistry_.registerImage(
+        checkerHandle = imageRegistry_->registerImage(
             device::ImageKind::eImage2D, layer->gpuImage.getView());
       }
     }
@@ -310,7 +318,7 @@ public:
 
     // Commit descriptors
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
-      imageRegistry_.commitDescriptors(device, checkerboardTex_->getSampler(),
+      imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
                                        &textureTable_.getRecordBuffer(),
                                        &textureTable_.getLayerBuffer());
     }
@@ -333,7 +341,7 @@ public:
 
     // Set the bindless texture ID and descriptor set
     quad_->setTextureId(quadTextureId_);
-    quad_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
+    quad_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
@@ -347,7 +355,7 @@ public:
     if (!quad_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                           imageRegistry_.getDescriptorSetLayout())) {
+                           imageRegistry_->getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
       return false;
     }
@@ -367,7 +375,7 @@ public:
       material_->release();
       material_.reset();
     }
-    imageRegistry_.shutdown();
+    // Don't shut down the shared image registry — it's owned externally
     textureTable_.clear();
     setLoaded(false);
     std::println("[{}] 2D scene unloaded", getName());
@@ -669,19 +677,25 @@ int main(int argc, char *argv[]) {
   auto checkerboardTex =
       std::make_shared<window::Texture>(CHECKERBOARD_TEX_TAG);
 
+  // Create a shared image registry per-device so all scenes/windows
+  // share the same image buffer and don't duplicate images in GPU memory
+  auto sharedImageRegistry =
+      std::make_shared<device::ImageArrayRegistry>();
+
   // Create scenes using the tag system and add them to windows
   // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
-    auto sceneCube =
-        std::make_unique<CubeScene3D>(SCENE_CUBE_TAG, checkerboardTex);
+    auto sceneCube = std::make_unique<CubeScene3D>(
+        SCENE_CUBE_TAG, checkerboardTex, sharedImageRegistry);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
 
   // Window 2: 2D quad scene with bindless textures (Object<2>)
-  // Shares the checkerboard texture with the cube to save GPU memory
+  // Shares the checkerboard texture and image registry with the cube
   if (win2 && win2->hasRenderer()) {
-    auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex);
+    auto scene2d = std::make_unique<Quad2DScene>(
+        SCENE_2D_TAG, checkerboardTex, sharedImageRegistry);
     win2->addScene(&SCENE_2D_TAG, std::move(scene2d));
     win2->presentScene(&SCENE_2D_TAG);
   }
