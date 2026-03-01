@@ -117,7 +117,7 @@ public:
       while (!stoken.stop_requested()) {
         {
           std::lock_guard<std::mutex> lock(reloadMutex_);
-          if (core_->checkAndReloadIfNeeded()) {
+          if (core_ && core_->checkAndReloadIfNeeded()) {
             std::print(
                 ">>> Core module reloaded (dependents cascaded)! <<<\n\n");
           }
@@ -131,7 +131,7 @@ public:
       while (!stoken.stop_requested()) {
         {
           std::lock_guard<std::mutex> lock(reloadMutex_);
-          if (device_->checkAndReloadIfNeeded()) {
+          if (device_ && device_->checkAndReloadIfNeeded()) {
             std::print(
                 ">>> Device module reloaded (dependents cascaded)! <<<\n\n");
           }
@@ -145,7 +145,7 @@ public:
       while (!stoken.stop_requested()) {
         {
           std::lock_guard<std::mutex> lock(reloadMutex_);
-          if (window_->checkAndReloadIfNeeded()) {
+          if (window_ && window_->checkAndReloadIfNeeded()) {
             std::print(">>> Window module reloaded! <<<\n\n");
           }
         }
@@ -156,6 +156,8 @@ public:
 
   /**
    * @brief Stop all monitoring threads and release module resources
+   *
+   * Safe to call multiple times (idempotent).
    */
   void shutdown() {
     for (auto &t : monitorThreads_) {
@@ -168,20 +170,59 @@ public:
     }
     monitorThreads_.clear();
 
-    // Modules are destroyed in reverse dependency order
-    window_.reset();
-    device_.reset();
-    core_.reset();
+    // Modules are destroyed in reverse dependency order.
+    // Guard each reset so double-shutdown is safe.
+    if (window_)
+      window_.reset();
+    if (device_)
+      device_.reset();
+    if (core_)
+      core_.reset();
   }
 
 private:
+  /**
+   * @brief Cleanup a coreState, optionally calling shutdown on singletons.
+   *
+   * Static so it can be called from lambdas that only capture a raw pointer.
+   * @param state     The coreState to clean up (may be nullptr).
+   * @param callShutdown  If true, call shutdown() on each singleton before
+   *                      deleting. Use true during normal destroy, false during
+   *                      init-failure cleanup (singletons not fully started).
+   */
+  static void destroyCoreState(coreState *state, bool callShutdown) {
+    if (!state)
+      return;
+    if (state->thread) {
+      if (callShutdown)
+        state->thread->shutdown();
+      delete state->thread;
+    }
+    if (state->memory) {
+      if (callShutdown)
+        state->memory->shutdown();
+      delete state->memory;
+    }
+    if (state->config) {
+      if (callShutdown)
+        state->config->shutdown();
+      delete state->config;
+    }
+    delete state;
+  }
+
   void setupCoreCallbacks() {
-    core_->registerLoadCallback("core_load", [this](void *data) {
+    // Capture a stable raw pointer — guaranteed valid for the lifetime of
+    // the HotReload object.  unique_ptr::reset() nulls the smart pointer
+    // BEFORE invoking ~HotReload, so callbacks must NOT go through core_.
+    HotReload *corePtr = core_.get();
+
+    corePtr->registerLoadCallback("core_load", [corePtr](void *data) {
       std::print("[ModuleReloadManager] Core library loaded\n");
 
       coreState *state = static_cast<coreState *>(data);
       auto fn =
-          reinterpret_cast<void (*)(void *)>(core_->getSymbol("lib_on_load"));
+          reinterpret_cast<void (*)(void *)>(corePtr->getSymbol("lib_on_load"));
       if (fn) {
         fn(state);
       } else {
@@ -191,158 +232,153 @@ private:
       }
     });
 
-    core_->registerUnloadCallback("core_unload", [this](void *data) {
+    corePtr->registerUnloadCallback("core_unload", [corePtr](void *data) {
       std::print("[ModuleReloadManager] Core library unloading\n");
 
       coreState *state = static_cast<coreState *>(data);
-      auto fn =
-          reinterpret_cast<void (*)(void *)>(core_->getSymbol("lib_on_unload"));
+      auto fn = reinterpret_cast<void (*)(void *)>(
+          corePtr->getSymbol("lib_on_unload"));
       if (fn) {
         fn(state);
       }
     });
 
-    core_->registerReloadCallback("core_reload", [this](void *data) {
+    corePtr->registerReloadCallback("core_reload", [corePtr](void *data) {
       std::print("[ModuleReloadManager] Core library reloading\n");
 
       coreState *state = static_cast<coreState *>(data);
-      auto fn =
-          reinterpret_cast<void (*)(void *)>(core_->getSymbol("lib_on_reload"));
+      auto fn = reinterpret_cast<void (*)(void *)>(
+          corePtr->getSymbol("lib_on_reload"));
       if (fn) {
         fn(state);
       }
     });
 
-    core_->registerDestroyCallback("core_cleanup", [this](void *data) {
+    corePtr->registerDestroyCallback("core_cleanup", [corePtr](void *data) {
       std::print("[ModuleReloadManager] Core library cleanup\n");
 
       auto fn = reinterpret_cast<void (*)(void *)>(
-          core_->getSymbol("lib_on_destroy"));
+          corePtr->getSymbol("lib_on_destroy"));
       if (fn) {
         fn(data);
       } else {
         std::print(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
                            "found, manual cleanup\n");
-        cleanupCoreState(true);
+        destroyCoreState(static_cast<coreState *>(data), true);
       }
-      core_->setData(nullptr);
+      corePtr->setData(nullptr);
     });
   }
 
   void setupDeviceCallbacks() {
-    device_->registerLoadCallback("device_load", [this](void *data) {
+    HotReload *devicePtr = device_.get();
+
+    devicePtr->registerLoadCallback("device_load", [devicePtr](void *data) {
       std::print("[ModuleReloadManager] Device library loaded\n");
 
-      auto fn =
-          reinterpret_cast<void (*)(void *)>(device_->getSymbol("lib_on_load"));
-      if (fn) {
-        fn(data);
-      }
-    });
-
-    device_->registerUnloadCallback("device_unload", [this](void *data) {
-      std::print("[ModuleReloadManager] Device library unloading\n");
-
       auto fn = reinterpret_cast<void (*)(void *)>(
-          device_->getSymbol("lib_on_unload"));
+          devicePtr->getSymbol("lib_on_load"));
       if (fn) {
         fn(data);
       }
     });
 
-    device_->registerReloadCallback("device_reload", [this](void *data) {
-      std::print("[ModuleReloadManager] Device library reloading\n");
+    devicePtr->registerUnloadCallback(
+        "device_unload", [devicePtr](void *data) {
+          std::print("[ModuleReloadManager] Device library unloading\n");
 
-      auto fn = reinterpret_cast<void (*)(void *)>(
-          device_->getSymbol("lib_on_reload"));
-      if (fn) {
-        fn(data);
-      }
-    });
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              devicePtr->getSymbol("lib_on_unload"));
+          if (fn) {
+            fn(data);
+          }
+        });
 
-    device_->registerDestroyCallback("device_cleanup", [this](void *data) {
-      std::print("[ModuleReloadManager] Device library cleanup\n");
+    devicePtr->registerReloadCallback(
+        "device_reload", [devicePtr](void *data) {
+          std::print("[ModuleReloadManager] Device library reloading\n");
 
-      auto fn = reinterpret_cast<void (*)(void *)>(
-          device_->getSymbol("lib_on_destroy"));
-      if (fn) {
-        fn(data);
-      } else {
-        delete static_cast<deviceState *>(data);
-      }
-      device_->setData(nullptr);
-    });
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              devicePtr->getSymbol("lib_on_reload"));
+          if (fn) {
+            fn(data);
+          }
+        });
+
+    devicePtr->registerDestroyCallback(
+        "device_cleanup", [devicePtr](void *data) {
+          std::print("[ModuleReloadManager] Device library cleanup\n");
+
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              devicePtr->getSymbol("lib_on_destroy"));
+          if (fn) {
+            fn(data);
+          } else {
+            delete static_cast<deviceState *>(data);
+          }
+          devicePtr->setData(nullptr);
+        });
   }
 
   void setupWindowCallbacks() {
-    window_->registerLoadCallback("window_load", [this](void *data) {
+    HotReload *windowPtr = window_.get();
+
+    windowPtr->registerLoadCallback("window_load", [windowPtr](void *data) {
       std::print("[ModuleReloadManager] Window library loaded\n");
 
-      auto fn =
-          reinterpret_cast<void (*)(void *)>(window_->getSymbol("lib_on_load"));
-      if (fn) {
-        fn(data);
-      }
-    });
-
-    window_->registerUnloadCallback("window_unload", [this](void *data) {
-      std::print("[ModuleReloadManager] Window library unloading\n");
-
       auto fn = reinterpret_cast<void (*)(void *)>(
-          window_->getSymbol("lib_on_unload"));
+          windowPtr->getSymbol("lib_on_load"));
       if (fn) {
         fn(data);
       }
     });
 
-    window_->registerReloadCallback("window_reload", [this](void *data) {
-      std::print("[ModuleReloadManager] Window library reloading\n");
+    windowPtr->registerUnloadCallback(
+        "window_unload", [windowPtr](void *data) {
+          std::print("[ModuleReloadManager] Window library unloading\n");
 
-      auto fn = reinterpret_cast<void (*)(void *)>(
-          window_->getSymbol("lib_on_reload"));
-      if (fn) {
-        fn(data);
-      }
-    });
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              windowPtr->getSymbol("lib_on_unload"));
+          if (fn) {
+            fn(data);
+          }
+        });
 
-    window_->registerDestroyCallback("window_cleanup", [this](void *data) {
-      std::print("[ModuleReloadManager] Window library cleanup\n");
+    windowPtr->registerReloadCallback(
+        "window_reload", [windowPtr](void *data) {
+          std::print("[ModuleReloadManager] Window library reloading\n");
 
-      auto fn = reinterpret_cast<void (*)(void *)>(
-          window_->getSymbol("lib_on_destroy"));
-      if (fn) {
-        fn(data);
-      } else {
-        delete static_cast<windowState *>(data);
-      }
-      window_->setData(nullptr);
-    });
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              windowPtr->getSymbol("lib_on_reload"));
+          if (fn) {
+            fn(data);
+          }
+        });
+
+    windowPtr->registerDestroyCallback(
+        "window_cleanup", [windowPtr](void *data) {
+          std::print("[ModuleReloadManager] Window library cleanup\n");
+
+          auto fn = reinterpret_cast<void (*)(void *)>(
+              windowPtr->getSymbol("lib_on_destroy"));
+          if (fn) {
+            fn(data);
+          } else {
+            delete static_cast<windowState *>(data);
+          }
+          windowPtr->setData(nullptr);
+        });
   }
 
-  void cleanupCoreState(bool callShutdown = false) {
-    coreState *state = static_cast<coreState *>(core_->getData());
-    if (state) {
-      if (state->thread) {
-        if (callShutdown) {
-          state->thread->shutdown();
-        }
-        delete state->thread;
-      }
-      if (state->memory) {
-        if (callShutdown) {
-          state->memory->shutdown();
-        }
-        delete state->memory;
-      }
-      if (state->config) {
-        if (callShutdown) {
-          state->config->shutdown();
-        }
-        delete state->config;
-      }
-      delete state;
-      core_->setData(nullptr);
-    }
+  /**
+   * @brief Cleanup core state on initialization failure.
+   *
+   * Only called from initialize() where core_ is guaranteed valid.
+   * Does NOT call shutdown() on singletons — they were never fully started.
+   */
+  void cleanupCoreState() {
+    destroyCoreState(static_cast<coreState *>(core_->getData()), false);
+    core_->setData(nullptr);
   }
 
   std::unique_ptr<HotReload> core_;
