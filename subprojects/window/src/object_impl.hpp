@@ -44,6 +44,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
+  atlasTextureId_ = other.atlasTextureId_;
   submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -72,6 +73,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
+    atlasTextureId_ = other.atlasTextureId_;
     submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -306,6 +308,12 @@ template <uint32_t Dim> void Object<Dim>::setTextureId(device::TextureId id) {
 }
 
 template <uint32_t Dim>
+void Object<Dim>::setAtlasTextureId(device::TextureId id) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  atlasTextureId_ = id;
+}
+
+template <uint32_t Dim>
 void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
                                             device::TextureId id) {
   std::lock_guard<std::mutex> lock(objectMutex_);
@@ -458,10 +466,11 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + textureId (bindless)
+  // Push constants: time + textureId + atlasTextureId (bindless)
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index};
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
+                                           atlasTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);

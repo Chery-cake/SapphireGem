@@ -24,7 +24,8 @@ struct UniformBuffer {
 
 struct PushData {
     float time;
-    uint  textureId;  // TextureId index into TextureRecord SSBO
+    uint  textureId;       // TextureId index into TextureRecord SSBO
+    uint  atlasTextureId;  // TextureId for atlas-layered faces (unused in quad)
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -92,8 +93,10 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint uvIdx = vertexID % 6;
     output.uv = quadUVs[uvIdx];
 
-    // Apply wave displacement to gradient quadrant (mode 2) vertices
-    if (output.renderMode == 2u) {
+    // Apply wave displacement to ALL vertices unconditionally.
+    // Since adjacent quadrants share edge positions, wave displacement
+    // must be applied globally to avoid gaps/seams at shared edges.
+    {
         float t = pc.time;
         pos.x += sin(pos.y * 6.0 + t * 2.5) * 0.04;
         pos.y += cos(pos.x * 5.0 + t * 2.0) * 0.04;

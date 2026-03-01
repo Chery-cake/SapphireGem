@@ -29,7 +29,8 @@ struct UniformBuffer {
 
 struct PushData {
     float time;
-    uint  textureId;  // TextureId index into TextureRecord SSBO
+    uint  textureId;       // TextureId index into TextureRecord SSBO
+    uint  atlasTextureId;  // TextureId for atlas-layered faces
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -114,12 +115,12 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint triIndex = vertexID / 3;
     output.renderMode = faceRenderMode[triIndex];
 
-    // Apply wave displacement only to gradient+wave faces (mode 3)
-    float3 disp = float3(0.0, 0.0, 0.0);
-    if (output.renderMode == 3u) {
-        disp = waveDisplacement(pos, pc.time);
-        pos += disp;
-    }
+    // Apply wave displacement to ALL vertices unconditionally.
+    // Since the cube uses shared vertex indices (cubePositions[8]),
+    // adjacent faces sharing vertices with wave faces must see the
+    // same displacement to avoid gaps/seams at shared edges.
+    float3 disp = waveDisplacement(pos, pc.time);
+    pos += disp;
     output.waveAmount = disp.y;
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
@@ -178,9 +179,9 @@ float4 modeTexture(GSOutput input) {
     return texColor;
 }
 
-// Mode 2: Layered atlas texture via bindless sampling
+// Mode 2: Layered atlas texture via bindless sampling (uses atlasTextureId)
 float4 modeAtlasLayers(GSOutput input) {
-    float4 texColor = sampleBindlessTexture(input.textureId, input.uv, pc.time);
+    float4 texColor = sampleBindlessTexture(pc.atlasTextureId, input.uv, pc.time);
     return texColor;
 }
 

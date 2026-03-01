@@ -134,6 +134,16 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
     }
 
     auto &arr = imageArrays_[kindIdx];
+
+    // Deduplicate: return existing handle if the same view is already registered
+    for (uint32_t i = 0; i < static_cast<uint32_t>(arr.size()); ++i) {
+        if (arr[i].view == view) {
+            ImageHandle handle;
+            handle.index = i;
+            return handle;
+        }
+    }
+
     ImageHandle handle;
     handle.index = static_cast<uint32_t>(arr.size());
     arr.push_back({view, false});
