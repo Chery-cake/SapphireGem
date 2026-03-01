@@ -1,0 +1,245 @@
+#ifndef SWAPCHAIN_H_
+#define SWAPCHAIN_H_
+
+#include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_raii.hpp"
+#include "window_export.h"
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <vector>
+
+// Forward declare device types
+namespace device {
+class GPUDevice;
+}
+
+namespace window {
+
+/**
+ * @brief Swapchain configuration
+ */
+struct WINDOW_API SwapchainConfig { // TODO check default config
+  vk::PresentModeKHR preferredPresentMode = vk::PresentModeKHR::eFifo; // VSync
+  vk::Format preferredFormat = vk::Format::eB8G8R8A8Srgb;
+  vk::ColorSpaceKHR preferredColorSpace = vk::ColorSpaceKHR::eSrgbNonlinear;
+  uint32_t minImageCount = 2; // Double buffering by default
+  bool vsync = true;
+};
+
+/**
+ * @brief Offscreen image resources for a secondary GPU
+ */
+struct WINDOW_API SecondaryGPUResources {
+  device::GPUDevice *device = nullptr;
+  std::unique_ptr<vk::raii::Image> offscreenImage;
+  std::unique_ptr<vk::raii::DeviceMemory> offscreenMemory;
+  std::unique_ptr<vk::raii::ImageView> offscreenImageView;
+  std::unique_ptr<vk::raii::CommandPool> commandPool;
+  std::unique_ptr<vk::raii::Fence> renderFence;
+  std::unique_ptr<vk::raii::Semaphore> renderSemaphore;
+  vk::CommandBuffer commandBuffer; // Owned by command pool
+};
+
+/**
+ * @brief Swapchain image resources using RAII
+ */
+struct WINDOW_API SwapchainFrame {
+  vk::Image image; // Owned by swapchain
+  std::unique_ptr<vk::raii::ImageView> imageView;
+  std::unique_ptr<vk::raii::Framebuffer> framebuffer;
+  uint32_t index = 0;
+};
+
+/**
+ * @brief Manages Vulkan swapchain for a window using RAII
+ *
+ * Uses vk::raii wrappers for automatic resource management.
+ * Handles:
+ * - Swapchain creation and recreation
+ * - Image acquisition and presentation
+ * - Framebuffer management
+ */
+class WINDOW_API Swapchain {
+public:
+  Swapchain();
+  ~Swapchain();
+
+  // Disable copy
+  Swapchain(const Swapchain &) = delete;
+  Swapchain &operator=(const Swapchain &) = delete;
+
+  // Enable move
+  Swapchain(Swapchain &&other) noexcept;
+  Swapchain &operator=(Swapchain &&other) noexcept;
+
+  /**
+   * @brief Create the swapchain
+   * @param device GPU device to use
+   * @param surface Vulkan surface
+   * @param config Swapchain configuration
+   * @return true if creation succeeded
+   */
+  bool create(device::GPUDevice *device,
+              std::vector<device::GPUDevice *> &secondary,
+              vk::raii::SurfaceKHR &surface, const SwapchainConfig &config,
+              uint32_t windowWidth, uint32_t windowHeight);
+
+  /**
+   * @brief Destroy the swapchain
+   */
+  void destroy();
+
+  /**
+   * @brief Recreate swapchain (e.g., after resize)
+   * @param newWidth New width
+   * @param newHeight New height
+   * @return true if recreation succeeded
+   */
+  bool recreate(uint32_t newWidth, uint32_t newHeight);
+
+  /**
+   * @brief Check if swapchain is valid
+   * @return true if valid
+   */
+  [[nodiscard]] bool isValid() const { return swapchain_ && !needsRecreation_; }
+
+  /**
+   * @brief Check if swapchain needs recreation
+   * @return true if recreation is needed
+   */
+  [[nodiscard]] bool needsRecreation() const { return needsRecreation_; }
+
+  /**
+   * @brief Mark swapchain as needing recreation
+   */
+  void markForRecreation() { needsRecreation_ = true; }
+
+  /**
+   * @brief Acquire next image from swapchain
+   * @param semaphore Semaphore to signal when image is acquired
+   * @param fence Optional fence to signal
+   * @param timeout Timeout in nanoseconds (default: infinite)
+   * @return Image index, or UINT32_MAX on failure
+   */
+  uint32_t acquireNextImage(vk::Semaphore semaphore, vk::Fence fence = nullptr,
+                            uint64_t timeout = UINT64_MAX);
+
+  /**
+   * @brief Present an image to the swapchain
+   * @param imageIndex Index of image to present
+   * @param waitSemaphores Semaphores to wait on before presenting
+   * @return true if presentation succeeded
+   */
+  bool present(uint32_t imageIndex,
+               const std::vector<vk::Semaphore> &waitSemaphores);
+
+  // Getters
+  [[nodiscard]] vk::SwapchainKHR getSwapchain() const {
+    return swapchain_ ? **swapchain_ : vk::SwapchainKHR{};
+  }
+  [[nodiscard]] vk::Format getFormat() const { return format_; }
+  [[nodiscard]] vk::Extent2D getExtent() const { return extent_; }
+  [[nodiscard]] uint32_t getImageCount() const {
+    return static_cast<uint32_t>(frames_.size());
+  }
+  [[nodiscard]] const std::vector<SwapchainFrame> &getFrames() const {
+    return frames_;
+  }
+  [[nodiscard]] const SwapchainFrame &getFrame(uint32_t index) const {
+    return frames_[index];
+  }
+
+  /**
+   * @brief Create framebuffers for all swapchain images
+   * @param renderPass Render pass to create framebuffers for
+   * @param depthView Optional depth attachment view
+   * @return true if creation succeeded
+   */
+  bool createFramebuffers(vk::RenderPass renderPass,
+                          vk::ImageView depthView = nullptr);
+
+  /**
+   * @brief Destroy all framebuffers
+   */
+  void destroyFramebuffers();
+
+  /**
+   * @brief Check if multi-GPU rendering is enabled
+   * @return true if secondary GPUs are configured
+   */
+  [[nodiscard]] bool isMultiGPU() const {
+    return !secondaryGPUDevices_.empty();
+  }
+
+  /**
+   * @brief Get secondary GPU resources
+   * @return Vector of secondary GPU resource entries
+   */
+  [[nodiscard]] const std::vector<SecondaryGPUResources> &
+  getSecondaryResources() const {
+    return secondaryResources_;
+  }
+
+  /**
+   * @brief Get the main GPU device
+   * @return Pointer to main GPU device
+   */
+  [[nodiscard]] device::GPUDevice *getMainDevice() const {
+    return mainGPUDevice_;
+  }
+
+  /**
+   * @brief Update the main GPU device and recreate swapchain resources
+   * @param device New main GPU device
+   * @return true if update succeeded
+   */
+  bool updateMainDevice(device::GPUDevice *device);
+
+  /**
+   * @brief Update secondary GPU devices and recreate secondary resources
+   * @param devices New secondary GPU devices
+   * @return true if update succeeded
+   */
+  bool updateSecondaryDevices(std::vector<device::GPUDevice *> &devices);
+
+private:
+  static vk::SurfaceFormatKHR
+  chooseSurfaceFormat(const std::vector<vk::SurfaceFormatKHR> &formats,
+                      const SwapchainConfig &config);
+  static vk::PresentModeKHR
+  choosePresentMode(const std::vector<vk::PresentModeKHR> &modes,
+                    const SwapchainConfig &config);
+  static vk::Extent2D
+  chooseExtent(const vk::SurfaceCapabilitiesKHR &capabilities,
+               uint32_t windowWidth, uint32_t windowHeight);
+
+  void createImageViews();
+  void destroyImageViews();
+  bool createSecondaryGPUResources();
+  void destroySecondaryGPUResources();
+
+  device::GPUDevice *mainGPUDevice_ = nullptr;
+  std::vector<device::GPUDevice *> secondaryGPUDevices_;
+  std::unique_ptr<vk::raii::SurfaceKHR> surface_;
+  vk::Queue presentQueue_;
+  uint32_t presentQueueFamily_ = 0;
+
+  std::unique_ptr<vk::raii::SwapchainKHR> swapchain_;
+  std::vector<SecondaryGPUResources> secondaryResources_;
+
+  vk::Format format_ = vk::Format::eUndefined;
+  vk::Extent2D extent_ = {0, 0};
+
+  std::vector<SwapchainFrame> frames_;
+  SwapchainConfig config_;
+
+  bool needsRecreation_ = false;
+
+  mutable std::mutex swapchainMutex_;
+};
+
+} // namespace window
+
+#endif // SWAPCHAIN_H_
