@@ -172,7 +172,7 @@ public:
       textureTable_.setLayers(cubeTextureId_, {cubeLayer});
     }
 
-    // Build texture record 1: 4 layers from the atlas (2×2 grid, 256×256 each
+    // Build texture record 1: 4 layers from the atlas (2×2 grid, 256×256 each,
     // in a 512×512 atlas). Each layer references the same atlas image but with
     // different UV sub-region offsets. Layers are composited with alpha blending.
     atlasTextureId_ = textureTable_.addRecord(4);
