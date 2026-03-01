@@ -223,22 +223,7 @@ private:
       } else {
         std::print(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
                            "found, manual cleanup\n");
-        coreState *state = static_cast<coreState *>(data);
-        if (state) {
-          if (state->thread) {
-            state->thread->shutdown();
-            delete state->thread;
-          }
-          if (state->memory) {
-            state->memory->shutdown();
-            delete state->memory;
-          }
-          if (state->config) {
-            state->config->shutdown();
-            delete state->config;
-          }
-          delete state;
-        }
+        cleanupCoreState(true);
       }
       core_->setData(nullptr);
     });
@@ -334,16 +319,25 @@ private:
     });
   }
 
-  void cleanupCoreState() {
+  void cleanupCoreState(bool callShutdown = false) {
     coreState *state = static_cast<coreState *>(core_->getData());
     if (state) {
       if (state->thread) {
+        if (callShutdown) {
+          state->thread->shutdown();
+        }
         delete state->thread;
       }
       if (state->memory) {
+        if (callShutdown) {
+          state->memory->shutdown();
+        }
         delete state->memory;
       }
       if (state->config) {
+        if (callShutdown) {
+          state->config->shutdown();
+        }
         delete state->config;
       }
       delete state;
