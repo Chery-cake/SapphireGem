@@ -55,19 +55,23 @@ struct TextureLayer {
 // ---------------------------------------------------------------------------
 // Bindless descriptor set  (set 1)
 // ---------------------------------------------------------------------------
-// Binding 0: sampled images – images2D[]
-// Binding 1: sampled images – atlases[]
-// Binding 2: sampled images – maps[]
-// Binding 3: shared sampler
-// Binding 4: TextureRecord SSBO
-// Binding 5: TextureLayer SSBO
+// Image arrays are placed at the highest binding numbers so that
+// VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT (required to be
+// on the highest binding) lands on the last image array (maps, binding 5).
+//
+// Binding 0: shared sampler
+// Binding 1: TextureRecord SSBO
+// Binding 2: TextureLayer SSBO
+// Binding 3: sampled images – images2D[]
+// Binding 4: sampled images – atlases[]
+// Binding 5: sampled images – maps[]
 
-[[vk::binding(0, 1)]] Texture2D        bindless_images2D[];
-[[vk::binding(1, 1)]] Texture2D        bindless_atlases[];
-[[vk::binding(2, 1)]] Texture2D        bindless_maps[];
-[[vk::binding(3, 1)]] SamplerState     bindless_sampler;
-[[vk::binding(4, 1)]] StructuredBuffer<TextureRecord> textureRecords;
-[[vk::binding(5, 1)]] StructuredBuffer<TextureLayer>  textureLayers;
+[[vk::binding(0, 1)]] SamplerState     bindless_sampler;
+[[vk::binding(1, 1)]] StructuredBuffer<TextureRecord> textureRecords;
+[[vk::binding(2, 1)]] StructuredBuffer<TextureLayer>  textureLayers;
+[[vk::binding(3, 1)]] Texture2D        bindless_images2D[];
+[[vk::binding(4, 1)]] Texture2D        bindless_atlases[];
+[[vk::binding(5, 1)]] Texture2D        bindless_maps[];
 
 // ---------------------------------------------------------------------------
 // Maximum layer loop count – bounded for performance

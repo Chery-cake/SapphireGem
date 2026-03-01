@@ -24,12 +24,12 @@ struct AllocatedBuffer;
  * corresponding descriptor array.
  *
  * Descriptor set layout (set = kBindlessSet, per-device):
- *   binding 0  –  sampled images (images2D),   variable count
- *   binding 1  –  sampled images (atlases),     variable count
- *   binding 2  –  sampled images (maps),        variable count
- *   binding 3  –  sampler (shared immutable)
- *   binding 4  –  SSBO   TextureRecord[]
- *   binding 5  –  SSBO   TextureLayer[]
+ *   binding 0  –  sampler (shared immutable)
+ *   binding 1  –  SSBO   TextureRecord[]
+ *   binding 2  –  SSBO   TextureLayer[]
+ *   binding 3  –  sampled images (images2D), partially bound
+ *   binding 4  –  sampled images (atlases), partially bound
+ *   binding 5  –  sampled images (maps), variable count (highest binding)
  *
  * Multi-GPU:  each GPUDevice creates its own ImageArrayRegistry.
  * The same logical ImageHandle (returned from the CPU side) can be
@@ -47,13 +47,17 @@ public:
   /// Descriptor set index used by the bindless set (set 1 in pipelines)
   static constexpr uint32_t kBindlessSet = 1;
 
-  /// Bindings inside the bindless descriptor set
-  static constexpr uint32_t kBindingImages2D = 0;
-  static constexpr uint32_t kBindingAtlases = 1;
-  static constexpr uint32_t kBindingMaps = 2;
-  static constexpr uint32_t kBindingSampler = 3;
-  static constexpr uint32_t kBindingTextureRecords = 4;
-  static constexpr uint32_t kBindingTextureLayers = 5;
+  /// Bindings inside the bindless descriptor set.
+  /// Image arrays are placed at the highest binding numbers so that
+  /// VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT (which the
+  /// Vulkan spec requires to be on the highest binding) lands on the
+  /// last image array (kBindingMaps).
+  static constexpr uint32_t kBindingSampler = 0;
+  static constexpr uint32_t kBindingTextureRecords = 1;
+  static constexpr uint32_t kBindingTextureLayers = 2;
+  static constexpr uint32_t kBindingImages2D = 3;
+  static constexpr uint32_t kBindingAtlases = 4;
+  static constexpr uint32_t kBindingMaps = 5;
 
   /// Upper bound for the variable-count descriptor arrays.
   /// The descriptor pool is sized for this many images per kind.

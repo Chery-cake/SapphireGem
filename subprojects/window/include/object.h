@@ -278,6 +278,16 @@ public:
   void setTextureId(device::TextureId id);
 
   /**
+   * @brief Set the atlas TextureId for the object
+   *
+   * Used by shaders that need a second texture record (e.g. for
+   * layered atlas faces on the cube).  Passed via push constants.
+   *
+   * @param id  TextureId (index into TextureRecord[])
+   */
+  void setAtlasTextureId(device::TextureId id);
+
+  /**
    * @brief Override the TextureId for a specific submesh / face range
    *
    * If set, this override takes priority over the base TextureId
@@ -386,6 +396,7 @@ private:
 
   // Bindless texture ID (index into TextureRecord SSBO)
   device::TextureId baseTextureId_;
+  device::TextureId atlasTextureId_;
   // Per-face texture ID overrides (submesh overrides)
   std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
   // Global bindless descriptor set (set 1), set externally

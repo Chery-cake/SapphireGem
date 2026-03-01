@@ -56,6 +56,15 @@ static const window::TextureLayerInfo CHECKERBOARD_LAYERS[] = {
 static const window::TextureTag CHECKERBOARD_TEX_TAG{"checkerboard_tex",
                                                      CHECKERBOARD_LAYERS, 1};
 
+// Atlas texture: layer_atlas.png (512x512, contains shapes in a 2x2 grid)
+static const window::ImageTag LAYER_ATLAS_IMAGE{window::ImageFromFile{
+    "layer_atlas", "assets/textures/layer_atlas.png", 512, 512}};
+
+static const window::TextureLayerInfo LAYER_ATLAS_LAYERS[] = {
+    {&LAYER_ATLAS_IMAGE}};
+static const window::TextureTag LAYER_ATLAS_TEX_TAG{"layer_atlas_tex",
+                                                    LAYER_ATLAS_LAYERS, 1};
+
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
 static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
@@ -70,18 +79,24 @@ private:
   std::unique_ptr<window::Object<3>> cube_;
   float totalTime_ = 0.0f;
 
-  // Shared texture (for CPU-side image loading/upload)
+  // Shared textures (for CPU-side image loading/upload)
   std::shared_ptr<window::Texture> checkerboardTex_;
+  std::shared_ptr<window::Texture> layerAtlasTex_;
 
-  // Bindless GPU resources
-  device::ImageArrayRegistry imageRegistry_;
+  // Shared bindless image registry (per-device, shared across scenes)
+  std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   device::TextureTableManager textureTable_;
   device::TextureId cubeTextureId_;
+  device::TextureId atlasTextureId_;
 
 public:
   explicit CubeScene3D(const window::SceneTag &sceneTag,
-                       std::shared_ptr<window::Texture> checkerboard)
-      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
+                       std::shared_ptr<window::Texture> checkerboard,
+                       std::shared_ptr<window::Texture> layerAtlas,
+                       std::shared_ptr<device::ImageArrayRegistry> registry)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        layerAtlasTex_(std::move(layerAtlas)),
+        imageRegistry_(std::move(registry)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -90,11 +105,13 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize bindless image registry for this device
-    if (!imageRegistry_.initialize(device)) {
-      std::println(stderr, "[{}] Failed to initialize image registry",
-                   getName());
-      return false;
+    // Initialize shared image registry if not already initialized
+    if (!imageRegistry_->isInitialized()) {
+      if (!imageRegistry_->initialize(device)) {
+        std::println(stderr, "[{}] Failed to initialize image registry",
+                     getName());
+        return false;
+      }
     }
 
     // Initialize the material (compiles bindless shaders)
@@ -115,24 +132,95 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    // Register the uploaded image in the bindless registry
+    // Upload layer atlas texture to GPU
+    if (layerAtlasTex_ && !layerAtlasTex_->isUploaded()) {
+      if (!layerAtlasTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload layer atlas texture",
+                     getName());
+        return false;
+      }
+      layerAtlasTex_->createSampler(device);
+    }
+
+    // Register the uploaded checkerboard image in the shared bindless
+    // registry
     device::ImageHandle checkerHandle;
     if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
       const auto *layer = checkerboardTex_->getLayer(0);
       if (layer && layer->loaded) {
-        checkerHandle = imageRegistry_.registerImage(
+        checkerHandle = imageRegistry_->registerImage(
             device::ImageKind::eImage2D, layer->gpuImage.getView());
       }
     }
 
-    // Build a texture record with one layer (checkerboard image)
-    cubeTextureId_ = textureTable_.addRecord(1);
+    // Register the atlas image in the shared bindless registry
+    device::ImageHandle atlasHandle;
+    if (layerAtlasTex_ && layerAtlasTex_->isUploaded()) {
+      const auto *layer = layerAtlasTex_->getLayer(0);
+      if (layer && layer->loaded) {
+        atlasHandle = imageRegistry_->registerImage(device::ImageKind::eAtlas,
+                                                    layer->gpuImage.getView());
+      }
+    }
 
-    device::GPUTextureLayer cubeLayer;
-    cubeLayer.image2DIndex = checkerHandle.isValid()
-                                 ? static_cast<int32_t>(checkerHandle.index)
-                                 : -1;
-    textureTable_.setLayers(cubeTextureId_, {cubeLayer});
+    // Build texture record 0: one layer (checkerboard image)
+    cubeTextureId_ = textureTable_.addRecord(1);
+    {
+      device::GPUTextureLayer cubeLayer;
+      cubeLayer.image2DIndex = checkerHandle.isValid()
+                                   ? static_cast<int32_t>(checkerHandle.index)
+                                   : -1;
+      textureTable_.setLayers(cubeTextureId_, {cubeLayer});
+    }
+
+    // Build texture record 1: 4 layers from the atlas (2×2 grid, 256×256
+    // each, in a 512×512 atlas). Each layer references the same atlas image
+    // but with different UV sub-region offsets. Layers are composited with
+    // alpha blending.
+    atlasTextureId_ = textureTable_.addRecord(4);
+    {
+      int32_t atlasIdx =
+          atlasHandle.isValid() ? static_cast<int32_t>(atlasHandle.index) : -1;
+
+      // Top-left region:  UV offset (0, 0), scale (0.5, 0.5)
+      device::GPUTextureLayer layer0;
+      layer0.atlasIndex = atlasIdx;
+      layer0.atlasUvOffsetX = 0.0f;
+      layer0.atlasUvOffsetY = 0.0f;
+      layer0.atlasUvScaleX = 0.5f;
+      layer0.atlasUvScaleY = 0.5f;
+      layer0.blendMode = 0; // alpha blend
+
+      // Top-right region: UV offset (0.5, 0), scale (0.5, 0.5)
+      device::GPUTextureLayer layer1;
+      layer1.atlasIndex = atlasIdx;
+      layer1.atlasUvOffsetX = 0.5f;
+      layer1.atlasUvOffsetY = 0.0f;
+      layer1.atlasUvScaleX = 0.5f;
+      layer1.atlasUvScaleY = 0.5f;
+      layer1.blendMode = 1; // additive
+
+      // Bottom-left region: UV offset (0, 0.5), scale (0.5, 0.5)
+      device::GPUTextureLayer layer2;
+      layer2.atlasIndex = atlasIdx;
+      layer2.atlasUvOffsetX = 0.0f;
+      layer2.atlasUvOffsetY = 0.5f;
+      layer2.atlasUvScaleX = 0.5f;
+      layer2.atlasUvScaleY = 0.5f;
+      layer2.blendMode = 1; // additive
+
+      // Bottom-right region: UV offset (0.5, 0.5), scale (0.5, 0.5)
+      device::GPUTextureLayer layer3;
+      layer3.atlasIndex = atlasIdx;
+      layer3.atlasUvOffsetX = 0.5f;
+      layer3.atlasUvOffsetY = 0.5f;
+      layer3.atlasUvScaleX = 0.5f;
+      layer3.atlasUvScaleY = 0.5f;
+      layer3.blendMode = 1; // additive
+
+      textureTable_.setLayers(atlasTextureId_,
+                              {layer0, layer1, layer2, layer3});
+    }
 
     // Upload texture tables to GPU
     if (!textureTable_.uploadToGPU(allocator, device)) {
@@ -142,9 +230,9 @@ public:
 
     // Commit descriptors (images + SSBOs)
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
-      imageRegistry_.commitDescriptors(device, checkerboardTex_->getSampler(),
-                                       &textureTable_.getRecordBuffer(),
-                                       &textureTable_.getLayerBuffer());
+      imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
+                                        &textureTable_.getRecordBuffer(),
+                                        &textureTable_.getLayerBuffer());
     }
 
     // Create cube geometry (36 vertices for 12 triangles)
@@ -163,33 +251,36 @@ public:
     cube_ = std::make_unique<window::Object<3>>(
         CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
 
-    // Set the bindless texture ID and descriptor set
+    // Set the bindless texture IDs and descriptor set
     cube_->setTextureId(cubeTextureId_);
-    cube_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
+    cube_->setAtlasTextureId(atlasTextureId_);
+    cube_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
-    // Pipeline config with push constants for time + textureId
+    // Pipeline config with push constants for time + textureId +
+    // atlasTextureId
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eBack;
     pConfig.frontFace = vk::FrontFace::eCounterClockwise;
     pConfig.depthTestEnable = true;
     pConfig.depthWriteEnable = true;
-    pConfig.pushConstantSize =
-        sizeof(device::BindlessPushConstants); // time + textureId
+    pConfig.pushConstantSize = sizeof(
+        device::BindlessPushConstants); // time + textureId + atlasTextureId
     pConfig.pushConstantStages =
         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
     if (!cube_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                           imageRegistry_.getDescriptorSetLayout())) {
+                           imageRegistry_->getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize cube", getName());
       return false;
     }
 
     setLoaded(true);
-    std::println("[{}] Cube scene loaded (bindless, textureId={})", getName(),
-                 cubeTextureId_.index);
+    std::println("[{}] Cube scene loaded (bindless, textureId={}, "
+                 "atlasTextureId={})",
+                 getName(), cubeTextureId_.index, atlasTextureId_.index);
     return true;
   }
 
@@ -202,7 +293,6 @@ public:
       material_->release();
       material_.reset();
     }
-    imageRegistry_.shutdown();
     textureTable_.clear();
     setLoaded(false);
     std::println("[{}] Cube scene unloaded", getName());
@@ -243,15 +333,17 @@ private:
   // Shared texture (for CPU-side image loading/upload)
   std::shared_ptr<window::Texture> checkerboardTex_;
 
-  // Bindless GPU resources
-  device::ImageArrayRegistry imageRegistry_;
+  // Shared bindless image registry (per-device, shared across scenes)
+  std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   device::TextureTableManager textureTable_;
   device::TextureId quadTextureId_;
 
 public:
   explicit Quad2DScene(const window::SceneTag &sceneTag,
-                       std::shared_ptr<window::Texture> checkerboard)
-      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)) {}
+                       std::shared_ptr<window::Texture> checkerboard,
+                       std::shared_ptr<device::ImageArrayRegistry> registry)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        imageRegistry_(std::move(registry)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -260,11 +352,13 @@ public:
             window::Renderer &renderer) override {
     (void)secondaryGPUs;
 
-    // Initialize bindless image registry for this device
-    if (!imageRegistry_.initialize(device)) {
-      std::println(stderr, "[{}] Failed to initialize image registry",
-                   getName());
-      return false;
+    // Initialize shared image registry if not already initialized
+    if (!imageRegistry_->isInitialized()) {
+      if (!imageRegistry_->initialize(device)) {
+        std::println(stderr, "[{}] Failed to initialize image registry",
+                     getName());
+        return false;
+      }
     }
 
     material_ = std::make_unique<window::Material>(QUAD_2D_MATERIAL_TAG);
@@ -283,12 +377,12 @@ public:
       checkerboardTex_->createSampler(device);
     }
 
-    // Register the uploaded image in the bindless registry
+    // Register the uploaded image in the shared bindless registry
     device::ImageHandle checkerHandle;
     if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
       const auto *layer = checkerboardTex_->getLayer(0);
       if (layer && layer->loaded) {
-        checkerHandle = imageRegistry_.registerImage(
+        checkerHandle = imageRegistry_->registerImage(
             device::ImageKind::eImage2D, layer->gpuImage.getView());
       }
     }
@@ -310,9 +404,9 @@ public:
 
     // Commit descriptors
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
-      imageRegistry_.commitDescriptors(device, checkerboardTex_->getSampler(),
-                                       &textureTable_.getRecordBuffer(),
-                                       &textureTable_.getLayerBuffer());
+      imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
+                                        &textureTable_.getRecordBuffer(),
+                                        &textureTable_.getLayerBuffer());
     }
 
     // 2D quad: 24 vertices (4 faces × 2 triangles × 3 vertices)
@@ -333,21 +427,21 @@ public:
 
     // Set the bindless texture ID and descriptor set
     quad_->setTextureId(quadTextureId_);
-    quad_->setBindlessDescriptorSet(imageRegistry_.getDescriptorSet());
+    quad_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
     pConfig.cullMode = vk::CullModeFlagBits::eNone;
     pConfig.depthTestEnable = false;
-    pConfig.pushConstantSize =
-        sizeof(device::BindlessPushConstants); // time + textureId
+    pConfig.pushConstantSize = sizeof(
+        device::BindlessPushConstants); // time + textureId + atlasTextureId
     pConfig.pushConstantStages =
         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
     if (!quad_->initialize(allocator, device, *material_,
                            renderer.getRenderPass(),
                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                           imageRegistry_.getDescriptorSetLayout())) {
+                           imageRegistry_->getDescriptorSetLayout())) {
       std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
       return false;
     }
@@ -367,7 +461,6 @@ public:
       material_->release();
       material_.reset();
     }
-    imageRegistry_.shutdown();
     textureTable_.clear();
     setLoaded(false);
     std::println("[{}] 2D scene unloaded", getName());
@@ -668,20 +761,26 @@ int main(int argc, char *argv[]) {
   // Create shared textures (shared_ptr ensures memory-efficient sharing)
   auto checkerboardTex =
       std::make_shared<window::Texture>(CHECKERBOARD_TEX_TAG);
+  auto layerAtlasTex = std::make_shared<window::Texture>(LAYER_ATLAS_TEX_TAG);
+
+  // Create a shared image registry per-device so all scenes/windows
+  // share the same image buffer and don't duplicate images in GPU memory
+  auto sharedImageRegistry = std::make_shared<device::ImageArrayRegistry>();
 
   // Create scenes using the tag system and add them to windows
   // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
-    auto sceneCube =
-        std::make_unique<CubeScene3D>(SCENE_CUBE_TAG, checkerboardTex);
+    auto sceneCube = std::make_unique<CubeScene3D>(
+        SCENE_CUBE_TAG, checkerboardTex, layerAtlasTex, sharedImageRegistry);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
 
   // Window 2: 2D quad scene with bindless textures (Object<2>)
-  // Shares the checkerboard texture with the cube to save GPU memory
+  // Shares the checkerboard texture and image registry with the cube
   if (win2 && win2->hasRenderer()) {
-    auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex);
+    auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex,
+                                                 sharedImageRegistry);
     win2->addScene(&SCENE_2D_TAG, std::move(scene2d));
     win2->presentScene(&SCENE_2D_TAG);
   }
