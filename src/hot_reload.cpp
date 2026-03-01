@@ -95,7 +95,14 @@ bool HotReload::reload() {
   executeCallbacks(reloadCallbacks);
 
   unload();
-  return load();
+  bool success = load();
+
+  // Cascade reload to dependent modules
+  if (success) {
+    reloadDependents();
+  }
+
+  return success;
 }
 
 #ifdef _WIN32
@@ -179,6 +186,28 @@ void HotReload::cleanup_all(int signum) {
     }
   }
   std::_Exit(1);
+}
+
+// ============================================================================
+// Module Dependency Management
+// ============================================================================
+
+void HotReload::addDependent(HotReload *dependent) {
+  if (dependent) {
+    dependents_.push_back(dependent);
+    std::print("[HotReload] '{}' added dependent '{}'\n", name,
+               dependent->getName());
+  }
+}
+
+void HotReload::reloadDependents() {
+  for (auto *dep : dependents_) {
+    if (dep) {
+      std::print("[HotReload] Cascade reloading dependent '{}' from '{}'\n",
+                 dep->getName(), name);
+      dep->reload();
+    }
+  }
 }
 
 // ============================================================================

@@ -30,6 +30,13 @@ public:
   inline std::time_t getFileModTime();
   bool checkAndReloadIfNeeded();
 
+  // Module dependency management
+  void addDependent(HotReload *dependent);
+  void reloadDependents();
+
+  // Accessors
+  const std::string &getName() const { return name; }
+
   // Lifecycle callback registration
   void registerLoadCallback(const std::string &name,
                             LifecycleCallback callback);
@@ -73,6 +80,9 @@ private:
   std::vector<CallbackEntry> destroyCallbacks;
 
   mutable std::mutex dataMutex_;
+
+  // Module dependency tracking
+  std::vector<HotReload *> dependents_;
 
   // Instance tracking
   static std::set<HotReload *> instances;
