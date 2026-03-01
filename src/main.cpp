@@ -85,7 +85,7 @@ private:
 
   // Shared bindless image registry (per-device, shared across scenes)
   std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
-  device::TextureTableManager textureTable_;
+  std::shared_ptr<device::TextureTableManager> textureTable_;
   device::TextureId cubeTextureId_;
   device::TextureId atlasTextureId_;
 
@@ -93,10 +93,12 @@ public:
   explicit CubeScene3D(const window::SceneTag &sceneTag,
                        std::shared_ptr<window::Texture> checkerboard,
                        std::shared_ptr<window::Texture> layerAtlas,
-                       std::shared_ptr<device::ImageArrayRegistry> registry)
+                       std::shared_ptr<device::ImageArrayRegistry> registry,
+                       std::shared_ptr<device::TextureTableManager> textureTable)
       : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
         layerAtlasTex_(std::move(layerAtlas)),
-        imageRegistry_(std::move(registry)) {}
+        imageRegistry_(std::move(registry)),
+        textureTable_(std::move(textureTable)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -164,66 +166,99 @@ public:
     }
 
     // Build texture record 0: one layer (checkerboard image)
-    cubeTextureId_ = textureTable_.addRecord(1);
+    cubeTextureId_ = textureTable_->addRecord(1);
     {
       device::GPUTextureLayer cubeLayer;
       cubeLayer.image2DIndex = checkerHandle.isValid()
                                    ? static_cast<int32_t>(checkerHandle.index)
                                    : -1;
-      textureTable_.setLayers(cubeTextureId_, {cubeLayer});
+      textureTable_->setLayers(cubeTextureId_, {cubeLayer});
     }
 
-    // Build texture record 1: 4 layers from the atlas (2×2 grid, 256×256
-    // each, in a 512×512 atlas). Each layer references the same atlas image
-    // but with different UV sub-region offsets. Layers are composited with
-    // alpha blending.
-    atlasTextureId_ = textureTable_.addRecord(4);
+    // Build texture record 1: 6 layers from the atlas (2×3 grid in a
+    // 512×512 atlas). Each layer references the same atlas image but
+    // with different UV sub-region offsets. Layers are composited with
+    // individual transforms (tint, rotation, scale, blend mode).
+    atlasTextureId_ = textureTable_->addRecord(6);
     {
       int32_t atlasIdx =
           atlasHandle.isValid() ? static_cast<int32_t>(atlasHandle.index) : -1;
 
-      // Top-left region:  UV offset (0, 0), scale (0.5, 0.5)
+      const float colScale = 0.5f;           // 2 columns
+      const float rowScale = 1.0f / 3.0f;    // 3 rows
+
+      // Layer 0: top-left (0,0) — base layer, alpha blend
       device::GPUTextureLayer layer0;
       layer0.atlasIndex = atlasIdx;
       layer0.atlasUvOffsetX = 0.0f;
       layer0.atlasUvOffsetY = 0.0f;
-      layer0.atlasUvScaleX = 0.5f;
-      layer0.atlasUvScaleY = 0.5f;
+      layer0.atlasUvScaleX = colScale;
+      layer0.atlasUvScaleY = rowScale;
       layer0.blendMode = 0; // alpha blend
 
-      // Top-right region: UV offset (0.5, 0), scale (0.5, 0.5)
+      // Layer 1: top-right (1,0) — additive, cool tint
       device::GPUTextureLayer layer1;
       layer1.atlasIndex = atlasIdx;
       layer1.atlasUvOffsetX = 0.5f;
       layer1.atlasUvOffsetY = 0.0f;
-      layer1.atlasUvScaleX = 0.5f;
-      layer1.atlasUvScaleY = 0.5f;
+      layer1.atlasUvScaleX = colScale;
+      layer1.atlasUvScaleY = rowScale;
       layer1.blendMode = 1; // additive
+      layer1.tintR = 0.8f;
+      layer1.tintG = 0.9f;
+      layer1.tintB = 1.0f;
 
-      // Bottom-left region: UV offset (0, 0.5), scale (0.5, 0.5)
+      // Layer 2: middle-left (0,1) — additive, warm tint
       device::GPUTextureLayer layer2;
       layer2.atlasIndex = atlasIdx;
       layer2.atlasUvOffsetX = 0.0f;
-      layer2.atlasUvOffsetY = 0.5f;
-      layer2.atlasUvScaleX = 0.5f;
-      layer2.atlasUvScaleY = 0.5f;
+      layer2.atlasUvOffsetY = rowScale;
+      layer2.atlasUvScaleX = colScale;
+      layer2.atlasUvScaleY = rowScale;
       layer2.blendMode = 1; // additive
+      layer2.tintR = 1.0f;
+      layer2.tintG = 0.8f;
+      layer2.tintB = 0.8f;
 
-      // Bottom-right region: UV offset (0.5, 0.5), scale (0.5, 0.5)
+      // Layer 3: middle-right (1,1) — additive, slight rotation
       device::GPUTextureLayer layer3;
       layer3.atlasIndex = atlasIdx;
       layer3.atlasUvOffsetX = 0.5f;
-      layer3.atlasUvOffsetY = 0.5f;
-      layer3.atlasUvScaleX = 0.5f;
-      layer3.atlasUvScaleY = 0.5f;
+      layer3.atlasUvOffsetY = rowScale;
+      layer3.atlasUvScaleX = colScale;
+      layer3.atlasUvScaleY = rowScale;
       layer3.blendMode = 1; // additive
+      layer3.rotation = 0.2f;
 
-      textureTable_.setLayers(atlasTextureId_,
-                              {layer0, layer1, layer2, layer3});
+      // Layer 4: bottom-left (0,2) — additive, scaled down
+      device::GPUTextureLayer layer4;
+      layer4.atlasIndex = atlasIdx;
+      layer4.atlasUvOffsetX = 0.0f;
+      layer4.atlasUvOffsetY = 2.0f * rowScale;
+      layer4.atlasUvScaleX = colScale;
+      layer4.atlasUvScaleY = rowScale;
+      layer4.blendMode = 1; // additive
+      layer4.scaleX = 0.8f;
+      layer4.scaleY = 0.8f;
+
+      // Layer 5: bottom-right (1,2) — additive, green tint
+      device::GPUTextureLayer layer5;
+      layer5.atlasIndex = atlasIdx;
+      layer5.atlasUvOffsetX = 0.5f;
+      layer5.atlasUvOffsetY = 2.0f * rowScale;
+      layer5.atlasUvScaleX = colScale;
+      layer5.atlasUvScaleY = rowScale;
+      layer5.blendMode = 1; // additive
+      layer5.tintR = 0.9f;
+      layer5.tintG = 1.0f;
+      layer5.tintB = 0.8f;
+
+      textureTable_->setLayers(atlasTextureId_,
+                              {layer0, layer1, layer2, layer3, layer4, layer5});
     }
 
     // Upload texture tables to GPU
-    if (!textureTable_.uploadToGPU(allocator, device)) {
+    if (!textureTable_->uploadToGPU(allocator, device)) {
       std::println(stderr, "[{}] Failed to upload texture tables", getName());
       return false;
     }
@@ -231,8 +266,8 @@ public:
     // Commit descriptors (images + SSBOs)
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
       imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
-                                        &textureTable_.getRecordBuffer(),
-                                        &textureTable_.getLayerBuffer());
+                                        &textureTable_->getRecordBuffer(),
+                                        &textureTable_->getLayerBuffer());
     }
 
     // Create cube geometry (36 vertices for 12 triangles)
@@ -293,7 +328,7 @@ public:
       material_->release();
       material_.reset();
     }
-    textureTable_.clear();
+    textureTable_.reset();
     setLoaded(false);
     std::println("[{}] Cube scene unloaded", getName());
   }
@@ -335,15 +370,17 @@ private:
 
   // Shared bindless image registry (per-device, shared across scenes)
   std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
-  device::TextureTableManager textureTable_;
+  std::shared_ptr<device::TextureTableManager> textureTable_;
   device::TextureId quadTextureId_;
 
 public:
   explicit Quad2DScene(const window::SceneTag &sceneTag,
                        std::shared_ptr<window::Texture> checkerboard,
-                       std::shared_ptr<device::ImageArrayRegistry> registry)
+                       std::shared_ptr<device::ImageArrayRegistry> registry,
+                       std::shared_ptr<device::TextureTableManager> textureTable)
       : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
-        imageRegistry_(std::move(registry)) {}
+        imageRegistry_(std::move(registry)),
+        textureTable_(std::move(textureTable)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -388,16 +425,16 @@ public:
     }
 
     // Build a texture record with one layer (checkerboard image)
-    quadTextureId_ = textureTable_.addRecord(1);
+    quadTextureId_ = textureTable_->addRecord(1);
 
     device::GPUTextureLayer quadLayer;
     quadLayer.image2DIndex = checkerHandle.isValid()
                                  ? static_cast<int32_t>(checkerHandle.index)
                                  : -1;
-    textureTable_.setLayers(quadTextureId_, {quadLayer});
+    textureTable_->setLayers(quadTextureId_, {quadLayer});
 
     // Upload texture tables to GPU
-    if (!textureTable_.uploadToGPU(allocator, device)) {
+    if (!textureTable_->uploadToGPU(allocator, device)) {
       std::println(stderr, "[{}] Failed to upload texture tables", getName());
       return false;
     }
@@ -405,8 +442,8 @@ public:
     // Commit descriptors
     if (checkerboardTex_ && checkerboardTex_->getSampler()) {
       imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
-                                        &textureTable_.getRecordBuffer(),
-                                        &textureTable_.getLayerBuffer());
+                                        &textureTable_->getRecordBuffer(),
+                                        &textureTable_->getLayerBuffer());
     }
 
     // 2D quad: 24 vertices (4 faces × 2 triangles × 3 vertices)
@@ -461,7 +498,7 @@ public:
       material_->release();
       material_.reset();
     }
-    textureTable_.clear();
+    textureTable_.reset();
     setLoaded(false);
     std::println("[{}] 2D scene unloaded", getName());
   }
@@ -767,20 +804,26 @@ int main(int argc, char *argv[]) {
   // share the same image buffer and don't duplicate images in GPU memory
   auto sharedImageRegistry = std::make_shared<device::ImageArrayRegistry>();
 
+  // Create a shared texture table so all scenes contribute to the same
+  // TextureRecord/TextureLayer SSBOs and descriptor bindings stay consistent
+  auto sharedTextureTable = std::make_shared<device::TextureTableManager>();
+
   // Create scenes using the tag system and add them to windows
   // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
     auto sceneCube = std::make_unique<CubeScene3D>(
-        SCENE_CUBE_TAG, checkerboardTex, layerAtlasTex, sharedImageRegistry);
+        SCENE_CUBE_TAG, checkerboardTex, layerAtlasTex, sharedImageRegistry,
+        sharedTextureTable);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
 
   // Window 2: 2D quad scene with bindless textures (Object<2>)
-  // Shares the checkerboard texture and image registry with the cube
+  // Shares the checkerboard texture, image registry and texture table
   if (win2 && win2->hasRenderer()) {
-    auto scene2d = std::make_unique<Quad2DScene>(SCENE_2D_TAG, checkerboardTex,
-                                                 sharedImageRegistry);
+    auto scene2d = std::make_unique<Quad2DScene>(
+        SCENE_2D_TAG, checkerboardTex, sharedImageRegistry,
+        sharedTextureTable);
     win2->addScene(&SCENE_2D_TAG, std::move(scene2d));
     win2->presentScene(&SCENE_2D_TAG);
   }

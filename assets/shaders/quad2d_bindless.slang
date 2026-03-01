@@ -7,7 +7,7 @@
 // Rendering modes (per-quadrant):
 //   Mode 0: Plain uniform color (top-left)
 //   Mode 1: Texture via bindless sampling (top-right)
-//   Mode 2: Vertical gradient + vertex wave displacement (bottom-left)
+//   Mode 2: Vertical gradient (bottom-left)
 //   Mode 3: Animated wave function (bottom-right)
 //
 // Descriptor set 0: per-object UBO + push constants
@@ -67,7 +67,7 @@ static const float2 quadPositions[24] = {
 static const uint triRenderMode[8] = {
     0, 0,  // Face 0 (top-left):     plain color
     1, 1,  // Face 1 (top-right):    texture
-    2, 2,  // Face 2 (bottom-left):  gradient + wave
+    2, 2,  // Face 2 (bottom-left):  gradient
     3, 3,  // Face 3 (bottom-right): animated wave
 };
 
@@ -93,10 +93,11 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint uvIdx = vertexID % 6;
     output.uv = quadUVs[uvIdx];
 
-    // Apply wave displacement to ALL vertices unconditionally.
-    // Since adjacent quadrants share edge positions, wave displacement
-    // must be applied globally to avoid gaps/seams at shared edges.
-    {
+    // Apply wave displacement only to vertices in the wave quadrant
+    // (bottom-right, face 3) and its shared boundary vertices.
+    // Vertices at x>=0 and y<=0 belong to or border face 3, so
+    // neighbouring faces deform smoothly at shared edges/corners.
+    if (pos.x >= 0.0 && pos.y <= 0.0) {
         float t = pc.time;
         pos.x += sin(pos.y * 6.0 + t * 2.5) * 0.04;
         pos.y += cos(pos.x * 5.0 + t * 2.0) * 0.04;
@@ -153,7 +154,7 @@ float4 modeTexture(GSOutput input) {
     return texColor;
 }
 
-// Mode 2: Vertical gradient (vertices already waved in VS)
+// Mode 2: Vertical gradient
 float4 modeGradient(GSOutput input) {
     float t = (input.modelPos.y + 0.8) / 1.6; // Normalize to [0, 1]
 
