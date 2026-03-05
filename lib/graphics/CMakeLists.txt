@@ -214,12 +214,23 @@ FetchContent_MakeAvailable(sdl_ttf)
 # shader-slang/slang - Runtime shader compilation - doesn't have module
 # ==============================================================================
 set(SLANG_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang")
+if(WIN32)
+    set(_SLANG_BYPRODUCTS
+        "${SLANG_INSTALL_DIR}/lib/slang.lib"
+        "${SLANG_INSTALL_DIR}/bin/slang.dll"
+    )
+else()
+    set(_SLANG_BYPRODUCTS
+        "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+endif()
 ExternalProject_Add(#TODO add toolchain for cross compiling
     _slang
     GIT_REPOSITORY https://github.com/shader-slang/slang.git
     GIT_TAG v2025.24.3
     UPDATE_DISCONNECTED 1
     GIT_SHALLOW TRUE
+    BUILD_BYPRODUCTS ${_SLANG_BYPRODUCTS}
     CMAKE_ARGS
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
