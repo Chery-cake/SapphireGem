@@ -1,0 +1,122 @@
+# ==============================================================================
+# CI Workflow - Build and Test on Linux, Windows, and macOS
+# ==============================================================================
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            cmake_generator: "Unix Makefiles"
+          - os: windows-latest
+            name: Windows
+            cmake_generator: "Visual Studio 17 2022"
+          - os: macos-latest
+            name: macOS
+            cmake_generator: "Unix Makefiles"
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ------------------------------------------------------------------
+      # Linux Dependencies
+      # ------------------------------------------------------------------
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            libvulkan-dev \
+            vulkan-validationlayers \
+            libx11-dev \
+            libxcb1-dev \
+            libxcb-xfixes0-dev \
+            libxcb-cursor-dev \
+            libxcb-randr0-dev \
+            libxcb-keysyms1-dev \
+            libxkbcommon-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libdecor-0-dev \
+            libpulse-dev \
+            libasound2-dev \
+            libpipewire-0.3-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libegl-dev \
+            libgl-dev \
+            libgles-dev \
+            libdbus-1-dev \
+            libibus-1.0-dev \
+            libsystemd-dev \
+            libudev-dev
+
+      # ------------------------------------------------------------------
+      # macOS Dependencies
+      # ------------------------------------------------------------------
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake vulkan-headers
+
+      # ------------------------------------------------------------------
+      # Windows Dependencies
+      # ------------------------------------------------------------------
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: jakoch/install-vulkan-sdk-action@v1.0.5
+        with:
+          vulkan_version: 1.4.304.1
+          install_runtime: true
+          cache: true
+          optional_components: com.lunarg.vulkan.vma
+
+      # ------------------------------------------------------------------
+      # Configure
+      # ------------------------------------------------------------------
+      - name: Configure CMake (Unix)
+        if: runner.os != 'Windows'
+        run: >
+          cmake -B build
+          -G "${{ matrix.cmake_generator }}"
+          -DCMAKE_BUILD_TYPE=Debug
+          -DENGINE_HEADLESS=ON
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build
+          -G "${{ matrix.cmake_generator }}"
+          -DCMAKE_BUILD_TYPE=Debug
+          -DENGINE_HEADLESS=ON
+
+      # ------------------------------------------------------------------
+      # Build
+      # ------------------------------------------------------------------
+      - name: Build
+        run: cmake --build build --config Debug --parallel
+
+      # ------------------------------------------------------------------
+      # Test
+      # ------------------------------------------------------------------
+      - name: Run Tests
+        working-directory: build
+        run: ctest --build-config Debug --output-on-failure --timeout 120
