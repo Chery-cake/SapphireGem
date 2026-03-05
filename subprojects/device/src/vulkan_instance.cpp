@@ -79,6 +79,17 @@ bool VulkanInstance::initialize() {
     return false;
   }
 
+#ifdef __APPLE__
+  // Point the Vulkan loader at MoltenVK's ICD manifest.
+  // The path is relative to the executable — set once before DynamicLoader.
+  // This is the only Apple-specific code needed anywhere in the engine.
+  if (!std::getenv("VK_ICD_FILENAMES")) {
+    // Only set if not already overridden (e.g. by a dev with the Vulkan
+    // SDK)
+    putenv("VK_ICD_FILENAMES=vulkan/icd.d/MoltenVK_icd.json");
+  }
+#endif
+
   vk::detail::DynamicLoader dl;
   auto instanceProc =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");

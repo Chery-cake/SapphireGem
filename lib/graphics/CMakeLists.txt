@@ -97,6 +97,55 @@ set_target_properties(vma PROPERTIES
 )
 
 # ==============================================================================
+# MoltenVK - Vulkan over Metal (macOS only)
+# Fetches prebuilt binaries from GitHub releases — no build step needed.
+# Creates a `moltenvk` INTERFACE target that the `vulkan` target links against.
+# Also generates the ICD manifest so vk::detail::DynamicLoader finds it
+# automatically without any hardcoded paths in C++ code.
+# ==============================================================================
+if(APPLE)
+    FetchContent_Declare(
+        _moltenvk
+        URL https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.11/MoltenVK-macos.tar
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(_moltenvk)
+
+    set(MOLTENVK_DYLIB
+        "${_moltenvk_SOURCE_DIR}/MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.dylib"
+    )
+    set(MOLTENVK_INCLUDE
+        "${_moltenvk_SOURCE_DIR}/MoltenVK/include"
+    )
+
+    # Interface target — same pattern as your slang/vma targets
+    add_library(moltenvk INTERFACE)
+    target_include_directories(moltenvk INTERFACE "${MOLTENVK_INCLUDE}")
+    target_link_libraries(moltenvk INTERFACE "${MOLTENVK_DYLIB}")
+
+    # Generate the ICD manifest pointing at the dylib
+    # OUTPUT_DIR is already defined in your root CMakeLists.txt
+    set(MOLTENVK_ICD_DIR "${OUTPUT_DIR}/vulkan/icd.d")
+    file(MAKE_DIRECTORY "${MOLTENVK_ICD_DIR}")
+    file(GENERATE
+        OUTPUT  "${MOLTENVK_ICD_DIR}/MoltenVK_icd.json"
+        CONTENT "{\n    \"file_format_version\": \"1.0.0\",\n    \"ICD\": {\n        \"library_path\": \"../../libMoltenVK.dylib\",\n        \"api_version\": \"1.3.0\"\n    }\n}\n"
+    )
+
+    # Copy the dylib itself to OUTPUT_DIR so the ICD relative path resolves
+    add_custom_target(copy_moltenvk ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MOLTENVK_DYLIB}"
+            "${OUTPUT_DIR}/libMoltenVK.dylib"
+        COMMENT "[MoltenVK] Copying libMoltenVK.dylib to output"
+    )
+
+    target_link_libraries(vulkan PUBLIC moltenvk)
+    add_dependencies(vulkan copy_moltenvk)
+    message(STATUS "MoltenVK configured (macOS)")
+endif()
+
+# ==============================================================================
 # SDL3 - Window/Input/Events - doesn't have module'
 # ==============================================================================
 FetchContent_Declare(
