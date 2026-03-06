@@ -305,8 +305,11 @@ set ASAN_OPTIONS=${ASAN_OPTIONS}
         endif()
 
         if(SANITIZER_MEMORY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # MSan is Clang-only; its runtime uses the libclang_rt naming convention
+            # (e.g. libclang_rt.msan-x86_64.so) unlike ASan/TSan/UBSan which have
+            # GCC-compatible aliases (libasan.so, libtsan.so, libubsan.so).
             execute_process(
-                COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libclang_rt.msan.${_SAN_LIB_EXT}
+                COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libclang_rt.msan-${CMAKE_SYSTEM_PROCESSOR}.${_SAN_LIB_EXT}
                 OUTPUT_VARIABLE _MSAN_LIB OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET
             )
             if(NOT IS_ABSOLUTE "${_MSAN_LIB}")
