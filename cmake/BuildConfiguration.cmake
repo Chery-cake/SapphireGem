@@ -41,7 +41,7 @@ function(target_configure_debug TARGET_NAME)
                 ENGINE_DEBUG
             >
         )
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    elseif(MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<CONFIG:Debug>:
                 /Zi         # Debug information
@@ -118,7 +118,7 @@ function(target_configure_release TARGET_NAME)
                 -Wl,-s                  # Strip symbol table
             >
         )
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    elseif(MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<CONFIG:Release>:
                 /O2         # Maximum optimization
@@ -209,7 +209,7 @@ function(target_enable_sanitizers TARGET_NAME)
     # to configure sanitizer behaviour via environment variables, matching the
     # script-based approach used on GCC/Clang.
     # ==========================================================================
-    if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    if(MSVC)
         if(SANITIZER_ADDRESS)
             target_compile_options(${TARGET_NAME} PRIVATE
                 $<$<CONFIG:Debug>:/fsanitize=address>

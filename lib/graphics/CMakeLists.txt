@@ -106,7 +106,7 @@ set_target_properties(vma PROPERTIES
 if(APPLE)
     FetchContent_Declare(
         _moltenvk
-        URL https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.11/MoltenVK-macos.tar
+        URL https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.1/MoltenVK-macos.tar
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(_moltenvk)
