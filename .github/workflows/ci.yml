@@ -85,9 +85,9 @@ jobs:
       # ------------------------------------------------------------------
       - name: Install Vulkan SDK (Windows)
         if: runner.os == 'Windows'
-        uses: jakoch/install-vulkan-sdk-action@v1.0.5
+        uses: jakoch/install-vulkan-sdk-action@v1.2.8
         with:
-          vulkan_version: 1.4.304.1
+          vulkan_version: 1.4.309.0
           install_runtime: true
           cache: true
           optional_components: com.lunarg.vulkan.vma

@@ -39,6 +39,9 @@ if(ENGINE_HEADLESS)
     set(SDL_X11 OFF CACHE BOOL "Disable X11 for headless build" FORCE)
     set(SDL_WAYLAND OFF CACHE BOOL "Disable Wayland for headless build" FORCE)
     set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "Allow SDL build without display server" FORCE)
+
+    # Use vendored freetype/harfbuzz for SDL_ttf so system libraries are not required
+    set(SDLTTF_VENDORED ON CACHE BOOL "Use vendored freetype/harfbuzz for headless build" FORCE)
 endif()
 
 # ==============================================================================
