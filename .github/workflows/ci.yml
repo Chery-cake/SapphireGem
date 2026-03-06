@@ -47,6 +47,8 @@ jobs:
           sudo apt-get install -y \
             cmake \
             build-essential \
+            gcc-14 \
+            g++-14 \
             libvulkan-dev \
             vulkan-validationlayers \
             libx11-dev \
@@ -95,8 +97,19 @@ jobs:
       # ------------------------------------------------------------------
       # Configure
       # ------------------------------------------------------------------
-      - name: Configure CMake (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          cmake -B build
+          -G "${{ matrix.cmake_generator }}"
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=gcc-14
+          -DCMAKE_CXX_COMPILER=g++-14
+          -DENGINE_HEADLESS=ON
+          -DENABLE_TESTS=ON
+
+      - name: Configure CMake (macOS)
+        if: runner.os == 'macOS'
         run: >
           cmake -B build
           -G "${{ matrix.cmake_generator }}"
