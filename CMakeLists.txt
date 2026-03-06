@@ -12,6 +12,12 @@ project(SapphireEngine
     LANGUAGES CXX C
 )
 
+# Enable Objective-C languages on macOS (required by SDL3)
+if(APPLE)
+    enable_language(OBJC)
+    enable_language(OBJCXX)
+endif()
+
 # ==============================================================================
 # Enforce Out-of-Source Build
 # ==============================================================================
