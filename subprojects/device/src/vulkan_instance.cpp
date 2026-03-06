@@ -50,6 +50,7 @@ void VulkanInstance::shutdown() {
   instance_.reset();
   context_.reset();
 
+  initialized_ = false;
   std::println("[VulkanInstance] Shutdown complete");
 }
 
