@@ -213,13 +213,55 @@ FetchContent_MakeAvailable(sdl_ttf)
 # ==============================================================================
 # shader-slang/slang - Runtime shader compilation - doesn't have module
 # ==============================================================================
+# Slang requires a two-step build: first build the generator tools for the host
+# platform (slang-embed, slang-capability-generator, etc.), then build the
+# actual library with SLANG_GENERATORS_PATH pointing to those pre-built tools.
+# ==============================================================================
 set(SLANG_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang")
-ExternalProject_Add(#TODO add toolchain for cross compiling
-    _slang
+set(SLANG_GENERATORS_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang-generators")
+if(WIN32)
+    set(_SLANG_BYPRODUCTS
+        "${SLANG_INSTALL_DIR}/lib/slang.lib"
+        "${SLANG_INSTALL_DIR}/bin/slang.dll"
+    )
+else()
+    set(_SLANG_BYPRODUCTS
+        "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+endif()
+
+# TODO add toolchain for cross compiling
+  
+# Step 1: Build slang generator tools for the host platform
+ExternalProject_Add(
+    _slang_generators
     GIT_REPOSITORY https://github.com/shader-slang/slang.git
     GIT_TAG v2025.24.3
     UPDATE_DISCONNECTED 1
     GIT_SHALLOW TRUE
+    CMAKE_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
+        -DSLANG_ENABLE_SLANG_RHI=OFF
+        -DSLANG_ENABLE_TESTS=OFF
+        -DSLANG_ENABLE_EXAMPLES=OFF
+        -DSLANG_ENABLE_GFX=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target all-generators
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --prefix ${SLANG_GENERATORS_INSTALL_DIR} --component generators
+)
+  
+# Step 2: Build the actual slang library using the pre-built generators
+ExternalProject_Add(
+    _slang
+    DEPENDS _slang_generators
+    GIT_REPOSITORY https://github.com/shader-slang/slang.git
+    GIT_TAG v2025.24.3
+    UPDATE_DISCONNECTED 1
+    GIT_SHALLOW TRUE
+    BUILD_BYPRODUCTS ${_SLANG_BYPRODUCTS}
     CMAKE_ARGS
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -229,6 +271,7 @@ ExternalProject_Add(#TODO add toolchain for cross compiling
         -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
         -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
         -DCMAKE_INSTALL_PREFIX=${SLANG_INSTALL_DIR}
+        -DSLANG_GENERATORS_PATH=${SLANG_GENERATORS_INSTALL_DIR}/bin
         -DSLANG_ENABLE_TESTS=OFF
         -DSLANG_ENABLE_EXAMPLES=OFF
         -DSLANG_ENABLE_GFX=OFF

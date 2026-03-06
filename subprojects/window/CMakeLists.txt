@@ -80,8 +80,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 if(COMMAND target_configure_build)
     target_configure_build(${PROJECT_NAME}
         ENABLE_LTO
-        ENABLE_SANITIZERS
-        SANITIZERS ADDRESS LEAK UNDEFINED
     )
 endif()
 

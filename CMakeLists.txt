@@ -124,9 +124,6 @@ target_configure_build(${PROJECT_NAME}
     SANITIZERS ADDRESS LEAK UNDEFINED
 )
 
-# Configure sanitizer suppression files for the executable
-target_configure_sanitizer_suppressions(${PROJECT_NAME})
-
 # Apply platform-specific configuration
 target_configure_platform(${PROJECT_NAME})
 target_configure_rpath(${PROJECT_NAME})
@@ -147,6 +144,14 @@ add_dependencies(${PROJECT_NAME} copy_assets)
 # Generate .clangd Configuration
 # ==============================================================================
 include(GenerateClangd)
+
+# ==============================================================================
+# Tests
+# ==============================================================================
+option(ENABLE_TESTS "Add and Compile the project tests" OFF)
+if(ENABLE_TESTS)
+  add_subdirectory(tests)
+endif()
 
 # ==============================================================================
 # Installation
