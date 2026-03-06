@@ -251,8 +251,8 @@ ExternalProject_Add(
         -DSLANG_ENABLE_EXAMPLES=OFF
         -DSLANG_ENABLE_GFX=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target all-generators
-    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --prefix ${SLANG_GENERATORS_INSTALL_DIR} --component generators
+    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target all-generators --config ${CMAKE_BUILD_TYPE}
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --prefix ${SLANG_GENERATORS_INSTALL_DIR} --component generators --config ${CMAKE_BUILD_TYPE}
 )
   
 # Step 2: Build the actual slang library using the pre-built generators
