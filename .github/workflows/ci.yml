@@ -47,6 +47,7 @@ jobs:
           sudo apt-get install -y \
             cmake \
             build-essential \
+            clang \
             libvulkan-dev \
             vulkan-validationlayers \
             libx11-dev \
@@ -95,14 +96,26 @@ jobs:
       # ------------------------------------------------------------------
       # Configure
       # ------------------------------------------------------------------
-      - name: Configure CMake (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          cmake -B build
+          -G "${{ matrix.cmake_generator }}"
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DENGINE_HEADLESS=ON
+          -DENABLE_TESTS=ON
+
+      - name: Configure CMake (macOS)
+        if: runner.os == 'macOS'
         run: >
           cmake -B build
           -G "${{ matrix.cmake_generator }}"
           -DCMAKE_BUILD_TYPE=Debug
           -DENGINE_HEADLESS=ON
           -DENABLE_TESTS=ON
+          -DENGINE_ENABLE_SANITIZERS=OFF
 
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
@@ -112,6 +125,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Debug
           -DENGINE_HEADLESS=ON
           -DENABLE_TESTS=ON
+          -DENGINE_ENABLE_SANITIZERS=OFF
 
       # ------------------------------------------------------------------
       # Build
