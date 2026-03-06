@@ -169,6 +169,9 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
     GIT_TAG release-3.2.6
     GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE FALSE  # Prevent recursive submodule cloning (avoids
+                                   # fetching libjxl's skcms from skia.googlesource.com
+                                   # which is unreachable in sandboxed CI environments)
 )
 set(SDLIMAGE_SHARED ON CACHE BOOL "" FORCE)
 set(SDLIMAGE_STATIC OFF CACHE BOOL "" FORCE)
@@ -201,7 +204,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
     GIT_TAG release-3.2.2
     GIT_SHALLOW TRUE
-
+    GIT_SUBMODULES_RECURSE FALSE  # Prevent recursive submodule cloning to avoid
+                                   # unreachable hosts in sandboxed CI environments
 )
 set(SDLTTF_SHARED ON CACHE BOOL "" FORCE)
 set(SDLTTF_STATIC OFF CACHE BOOL "" FORCE)
