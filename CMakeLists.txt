@@ -121,7 +121,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 target_configure_build(${PROJECT_NAME}
     ENABLE_LTO
     ENABLE_SANITIZERS
-    SANITIZERS ADDRESS LEAK UNDEFINED
 )
 
 # Apply platform-specific configuration
