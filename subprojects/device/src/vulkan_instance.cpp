@@ -6,6 +6,7 @@
 #include "vulkan/vulkan_raii.hpp"
 #include <memory>
 #include <print>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace device {
@@ -204,25 +205,81 @@ bool VulkanInstance::initialize() {
 }
 
 std::vector<std::string> VulkanInstance::getAvailableExtensions() {
-  // Use temporary context for static query
-  vk::raii::Context tempContext;
-  auto extensions = tempContext.enumerateInstanceExtensionProperties();
+  // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
+  // on systems where the Vulkan loader is present but no ICD is installed.
+  vk::detail::DynamicLoader dl;
+  auto getInstanceProcAddr =
+      dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+  if (!getInstanceProcAddr) {
+    throw std::runtime_error(
+        "[VulkanInstance] vkGetInstanceProcAddr not available");
+  }
+
+  auto enumExtensions =
+      reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
+          getInstanceProcAddr(nullptr,
+                              "vkEnumerateInstanceExtensionProperties"));
+  if (!enumExtensions) {
+    throw std::runtime_error(
+        "[VulkanInstance] vkEnumerateInstanceExtensionProperties not available");
+  }
+
+  uint32_t count = 0;
+  VkResult vkResult = enumExtensions(nullptr, &count, nullptr);
+  if (vkResult != VK_SUCCESS || count == 0) {
+    return {};
+  }
+
+  std::vector<VkExtensionProperties> extensions(count);
+  vkResult = enumExtensions(nullptr, &count, extensions.data());
+  if (vkResult != VK_SUCCESS) {
+    return {};
+  }
+
   std::vector<std::string> result;
-  result.reserve(extensions.size());
+  result.reserve(count);
   for (const auto &ext : extensions) {
-    result.emplace_back(ext.extensionName.data());
+    result.emplace_back(ext.extensionName);
   }
   return result;
 }
 
 std::vector<std::string> VulkanInstance::getAvailableLayers() {
-  // Use temporary context for static query
-  vk::raii::Context tempContext;
-  auto layers = tempContext.enumerateInstanceLayerProperties();
+  // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
+  // on systems where the Vulkan loader is present but no ICD is installed.
+  vk::detail::DynamicLoader dl;
+  auto getInstanceProcAddr =
+      dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+  if (!getInstanceProcAddr) {
+    throw std::runtime_error(
+        "[VulkanInstance] vkGetInstanceProcAddr not available");
+  }
+
+  auto enumLayers =
+      reinterpret_cast<PFN_vkEnumerateInstanceLayerProperties>(
+          getInstanceProcAddr(nullptr,
+                              "vkEnumerateInstanceLayerProperties"));
+  if (!enumLayers) {
+    throw std::runtime_error(
+        "[VulkanInstance] vkEnumerateInstanceLayerProperties not available");
+  }
+
+  uint32_t count = 0;
+  VkResult vkResult = enumLayers(&count, nullptr);
+  if (vkResult != VK_SUCCESS || count == 0) {
+    return {};
+  }
+
+  std::vector<VkLayerProperties> layers(count);
+  vkResult = enumLayers(&count, layers.data());
+  if (vkResult != VK_SUCCESS) {
+    return {};
+  }
+
   std::vector<std::string> result;
-  result.reserve(layers.size());
+  result.reserve(count);
   for (const auto &layer : layers) {
-    result.emplace_back(layer.layerName.data());
+    result.emplace_back(layer.layerName);
   }
   return result;
 }
