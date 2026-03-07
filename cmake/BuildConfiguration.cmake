@@ -111,13 +111,21 @@ function(target_configure_release TARGET_NAME)
         )
 
         # Linker options for Release
-        target_link_options(${TARGET_NAME} PRIVATE
-            $<$<CONFIG:Release>:
-                -Wl,--gc-sections       # Remove unused sections
-                -Wl,--strip-all         # Strip all symbols
-                -Wl,-s                  # Strip symbol table
-            >
-        )
+        if(APPLE)
+            target_link_options(${TARGET_NAME} PRIVATE
+                $<$<CONFIG:Release>:
+                    -Wl,-dead_strip         # Remove unused code (Apple ld)
+                >
+            )
+        else()
+            target_link_options(${TARGET_NAME} PRIVATE
+                $<$<CONFIG:Release>:
+                    -Wl,--gc-sections       # Remove unused sections
+                    -Wl,--strip-all         # Strip all symbols
+                    -Wl,-s                  # Strip symbol table
+                >
+            )
+        endif()
     elseif(MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<CONFIG:Release>:
