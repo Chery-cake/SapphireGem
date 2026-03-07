@@ -7,6 +7,7 @@
 #include "vulkan/vulkan_raii.hpp"
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 namespace device {
 

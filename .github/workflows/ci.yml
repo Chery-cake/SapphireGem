@@ -91,9 +91,14 @@ jobs:
       # ------------------------------------------------------------------
       # Windows Dependencies
       # ------------------------------------------------------------------
-      - name: Remove Strawberry Perl (Windows)
+      - name: Move Strawberry Perl to end of PATH (Windows)
         if: runner.os == 'Windows'
-        run: choco uninstall strawberryperl -y
+        shell: pwsh
+        run: |
+            $dirs = $env:PATH -split ';'
+            $reordered = ($dirs | Where-Object { $_ -notmatch 'Strawberry' }) +
+                        ($dirs | Where-Object { $_ -match 'Strawberry' })
+            $reordered -join ';' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Install sccache (Windows)
         if: runner.os == 'Windows'
