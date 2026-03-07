@@ -46,11 +46,9 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Enable POSIX features
+# Enable POSIX features TODO check to remove this declaration
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_GNU_SOURCE)
-elseif(NOT WIN32)
-    add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)

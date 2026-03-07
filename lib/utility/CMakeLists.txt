@@ -34,6 +34,7 @@ FetchContent_Declare(
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(assimp)
 
@@ -41,15 +42,19 @@ FetchContent_MakeAvailable(assimp)
 # zlib - Compression Library
 # ==============================================================================
 
-FetchContent_Declare(
-    zlib
-    GIT_REPOSITORY https://github.com/madler/zlib.git
-    GIT_TAG v1.3.1.2
-    GIT_SHALLOW TRUE
-)
-set(ZLIB_BUILD_STATIC OFF CACHE BOOL "" FORCE)
-set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(zlib)
+# SDL_image (loaded via lib/graphics/) already provides zlib targets.
+# Only fetch standalone zlib if no zlib target exists yet.
+if(NOT TARGET zlib)
+    FetchContent_Declare(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG v1.3.1.2
+        GIT_SHALLOW TRUE
+    )
+    set(ZLIB_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+    set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(zlib)
+endif()
 
 # ==============================================================================
 # PhysicsFS - Virtual Filesystem
