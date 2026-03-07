@@ -35,6 +35,23 @@ set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+# Prevent Assimp from building its own zlib — SDL_image already provides one,
+# creating a 'zlibstatic' target.  Building it again causes a target-name collision.
+set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
+
+# Windows lacks system zlib so find_package(ZLIB) inside Assimp would fail.
+# Pre-seed the variables using SDL_image's bundled copy.
+if(WIN32)
+    set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE)
+    set(ZLIB_FOUND TRUE)
+    set(ZLIB_LIBRARIES zlibstatic)
+    set(ZLIB_INCLUDE_DIR
+        "${sdl_image_SOURCE_DIR}/external/zlib"
+        "${sdl_image_BINARY_DIR}/external/zlib"
+    )
+endif()
+
 FetchContent_MakeAvailable(assimp)
 
 # ==============================================================================
