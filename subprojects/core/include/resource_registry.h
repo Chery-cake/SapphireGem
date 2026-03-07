@@ -86,7 +86,7 @@ namespace core {
  *             similar interface)
  * @tparam Asset The asset type to store
  */
-template <typename Tag, typename Asset> class CORE_API ResourceRegistry {
+template <typename Tag, typename Asset> class ResourceRegistry {
 private:
   // Callback type
   using AssetCallback = std::function<void(const Tag *, Asset *)>;

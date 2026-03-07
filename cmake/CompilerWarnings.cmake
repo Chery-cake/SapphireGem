@@ -48,6 +48,7 @@ function(target_set_warnings TARGET_NAME)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         target_compile_options(${TARGET_NAME} PRIVATE
             /W4
+            /wd4251  # STL types in DLL interface (safe with same toolchain)
             /w14242  # conversion
             /w14254  # bitwise operator
             /w14263  # function override

@@ -36,11 +36,11 @@ target_include_directories(vulkan PUBLIC
 )
 target_compile_definitions(vulkan PUBLIC
   VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+  VULKAN_HPP_STORAGE_SHARED
 )
-#target_compile_definitions(vulkan PRIVATE
-#  VULKAN_HPP_STORAGE_SHARED
-#  VULKAN_HPP_STORAGE_SHARED_EXPORT
-#)
+target_compile_definitions(vulkan PRIVATE
+  VULKAN_HPP_STORAGE_SHARED_EXPORT
+)
 set_target_properties(vulkan PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET default
