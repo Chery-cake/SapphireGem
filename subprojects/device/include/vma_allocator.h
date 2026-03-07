@@ -4,6 +4,7 @@
 #include "device_export.h"
 #include "vk_mem_alloc_raii.hpp"
 #include <memory>
+#include <mutex>
 
 namespace device {
 
