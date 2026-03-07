@@ -54,6 +54,20 @@ set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+
+# Pre-set ZLIB info for assimp from the existing zlib target (from SDL_image).
+# On Windows, find_package(ZLIB) fails because there's no system zlib.
+if(TARGET zlib)
+    set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE CACHE BOOL "" FORCE)
+    set(ZLIB_FOUND TRUE CACHE BOOL "" FORCE)
+    set(ZLIB_LIBRARIES zlib CACHE STRING "" FORCE)
+    get_target_property(_zlib_inc zlib INTERFACE_INCLUDE_DIRECTORIES)
+    if(NOT _zlib_inc OR _zlib_inc STREQUAL "_zlib_inc-NOTFOUND")
+        get_target_property(_zlib_inc zlib SOURCE_DIR)
+    endif()
+    set(ZLIB_INCLUDE_DIR "${_zlib_inc}" CACHE PATH "" FORCE)
+endif()
+
 FetchContent_MakeAvailable(assimp)
 
 # ==============================================================================

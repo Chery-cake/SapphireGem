@@ -66,9 +66,11 @@ bool ModuleReloadManager::initialize(const std::string &exeDir) {
 void ModuleReloadManager::startMonitoring() {
   std::println("\n=== Starting Hot Reload Monitoring ===");
 
+  stopRequested_.store(false);
+
   // Core module monitor thread
-  monitorThreads_.emplace_back([this](std::stop_token stoken) {
-    while (!stoken.stop_requested()) {
+  monitorThreads_.emplace_back([this]() {
+    while (!stopRequested_.load()) {
       {
         std::lock_guard<std::mutex> lock(reloadMutex_);
         if (core_ && core_->checkAndReloadIfNeeded()) {
@@ -81,8 +83,8 @@ void ModuleReloadManager::startMonitoring() {
   });
 
   // Device module monitor thread
-  monitorThreads_.emplace_back([this](std::stop_token stoken) {
-    while (!stoken.stop_requested()) {
+  monitorThreads_.emplace_back([this]() {
+    while (!stopRequested_.load()) {
       {
         std::lock_guard<std::mutex> lock(reloadMutex_);
         if (device_ && device_->checkAndReloadIfNeeded()) {
@@ -95,8 +97,8 @@ void ModuleReloadManager::startMonitoring() {
   });
 
   // Window module monitor thread
-  monitorThreads_.emplace_back([this](std::stop_token stoken) {
-    while (!stoken.stop_requested()) {
+  monitorThreads_.emplace_back([this]() {
+    while (!stopRequested_.load()) {
       {
         std::lock_guard<std::mutex> lock(reloadMutex_);
         if (window_ && window_->checkAndReloadIfNeeded()) {
@@ -109,9 +111,7 @@ void ModuleReloadManager::startMonitoring() {
 }
 
 void ModuleReloadManager::shutdown() {
-  for (auto &t : monitorThreads_) {
-    t.request_stop();
-  }
+  stopRequested_.store(true);
   for (auto &t : monitorThreads_) {
     if (t.joinable()) {
       t.join();
