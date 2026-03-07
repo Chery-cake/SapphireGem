@@ -151,7 +151,7 @@ endif()
 FetchContent_Declare(
     sdl3
     GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.4.0
+    GIT_TAG release-3.4.2
     GIT_SHALLOW TRUE
 )
 set(SDL_SHARED ON CACHE BOOL "" FORCE)
