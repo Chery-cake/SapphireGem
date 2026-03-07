@@ -299,7 +299,6 @@ target_include_directories(slang INTERFACE
 if(WIN32)
     target_link_libraries(slang INTERFACE
         "${SLANG_INSTALL_DIR}/lib/slang.lib"
-        "${SLANG_INSTALL_DIR}/bin/slang.dll"
     )
 else()
     target_link_libraries(slang INTERFACE
@@ -311,15 +310,22 @@ endif()
 # (and the main binary) can find transitive dependencies like
 # libslang-compiler at runtime.  Uses cmake -E copy_directory which is
 # cross-platform and avoids shell-escaping issues with ninja.
-if(NOT WIN32)
+if(WIN32)
+    add_custom_target(copy_slang_libs ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${SLANG_INSTALL_DIR}/bin"
+            "${OUTPUT_DIR}"
+        COMMENT "[Slang] Copying DLLs to output"
+    )
+else()
     add_custom_target(copy_slang_libs ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${SLANG_INSTALL_DIR}/lib"
             "${OUTPUT_DIR}/lib"
         COMMENT "[Slang] Copying shared libraries to output"
     )
-    add_dependencies(copy_slang_libs _slang)
-    add_dependencies(slang copy_slang_libs)
 endif()
+add_dependencies(copy_slang_libs _slang)
+add_dependencies(slang copy_slang_libs)
 
 message(STATUS "Graphics dependencies configured")
