@@ -93,6 +93,11 @@ jobs:
       # ------------------------------------------------------------------
       # Windows Dependencies
       # ------------------------------------------------------------------
+      - name: Remove Strawberry Perl from PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "PATH=$(echo "$PATH" | sed 's|/c/Strawberry[^:]*:||g')" >> "$GITHUB_ENV"
+
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
         run: choco install sccache -y
