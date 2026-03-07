@@ -49,7 +49,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Enable POSIX features
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_GNU_SOURCE)
-else()
+elseif(NOT WIN32)
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
 
@@ -68,7 +68,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIR})
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(-fdiagnostics-color=always)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/color)
+    add_compile_options(/diagnostics:color)
 endif()
 
 # ==============================================================================
