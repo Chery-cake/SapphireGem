@@ -49,7 +49,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Enable POSIX features
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_compile_definitions(_GNU_SOURCE)
-else()
+elseif(NOT WIN32)
     add_compile_definitions(_POSIX_C_SOURCE=200809L)
 endif()
 
