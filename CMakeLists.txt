@@ -67,6 +67,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options(-fdiagnostics-color=always)
 elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     add_compile_options(/diagnostics:color)
+    # Force synchronous PDB writes so parallel cl.exe invocations
+    # (e.g. via sccache + Ninja) don't collide on vc*.pdb files.
+    add_compile_options(/FS)
 endif()
 
 # ==============================================================================
