@@ -40,6 +40,19 @@ if(NOT TARGET zlib)
     FetchContent_MakeAvailable(zlib)
 endif()
 
+# Expose the existing zlib target to assimp's find_package(ZLIB) call.
+# On Windows there is no system zlib, so FindZLIB.cmake fails even though
+# the zlib CMake target (from SDL_image or standalone FetchContent) exists.
+# We set the ZLIB_ variables and disable find_package(ZLIB) so assimp picks
+# up the already-configured target instead of searching for system files.
+if(TARGET zlib AND NOT ZLIB_FOUND)
+    get_target_property(_zlib_source_dir zlib SOURCE_DIR)
+    get_target_property(_zlib_binary_dir zlib BINARY_DIR)
+    set(ZLIB_FOUND TRUE)
+    set(ZLIB_INCLUDE_DIR "${_zlib_source_dir}" "${_zlib_binary_dir}")
+    set(ZLIB_LIBRARIES zlib)
+endif()
+
 # ==============================================================================
 # Assimp - Asset Import Library
 # ==============================================================================
@@ -54,7 +67,9 @@ set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE)
 FetchContent_MakeAvailable(assimp)
+unset(CMAKE_DISABLE_FIND_PACKAGE_ZLIB)
 
 # ==============================================================================
 # PhysicsFS - Virtual Filesystem
