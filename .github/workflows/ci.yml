@@ -93,7 +93,11 @@ jobs:
       # ------------------------------------------------------------------
       # Windows Dependencies
       # ------------------------------------------------------------------
-      - name: Install Windows dependencies
+      - name: Remove Strawberry Perl (Windows)
+        if: runner.os == 'Windows'
+        run: choco uninstall strawberryperl -y
+
+      - name: Install sccache (Windows)
         if: runner.os == 'Windows'
         run: choco install sccache -y
 
@@ -130,11 +134,6 @@ jobs:
       # ------------------------------------------------------------------
       # Configure Enviroment
       # ------------------------------------------------------------------
-      - name: Remove Strawberry Perl from PATH (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: echo "PATH=$(echo "$PATH" | sed 's|/c/Strawberry[^:]*:||g')" >> "$GITHUB_ENV"
-
       - name: Setup MSVC environment (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
