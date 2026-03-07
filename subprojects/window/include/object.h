@@ -12,7 +12,6 @@
 #include "window_export.h"
 #include <array>
 #include <cstdint>
-#include <gbm.h>
 #include <memory>
 #include <mutex>
 

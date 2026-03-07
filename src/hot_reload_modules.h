@@ -7,7 +7,9 @@
 
 #include "core_export_struct.h"
 #include "hot_reload.h"
+#include <atomic>
 #include <cstdint>
+#include <thread>
 
 /**
  * @brief Manages hot reloading for all engine modules with dependency cascading
@@ -85,7 +87,8 @@ private:
   std::unique_ptr<HotReload> core_;
   std::unique_ptr<HotReload> device_;
   std::unique_ptr<HotReload> window_;
-  std::vector<std::jthread> monitorThreads_;
+  std::atomic<bool> stopRequested_{false};
+  std::vector<std::thread> monitorThreads_;
   std::mutex reloadMutex_;
 };
 
