@@ -309,15 +309,13 @@ endif()
 
 # Copy slang shared libraries to the output directory so that test executables
 # (and the main binary) can find transitive dependencies like
-# libslang-compiler at runtime.
-if(UNIX)
-    if(APPLE)
-        set(_slang_lib_pattern "*.dylib")
-    else()
-        set(_slang_lib_pattern "*.so*")
-    endif()
+# libslang-compiler at runtime.  Uses cmake -E copy_directory which is
+# cross-platform and avoids shell-escaping issues with ninja.
+if(NOT WIN32)
     add_custom_target(copy_slang_libs ALL
-        COMMAND sh -c "cp -P '${SLANG_INSTALL_DIR}/lib/'${_slang_lib_pattern} '${OUTPUT_DIR}/lib/' 2>/dev/null || true"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${SLANG_INSTALL_DIR}/lib"
+            "${OUTPUT_DIR}/lib"
         COMMENT "[Slang] Copying shared libraries to output"
     )
     add_dependencies(copy_slang_libs _slang)

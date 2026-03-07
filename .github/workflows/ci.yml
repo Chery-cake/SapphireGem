@@ -6,6 +6,8 @@ name: CI
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -124,18 +126,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cmake-deps-
 
+      - name: Cache CMake dependencies (ExternalProject)
+        uses: actions/cache@v4
+        with:
+          path: build/lib
+          key: ${{ runner.os }}-cmake-lib-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'lib/**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-cmake-lib-
+
       - name: Cache sccache
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/sccache
             ${{ env.LOCALAPPDATA }}\Mozilla\sccache
-          key: ${{ runner.os }}-sccache-${{ github.sha }}
+          key: ${{ runner.os }}-sccache-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
+            ${{ runner.os }}-sccache-${{ github.ref_name }}-
             ${{ runner.os }}-sccache-
 
+      - name: Start sccache server
+        shell: bash
+        run: sccache --start-server || true
+
       # ------------------------------------------------------------------
-      # Configure Enviroment
+      # Configure Environment
       # ------------------------------------------------------------------
       - name: Setup MSVC environment (Windows)
         if: runner.os == 'Windows'
@@ -152,7 +167,7 @@ jobs:
         run: >
           cmake -B build
           -G "${{ matrix.cmake_generator }}"
-          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
           -DCMAKE_CXX_COMPILER=${{ matrix.cxx_compiler }}
           -DCMAKE_C_COMPILER_LAUNCHER=sccache
@@ -165,11 +180,15 @@ jobs:
       # Build
       # ------------------------------------------------------------------
       - name: Build
-        run: cmake --build build --config Debug --parallel 2
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
 
       # ------------------------------------------------------------------
       # Test
       # ------------------------------------------------------------------
       - name: Run Tests
         working-directory: build
-        run: ctest --build-config Debug --output-on-failure --timeout 120
+        run: ctest --build-config Release --output-on-failure --timeout 120
