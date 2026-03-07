@@ -74,15 +74,11 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     # C1041 when parallel cl.exe processes collide on shared vc*.pdb files.
     # /Z7 embeds debug info directly in .obj files, avoiding contention.
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "Embedded")
-    # Also patch legacy flag variables for sub-projects that may still
-    # inject /Zi via cmake_minimum_required with older policy versions.
-    foreach(flag_var
-        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_MINSIZEREL
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_MINSIZEREL)
-        string(REPLACE "/Zi" "/Z7" ${flag_var} "${${flag_var}}")
-    endforeach()
+    # Force CMP0141=NEW in FetchContent sub-projects that call
+    # cmake_minimum_required with versions older than 3.25.  Without this,
+    # those sub-projects revert to CMP0141=OLD and CMake injects /Zi
+    # via its internal debug-info handling, ignoring the property above.
+    set(CMAKE_POLICY_DEFAULT_CMP0141 NEW)
 endif()
 
 # ==============================================================================
