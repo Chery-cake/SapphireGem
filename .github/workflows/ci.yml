@@ -97,6 +97,11 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install sccache -y
 
+      - name: Remove Strawberry Perl from PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "PATH=$(echo "$PATH" | sed 's|/c/Strawberry[^:]*:||g')" >> "$GITHUB_ENV"
+
       - name: Install Vulkan SDK (Windows)
         if: runner.os == 'Windows'
         uses: jakoch/install-vulkan-sdk-action@v1.2.8
