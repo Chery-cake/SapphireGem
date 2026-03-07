@@ -53,7 +53,7 @@ target_link_libraries(${PROJECT_NAME}
 # ==============================================================================
 target_compile_options(${PROJECT_NAME} PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /wd4251>
 )
 
 target_compile_definitions(${PROJECT_NAME}
