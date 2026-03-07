@@ -204,6 +204,11 @@ bool VulkanInstance::initialize() {
 }
 
 std::vector<std::string> VulkanInstance::getAvailableExtensions() {
+#ifdef __APPLE__
+  if (!std::getenv("VK_ICD_FILENAMES")) {
+    putenv("VK_ICD_FILENAMES=vulkan/icd.d/MoltenVK_icd.json");
+  }
+#endif
   // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
   // on systems where the Vulkan loader is present but no ICD is installed.
   vk::detail::DynamicLoader dl;
@@ -245,6 +250,11 @@ std::vector<std::string> VulkanInstance::getAvailableExtensions() {
 }
 
 std::vector<std::string> VulkanInstance::getAvailableLayers() {
+#ifdef __APPLE__
+  if (!std::getenv("VK_ICD_FILENAMES")) {
+    putenv("VK_ICD_FILENAMES=vulkan/icd.d/MoltenVK_icd.json");
+  }
+#endif
   // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
   // on systems where the Vulkan loader is present but no ICD is installed.
   vk::detail::DynamicLoader dl;
