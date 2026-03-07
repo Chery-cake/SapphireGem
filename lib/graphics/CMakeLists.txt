@@ -10,7 +10,6 @@
 # ==============================================================================
 
 include(FetchContent)
-include(ExternalProject)
 
 # ==============================================================================
 # Vulkan SDK (headers only)
@@ -212,99 +211,77 @@ set(SDLTTF_TOOLS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(sdl_ttf)
 
 # ==============================================================================
-# shader-slang/slang - Runtime shader compilation - doesn't have module
+# shader-slang/slang - Runtime shader compilation
 # ==============================================================================
-# Slang requires a two-step build: first build the generator tools for the host
-# platform (slang-embed, slang-capability-generator, etc.), then build the
-# actual library with SLANG_GENERATORS_PATH pointing to those pre-built tools.
+# Uses prebuilt binaries from GitHub releases to avoid building from source,
+# which takes 30+ minutes on CI runners.
 # ==============================================================================
-set(SLANG_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang")
-set(SLANG_GENERATORS_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang-generators")
+set(SLANG_VERSION "2025.24.3")
+set(SLANG_TAG "v${SLANG_VERSION}")
+
+# Determine platform identifier for the prebuilt binary URL
 if(WIN32)
-    set(_SLANG_BYPRODUCTS
-        "${SLANG_INSTALL_DIR}/lib/slang.lib"
-        "${SLANG_INSTALL_DIR}/bin/slang.dll"
-    )
+    set(_SLANG_OS "windows")
+elseif(APPLE)
+    set(_SLANG_OS "macos")
 else()
-    set(_SLANG_BYPRODUCTS
-        "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
-    )
+    set(_SLANG_OS "linux")
 endif()
 
-# TODO add toolchain for cross compiling
-  
-# Step 1: Build slang generator tools for the host platform
-ExternalProject_Add(
-    _slang_generators
-    GIT_REPOSITORY https://github.com/shader-slang/slang.git
-    GIT_TAG v2025.24.3
-    UPDATE_DISCONNECTED 1
-    GIT_SHALLOW TRUE
-    GIT_SUBMODULES_RECURSE FALSE
-    CMAKE_ARGS
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
-        -DSLANG_ENABLE_SLANG_RHI=OFF
-        -DSLANG_ENABLE_TESTS=OFF
-        -DSLANG_ENABLE_EXAMPLES=OFF
-        -DSLANG_ENABLE_GFX=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-    BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target all-generators --config ${CMAKE_BUILD_TYPE}
-    INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --prefix ${SLANG_GENERATORS_INSTALL_DIR} --component generators --config ${CMAKE_BUILD_TYPE}
+# Determine architecture
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    set(_SLANG_ARCH "aarch64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+    set(_SLANG_ARCH "x86_64")
+else()
+    message(FATAL_ERROR "Unsupported architecture for slang prebuilt: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+set(_SLANG_ARCHIVE "slang-${SLANG_VERSION}-${_SLANG_OS}-${_SLANG_ARCH}")
+if(WIN32)
+    set(_SLANG_URL "https://github.com/shader-slang/slang/releases/download/${SLANG_TAG}/${_SLANG_ARCHIVE}.zip")
+else()
+    set(_SLANG_URL "https://github.com/shader-slang/slang/releases/download/${SLANG_TAG}/${_SLANG_ARCHIVE}.tar.gz")
+endif()
+
+FetchContent_Declare(
+    _slang_prebuilt
+    URL ${_SLANG_URL}
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-  
-# Step 2: Build the actual slang library using the pre-built generators
-ExternalProject_Add(
-    _slang
-    DEPENDS _slang_generators
-    GIT_REPOSITORY https://github.com/shader-slang/slang.git
-    GIT_TAG v2025.24.3
-    UPDATE_DISCONNECTED 1
-    GIT_SHALLOW TRUE
-    GIT_SUBMODULES_RECURSE FALSE
-    BUILD_BYPRODUCTS ${_SLANG_BYPRODUCTS}
-    CMAKE_ARGS
-        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
-        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-        -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
-        -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
-        -DCMAKE_INSTALL_PREFIX=${SLANG_INSTALL_DIR}
-        -DSLANG_GENERATORS_PATH=${SLANG_GENERATORS_INSTALL_DIR}/bin
-        -DSLANG_ENABLE_TESTS=OFF
-        -DSLANG_ENABLE_EXAMPLES=OFF
-        -DSLANG_ENABLE_GFX=OFF
-        -DSLANG_ENABLE_SLANGD=OFF
-        -DSLANG_ENABLE_SLANGC=ON
-        -DSLANG_ENABLE_SLANGI=OFF
-        -DSLANG_ENABLE_SLANGRT=ON
-        -DSLANG_EXCLUDE_DAWN=ON
-        -DSLANG_EXCLUDE_TINT=ON
-        -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
-        -DSLANG_ENABLE_SLANG_RHI=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-)
+FetchContent_MakeAvailable(_slang_prebuilt)
 
 add_library(slang INTERFACE)
-add_dependencies(slang _slang)
-#target_link_libraries(slang INTERFACE _slang)
 target_include_directories(slang INTERFACE
-    "${SLANG_INSTALL_DIR}/include"
+    "${_slang_prebuilt_SOURCE_DIR}/include"
 )
-# Link the actual library
 if(WIN32)
     target_link_libraries(slang INTERFACE
-        "${SLANG_INSTALL_DIR}/lib/slang.lib"
-        "${SLANG_INSTALL_DIR}/bin/slang.dll"
+        "${_slang_prebuilt_SOURCE_DIR}/lib/slang.lib"
     )
 else()
     target_link_libraries(slang INTERFACE
-        "${SLANG_INSTALL_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        "${_slang_prebuilt_SOURCE_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
     )
 endif()
+
+# Copy slang shared libraries to output directory for runtime discovery
+if(WIN32)
+    file(GLOB _SLANG_DLLS "${_slang_prebuilt_SOURCE_DIR}/bin/*.dll")
+    add_custom_target(copy_slang ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_DLLS} "${OUTPUT_DIR}"
+        COMMENT "[slang] Copying DLLs to output"
+    )
+else()
+    file(GLOB _SLANG_SHARED_LIBS
+        "${_slang_prebuilt_SOURCE_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        "${_slang_prebuilt_SOURCE_DIR}/lib/libslang-rt${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    )
+    add_custom_target(copy_slang ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_SHARED_LIBS} "${OUTPUT_DIR}/lib"
+        COMMENT "[slang] Copying shared libraries to output"
+    )
+endif()
+add_dependencies(slang copy_slang)
 
 message(STATUS "Graphics dependencies configured")
