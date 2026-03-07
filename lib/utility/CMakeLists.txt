@@ -23,22 +23,6 @@ set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
 
 # ==============================================================================
-# Assimp - Asset Import Library
-# ==============================================================================
-FetchContent_Declare(
-    assimp
-    GIT_REPOSITORY https://github.com/assimp/assimp.git
-    GIT_TAG v6.0.2
-    GIT_SHALLOW TRUE
-)
-set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
-set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(assimp)
-
-# ==============================================================================
 # zlib - Compression Library
 # ==============================================================================
 
@@ -55,6 +39,22 @@ if(NOT TARGET zlib)
     set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(zlib)
 endif()
+
+# ==============================================================================
+# Assimp - Asset Import Library
+# ==============================================================================
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG v6.0.2
+    GIT_SHALLOW TRUE
+)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(assimp)
 
 # ==============================================================================
 # PhysicsFS - Virtual Filesystem
