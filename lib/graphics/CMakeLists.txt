@@ -267,18 +267,22 @@ endif()
 
 # Copy slang shared libraries to output directory for runtime discovery
 if(WIN32)
-    file(GLOB _SLANG_DLLS "${_slang_prebuilt_SOURCE_DIR}/bin/*.dll")
+    set(_SLANG_RUNTIME_LIBS
+        "${_slang_prebuilt_SOURCE_DIR}/bin/slang.dll"
+        "${_slang_prebuilt_SOURCE_DIR}/bin/slang-compiler.dll"
+        "${_slang_prebuilt_SOURCE_DIR}/bin/slang-rt.dll"
+    )
     add_custom_target(copy_slang ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_DLLS} "${OUTPUT_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_RUNTIME_LIBS} "${OUTPUT_DIR}"
         COMMENT "[slang] Copying DLLs to output"
     )
 else()
-    file(GLOB _SLANG_SHARED_LIBS
+    set(_SLANG_RUNTIME_LIBS
         "${_slang_prebuilt_SOURCE_DIR}/lib/libslang${CMAKE_SHARED_LIBRARY_SUFFIX}"
         "${_slang_prebuilt_SOURCE_DIR}/lib/libslang-rt${CMAKE_SHARED_LIBRARY_SUFFIX}"
     )
     add_custom_target(copy_slang ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_SHARED_LIBS} "${OUTPUT_DIR}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_SLANG_RUNTIME_LIBS} "${OUTPUT_DIR}/lib"
         COMMENT "[slang] Copying shared libraries to output"
     )
 endif()
