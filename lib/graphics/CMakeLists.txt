@@ -112,10 +112,10 @@ if(APPLE)
     FetchContent_MakeAvailable(_moltenvk)
 
     set(MOLTENVK_DYLIB
-        "${_moltenvk_SOURCE_DIR}/MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.dylib"
+        "${_moltenvk_SOURCE_DIR}/MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib"
     )
     set(MOLTENVK_INCLUDE
-        "${_moltenvk_SOURCE_DIR}/MoltenVK/include"
+        "${_moltenvk_SOURCE_DIR}/MoltenVK/MoltenVK/include"
     )
 
     # Interface target — same pattern as your slang/vma targets

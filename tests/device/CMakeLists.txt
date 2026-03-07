@@ -19,5 +19,6 @@ target_compile_definitions(test_vulkan_instance PRIVATE
     $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 add_test(NAME device_vulkan_instance COMMAND test_vulkan_instance)
+set_tests_properties(device_vulkan_instance PROPERTIES LABELS "gpu")
 
 message(STATUS "Device tests configured")

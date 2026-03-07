@@ -93,6 +93,10 @@ jobs:
       # ------------------------------------------------------------------
       # Windows Dependencies
       # ------------------------------------------------------------------
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: choco install sccache -y
+
       - name: Install Vulkan SDK (Windows)
         if: runner.os == 'Windows'
         uses: jakoch/install-vulkan-sdk-action@v1.2.8
@@ -161,4 +165,4 @@ jobs:
       # ------------------------------------------------------------------
       - name: Run Tests
         working-directory: build
-        run: ctest --build-config Debug --output-on-failure --timeout 120
+        run: ctest --build-config Debug --output-on-failure --timeout 120 --label-exclude gpu
