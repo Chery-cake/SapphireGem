@@ -32,7 +32,10 @@ static bool vulkanAvailable() {
   try {
     // Try to get available extensions - this requires Vulkan runtime
     auto extensions = device::VulkanInstance::getAvailableExtensions();
-    return true;
+    // A functional Vulkan runtime should report at least one extension.
+    // If the loader is present but no ICD (GPU driver) is installed,
+    // the list will be empty and Vulkan is not truly available.
+    return !extensions.empty();
   } catch (...) {
     return false;
   }
