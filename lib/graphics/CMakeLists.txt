@@ -77,7 +77,8 @@ set(VMA_DYNAMIC_VULKAN_FUNCTIONS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(_vma_hpp)
 
 add_library(vma SHARED vma.cpp)
-target_include_directories(vma PUBLIC
+# SYSTEM suppresses third-party warnings (e.g. C4099) in consumer targets
+target_include_directories(vma SYSTEM PUBLIC
   ${_vma_hpp_SOURCE_DIR}/VulkanMemoryAllocator/include
   ${_vma_hpp_SOURCE_DIR}/include
 )
@@ -89,7 +90,7 @@ target_compile_definitions(vma PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=0
     VMA_DYNAMIC_VULKAN_FUNCTIONS=1
 )
-# Suppress C4099 (class/struct type mismatch) from VMA HPP third-party headers
+# Suppress C4099 (class/struct type mismatch) in vma.cpp itself
 if(MSVC)
     target_compile_options(vma PRIVATE /wd4099)
 endif()
