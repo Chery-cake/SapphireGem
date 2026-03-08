@@ -224,9 +224,15 @@ FetchContent_MakeAvailable(sdl_ttf)
 # ==============================================================================
 set(SLANG_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang")
 set(SLANG_GENERATORS_INSTALL_DIR "${CMAKE_BINARY_DIR}/_deps/slang-generators")
-if(WIN32)
+if(WIN32 AND MSVC)
     set(_SLANG_BYPRODUCTS
         "${SLANG_INSTALL_DIR}/lib/slang.lib"
+        "${SLANG_INSTALL_DIR}/bin/slang.dll"
+    )
+elseif(WIN32)
+    # MinGW cross-compilation: import libraries use .dll.a suffix
+    set(_SLANG_BYPRODUCTS
+        "${SLANG_INSTALL_DIR}/lib/libslang.dll.a"
         "${SLANG_INSTALL_DIR}/bin/slang.dll"
     )
 else()
@@ -235,17 +241,21 @@ else()
     )
 endif()
 
-# TODO add toolchain for cross compiling
-  
-# Step 1: Build slang generator tools for the host platform
-ExternalProject_Add(
-    _slang_generators
-    GIT_REPOSITORY https://github.com/shader-slang/slang.git
-    GIT_TAG v2025.24.3
-    UPDATE_DISCONNECTED 1
-    GIT_SHALLOW TRUE
-    GIT_SUBMODULES_RECURSE FALSE
-    CMAKE_ARGS
+# When cross-compiling, slang generators must be built for the HOST platform
+# (they run during slang's own build), while the library is built for the
+# TARGET platform.
+if(CMAKE_CROSSCOMPILING)
+    set(_SLANG_GEN_ARGS
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DSLANG_SLANG_LLVM_FLAVOR=DISABLE
+        -DSLANG_ENABLE_SLANG_RHI=OFF
+        -DSLANG_ENABLE_TESTS=OFF
+        -DSLANG_ENABLE_EXAMPLES=OFF
+        -DSLANG_ENABLE_GFX=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    )
+else()
+    set(_SLANG_GEN_ARGS
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
@@ -255,6 +265,18 @@ ExternalProject_Add(
         -DSLANG_ENABLE_EXAMPLES=OFF
         -DSLANG_ENABLE_GFX=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    )
+endif()
+
+# Step 1: Build slang generator tools for the host platform
+ExternalProject_Add(
+    _slang_generators
+    GIT_REPOSITORY https://github.com/shader-slang/slang.git
+    GIT_TAG v2025.24.3
+    UPDATE_DISCONNECTED 1
+    GIT_SHALLOW TRUE
+    GIT_SUBMODULES_RECURSE FALSE
+    CMAKE_ARGS ${_SLANG_GEN_ARGS}
     BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target all-generators --config ${CMAKE_BUILD_TYPE}
     INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --prefix ${SLANG_GENERATORS_INSTALL_DIR} --component generators --config ${CMAKE_BUILD_TYPE}
 )
@@ -300,9 +322,14 @@ target_include_directories(slang INTERFACE
     "${SLANG_INSTALL_DIR}/include"
 )
 # Link the actual library
-if(WIN32)
+if(WIN32 AND MSVC)
     target_link_libraries(slang INTERFACE
         "${SLANG_INSTALL_DIR}/lib/slang.lib"
+    )
+elseif(WIN32)
+    # MinGW: use the .dll.a import library
+    target_link_libraries(slang INTERFACE
+        "${SLANG_INSTALL_DIR}/lib/libslang.dll.a"
     )
 else()
     target_link_libraries(slang INTERFACE
