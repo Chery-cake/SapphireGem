@@ -31,10 +31,11 @@ jobs:
           submodules: recursive
 
       # ------------------------------------------------------------------
-      # Install Dependencies
+      # Install Dependencies TODO remove ppa and change to GCC14 - it should be the default
       # ------------------------------------------------------------------
       - name: Install cross-compilation dependencies
         run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
           sudo dpkg --add-architecture amd64
           sudo apt-get update
           sudo apt-get install -y \
@@ -43,9 +44,18 @@ jobs:
             sccache \
             build-essential \
             mingw-w64 \
+            gcc-14-mingw-w64-x86-64 \
+            g++-14-mingw-w64-x86-64 \
             wine64 \
             libvulkan-dev \
             mesa-vulkan-drivers
+
+      - name: Set GCC 14 as default MinGW compiler
+        run: |
+          sudo update-alternatives --set \
+            x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-14
+          sudo update-alternatives --set \
+            x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-14
 
       - name: Configure Wine
         run: |
