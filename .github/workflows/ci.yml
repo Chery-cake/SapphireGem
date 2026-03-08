@@ -92,7 +92,7 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja sccache vulkan-headers
+          brew install sccache vulkan-headers
 
       # ------------------------------------------------------------------
       # Windows Dependencies

@@ -6,7 +6,7 @@
 #include "vulkan_instance.h"
 #include <cstdint>
 #include <cstdio>
-#include <print>
+#include "print_compat.h"
 #include <set>
 #include <utility>
 
@@ -246,7 +246,7 @@ bool DeviceManager::initialize(VulkanInstance &instance,
 
   // Sort GPUs by score
   std::sort(availableGPUs_.begin(), availableGPUs_.end(),
-            [this](const GPUInfo &a, const GPUInfo &b) {
+            [](const GPUInfo &a, const GPUInfo &b) {
               return scoreDevice(a) > scoreDevice(b);
             });
 

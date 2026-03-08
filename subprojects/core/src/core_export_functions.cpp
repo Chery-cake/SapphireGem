@@ -5,7 +5,7 @@
 #include "core_export_struct.h"
 #include "memory_manager.h"
 #include "thread_manager.h"
-#include <print>
+#include "print_compat.h"
 
 // Lifecycle callbacks that the hot reload system can call
 extern "C" {

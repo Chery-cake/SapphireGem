@@ -3,7 +3,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vulkan_device.h"
 #include <mutex>
-#include <print>
+#include "print_compat.h"
 
 namespace window {
 

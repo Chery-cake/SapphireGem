@@ -4,7 +4,7 @@
 #include <chrono>
 #include <csignal>
 #include <fstream>
-#include <print>
+#include "print_compat.h"
 #include <string>
 
 // ============================================================================

@@ -10,7 +10,7 @@
 #include "vulkan_device.h"
 #include <memory>
 #include <mutex>
-#include <print>
+#include "print_compat.h"
 #include <utility>
 
 namespace window {

@@ -17,7 +17,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <memory>
-#include <print>
+#include "print_compat.h"
 #include <thread>
 
 // ============================================================================

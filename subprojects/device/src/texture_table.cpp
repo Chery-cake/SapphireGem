@@ -1,7 +1,7 @@
 #include "texture_table.h"
 #include "bindless_types.h"
 #include "vulkan_device.h"
-#include <print>
+#include "print_compat.h"
 
 namespace device {
 

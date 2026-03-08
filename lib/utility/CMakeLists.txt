@@ -59,7 +59,7 @@ FetchContent_MakeAvailable(assimp)
 # injecting /Z7, letting assimp keep its own /Zi without conflict.
 # This is safe because assimp is third-party code not compiled through
 # sccache, so PDB-based debug info (/Zi) causes no contention.
-if(MSVC AND TARGET assimp AND ${CMAKE_BUILD_TYPE} EQUAL "Release")
+if(MSVC AND TARGET assimp AND CMAKE_BUILD_TYPE STREQUAL "Release")
     set_target_properties(assimp PROPERTIES MSVC_DEBUG_INFORMATION_FORMAT "")
 endif()
 

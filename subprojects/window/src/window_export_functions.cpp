@@ -2,7 +2,7 @@
 
 #include "window_export.h"
 #include "window_export_struct.h"
-#include <print>
+#include "print_compat.h"
 
 extern "C" {
 WINDOW_API void lib_on_load(void *data) {

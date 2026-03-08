@@ -3,7 +3,7 @@
 #include "vulkan_device.h"
 #include <cstdio>
 #include <memory>
-#include <print>
+#include "print_compat.h"
 #include <utility>
 
 namespace device {

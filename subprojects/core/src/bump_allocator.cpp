@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <new>
-#include <print>
+#include "print_compat.h"
 
 // ============================================================================
 // BumpAllocator Implementation

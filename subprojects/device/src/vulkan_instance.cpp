@@ -5,7 +5,7 @@
 #include "vulkan/vulkan_hpp_macros.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include <memory>
-#include <print>
+#include "print_compat.h"
 #include <unordered_set>
 
 namespace device {

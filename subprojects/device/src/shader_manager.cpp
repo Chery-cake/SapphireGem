@@ -6,7 +6,7 @@
 #include <fstream>
 #include <memory>
 #include <mutex>
-#include <print>
+#include "print_compat.h"
 #include <sstream>
 
 namespace device {

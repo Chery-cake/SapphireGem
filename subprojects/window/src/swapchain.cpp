@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <memory>
 #include <mutex>
-#include <print>
+#include "print_compat.h"
 #include <vector>
 
 namespace window {

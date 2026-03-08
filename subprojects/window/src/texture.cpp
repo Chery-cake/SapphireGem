@@ -2,7 +2,7 @@
 #include "SDL3_image/SDL_image.h"
 #include "vulkan_device.h"
 #include <mutex>
-#include <print>
+#include "print_compat.h"
 
 namespace window {
 

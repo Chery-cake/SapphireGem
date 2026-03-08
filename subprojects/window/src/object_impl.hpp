@@ -2,7 +2,7 @@
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
 #include "vulkan/vulkan.hpp"
-#include <print>
+#include "print_compat.h"
 
 namespace window {
 

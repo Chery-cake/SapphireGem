@@ -2,7 +2,7 @@
 
 #include "device_export.h"
 #include "device_export_struct.h"
-#include <print>
+#include "print_compat.h"
 
 extern "C" {
 DEVICE_API void lib_on_load(void *data) {

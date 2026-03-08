@@ -4,7 +4,7 @@
 
 #include "device_export_struct.h"
 #include "window_export_struct.h"
-#include <print>
+#include "print_compat.h"
 
 bool ModuleReloadManager::initialize(const std::string &exeDir) {
 #ifdef _WIN32
