@@ -132,7 +132,7 @@ template <> struct GPUUniformBufferData<2> {
  * Rendering mode diversity is handled per-vertex in the shader,
  * not by per-face material overrides.
  */
-struct WINDOW_API Face {
+struct Face {
   uint32_t faceIndex = 0;
   uint32_t vertexOffset = 0; // First vertex of this face
   uint32_t vertexCount = 0;  // Number of vertices in this face

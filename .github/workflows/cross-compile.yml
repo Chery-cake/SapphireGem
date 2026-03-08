@@ -1,0 +1,286 @@
+# ==============================================================================
+# CI Workflow - Cross-Compile on Linux for Windows and macOS
+# ==============================================================================
+name: Cross-Compile
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # Cross-compile for Windows from Linux using MinGW + run tests via Wine
+  # ============================================================================
+  cross-windows:
+    name: Linux → Windows (MinGW)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ------------------------------------------------------------------
+      # Install Dependencies
+      # ------------------------------------------------------------------
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo dpkg --add-architecture amd64
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            sccache \
+            build-essential \
+            mingw-w64 \
+            wine64 \
+            libvulkan-dev \
+            mesa-vulkan-drivers
+
+      - name: Configure Wine
+        run: |
+          wineboot --init || true
+          echo "WINEDEBUG=-all" >> $GITHUB_ENV
+
+      # ------------------------------------------------------------------
+      # Cache
+      # ------------------------------------------------------------------
+      - name: Set sccache dir
+        run: echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
+
+      - name: Cache CMake dependencies (FetchContent)
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: cross-windows-cmake-deps-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'lib/**/CMakeLists.txt') }}
+          restore-keys: |
+            cross-windows-cmake-deps-${{ github.ref_name }}
+            cross-windows-cmake-deps-
+
+      - name: Cache CMake dependencies (ExternalProject)
+        uses: actions/cache@v4
+        with:
+          path: build/lib
+          key: cross-windows-cmake-lib-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'lib/**/CMakeLists.txt') }}
+          restore-keys: |
+            cross-windows-cmake-lib-${{ github.ref_name }}
+            cross-windows-cmake-lib-
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: cross-windows-sccache-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            cross-windows-sccache-${{ github.ref_name }}-
+            cross-windows-sccache-
+
+      - name: Start sccache server
+        run: sccache --start-server || true
+
+      # ------------------------------------------------------------------
+      # Configure & Build
+      # ------------------------------------------------------------------
+      - name: Configure CMake (cross-compile for Windows)
+        run: >
+          cmake -B build
+          -G "Ninja"
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/toolchains/windows-x86_64.cmake
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DENGINE_HEADLESS=ON
+          -DENABLE_TESTS=ON
+          -DENGINE_ENABLE_SANITIZERS=OFF
+
+      - name: Build
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 4
+        run: cmake --build build --config Release 2>&1 | tee build/build.log
+        shell: bash
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
+
+      # ------------------------------------------------------------------
+      # Test (via Wine)
+      # ------------------------------------------------------------------
+      - name: Run Tests (via Wine)
+        working-directory: build
+        env:
+          WINEDEBUG: "-all"
+        run: ctest --build-config Release --output-on-failure --timeout 120 --parallel 4
+
+      # ------------------------------------------------------------------
+      # Upload Artifacts on Failure
+      # ------------------------------------------------------------------
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-cross-windows
+          path: build/build.log
+          retention-days: 7
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-cross-windows
+          path: build/Testing/
+          retention-days: 7
+
+  # ============================================================================
+  # Cross-compile for macOS from Linux using osxcross
+  # ============================================================================
+  cross-macos:
+    name: Linux → macOS (osxcross)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ------------------------------------------------------------------
+      # Install Dependencies
+      # ------------------------------------------------------------------
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            sccache \
+            build-essential \
+            clang \
+            lld \
+            libxml2-dev \
+            libssl-dev \
+            libbz2-dev \
+            zlib1g-dev \
+            libvulkan-dev
+
+      - name: Install osxcross
+        run: |
+          # Install osxcross with the macOS SDK
+          # The SDK tarball must be provided via MACOS_SDK_URL secret or cached
+          git clone --depth=1 https://github.com/tpoechtrager/osxcross.git /tmp/osxcross
+
+          # Check if macOS SDK is available (set MACOS_SDK_URL as a repository secret)
+          if [ -n "${{ secrets.MACOS_SDK_URL }}" ]; then
+            curl -L "${{ secrets.MACOS_SDK_URL }}" -o /tmp/osxcross/tarballs/MacOSX.sdk.tar.xz
+          else
+            echo "::warning::MACOS_SDK_URL secret not set. macOS cross-compilation requires the macOS SDK."
+            echo "::warning::See https://github.com/tpoechtrager/osxcross#packaging-the-sdk for instructions."
+            echo "SKIP_MACOS_BUILD=true" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          cd /tmp/osxcross
+          UNATTENDED=1 ./build.sh
+          sudo mkdir -p /opt/osxcross
+          sudo cp -r /tmp/osxcross/target/* /opt/osxcross/
+
+      # ------------------------------------------------------------------
+      # Cache
+      # ------------------------------------------------------------------
+      - name: Set sccache dir
+        run: echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
+
+      - name: Cache CMake dependencies (FetchContent)
+        if: env.SKIP_MACOS_BUILD != 'true'
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: cross-macos-cmake-deps-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'lib/**/CMakeLists.txt') }}
+          restore-keys: |
+            cross-macos-cmake-deps-${{ github.ref_name }}
+            cross-macos-cmake-deps-
+
+      - name: Cache CMake dependencies (ExternalProject)
+        if: env.SKIP_MACOS_BUILD != 'true'
+        uses: actions/cache@v4
+        with:
+          path: build/lib
+          key: cross-macos-cmake-lib-${{ github.ref_name }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'lib/**/CMakeLists.txt') }}
+          restore-keys: |
+            cross-macos-cmake-lib-${{ github.ref_name }}
+            cross-macos-cmake-lib-
+
+      - name: Cache sccache
+        if: env.SKIP_MACOS_BUILD != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SCCACHE_DIR }}
+          key: cross-macos-sccache-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            cross-macos-sccache-${{ github.ref_name }}-
+            cross-macos-sccache-
+
+      - name: Start sccache server
+        if: env.SKIP_MACOS_BUILD != 'true'
+        run: sccache --start-server || true
+
+      # ------------------------------------------------------------------
+      # Configure & Build
+      # ------------------------------------------------------------------
+      - name: Configure CMake (cross-compile for macOS)
+        if: env.SKIP_MACOS_BUILD != 'true'
+        run: >
+          cmake -B build
+          -G "Ninja"
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/toolchains/macos-arm64.cmake
+          -DOSXCROSS_ROOT=/opt/osxcross
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+          -DENGINE_HEADLESS=ON
+          -DENABLE_TESTS=ON
+          -DENGINE_ENABLE_SANITIZERS=OFF
+
+      - name: Build
+        if: env.SKIP_MACOS_BUILD != 'true'
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 4
+        run: cmake --build build --config Release 2>&1 | tee build/build.log
+        shell: bash
+
+      - name: Show sccache stats
+        if: always() && env.SKIP_MACOS_BUILD != 'true'
+        run: sccache --show-stats
+
+      # ------------------------------------------------------------------
+      # Test (macOS binaries cannot run on Linux — tests are skipped) TODO add a macOS system to run the tests
+      # ------------------------------------------------------------------
+      - name: Run Tests
+        if: env.SKIP_MACOS_BUILD != 'true'
+        working-directory: build
+        run: |
+          echo "::notice::macOS cross-compiled binaries cannot be tested on Linux."
+          echo "::notice::Run tests on the native macOS CI job instead."
+          # Verify that test executables were built
+          find bin/ -name "test_*" -type f | head -20 || true
+
+      # ------------------------------------------------------------------
+      # Upload Artifacts on Failure
+      # ------------------------------------------------------------------
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-cross-macos
+          path: build/build.log
+          retention-days: 7

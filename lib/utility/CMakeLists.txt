@@ -50,6 +50,19 @@ endif()
 
 FetchContent_MakeAvailable(assimp)
 
+# Assimp v6.0.2 explicitly appends /Zi to CMAKE_CXX_FLAGS_RELEASE in its
+# CMakeLists.txt.  Combined with our global
+# CMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded (which adds /Z7 via the
+# target property), both flags end up on the command line, producing
+# D9025 "overriding '/Zi' with '/Z7'" for every assimp compilation unit.
+# Clearing the property on the assimp target prevents CMake from also
+# injecting /Z7, letting assimp keep its own /Zi without conflict.
+# This is safe because assimp is third-party code not compiled through
+# sccache, so PDB-based debug info (/Zi) causes no contention.
+if(MSVC AND TARGET assimp AND ${CMAKE_BUILD_TYPE} EQUAL "Release")
+    set_target_properties(assimp PROPERTIES MSVC_DEBUG_INFORMATION_FORMAT "")
+endif()
+
 # ==============================================================================
 # zlib - Compression Library
 # ==============================================================================
