@@ -89,6 +89,10 @@ target_compile_definitions(vma PRIVATE
     VMA_STATIC_VULKAN_FUNCTIONS=0
     VMA_DYNAMIC_VULKAN_FUNCTIONS=1
 )
+# Suppress C4099 (class/struct type mismatch) from VMA HPP third-party headers
+if(MSVC)
+    target_compile_options(vma PRIVATE /wd4099)
+endif()
 set_target_properties(vma PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     CXX_VISIBILITY_PRESET default
