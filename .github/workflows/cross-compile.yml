@@ -181,7 +181,7 @@ jobs:
 
           # Check if macOS SDK is available (set MACOS_SDK_URL as a repository secret)
           if [ -n "${{ secrets.MACOS_SDK_URL }}" ]; then
-            curl -L "${{ secrets.MACOS_SDK_URL }}" -o /tmp/osxcross/tarballs/MacOSX14.0.sdk.tar.xz
+            curl -L "${{ secrets.MACOS_SDK_URL }}" -o /tmp/osxcross/tarballs/MacOSX.sdk.tar.xz
           else
             echo "::warning::MACOS_SDK_URL secret not set. macOS cross-compilation requires the macOS SDK."
             echo "::warning::See https://github.com/tpoechtrager/osxcross#packaging-the-sdk for instructions."
