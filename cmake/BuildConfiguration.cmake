@@ -44,7 +44,6 @@ function(target_configure_debug TARGET_NAME)
     elseif(MSVC)
         target_compile_options(${TARGET_NAME} PRIVATE
             $<$<CONFIG:Debug>:
-                /Zi         # Debug information
                 /Od         # No optimization
                 /RTC1       # Runtime checks
                 /GS         # Buffer security check
