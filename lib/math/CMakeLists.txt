@@ -17,6 +17,8 @@ FetchContent_Declare(
     GIT_TAG 1.0.3
     GIT_SHALLOW TRUE
 )
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
+set(GLM_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(glm)
 
 # ==============================================================================

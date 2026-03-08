@@ -77,7 +77,7 @@ set(VMA_DYNAMIC_VULKAN_FUNCTIONS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(_vma_hpp)
 
 add_library(vma SHARED vma.cpp)
-target_include_directories(vma PUBLIC
+target_include_directories(vma SYSTEM PUBLIC
   ${_vma_hpp_SOURCE_DIR}/VulkanMemoryAllocator/include
   ${_vma_hpp_SOURCE_DIR}/include
 )
