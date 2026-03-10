@@ -69,11 +69,12 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     add_compile_options(/diagnostics:color)
     # Force synchronous PDB writes as a safety net.
     add_compile_options(/FS)
+    set(CMAKE_PDB_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/pdb)
     # Use embedded debug info (/Z7) instead of separate PDB (/Zi).
     # sccache does not support PDB-based debug info, causing fatal error
     # C1041 when parallel cl.exe processes collide on shared vc*.pdb files.
     # /Z7 embeds debug info directly in .obj files, avoiding contention.
-    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+    #set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
     # Force CMP0141=NEW in FetchContent sub-projects that call
     # cmake_minimum_required with versions older than 3.25.  Without this,
     # those sub-projects revert to CMP0141=OLD and CMake injects /Zi
