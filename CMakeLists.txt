@@ -74,7 +74,7 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
     # sccache does not support PDB-based debug info, causing fatal error
     # C1041 when parallel cl.exe processes collide on shared vc*.pdb files.
     # /Z7 embeds debug info directly in .obj files, avoiding contention.
-    #set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "Embedded")
     # Force CMP0141=NEW in FetchContent sub-projects that call
     # cmake_minimum_required with versions older than 3.25.  Without this,
     # those sub-projects revert to CMP0141=OLD and CMake injects /Zi
