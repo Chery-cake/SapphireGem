@@ -1,4 +1,6 @@
 #include "hot_reload_modules.h"
+#include <algorithm>
+#include <execution>
 
 #ifdef ENGINE_DEBUG
 
@@ -32,9 +34,9 @@ bool ModuleReloadManager::initialize(const std::string &exeDir) {
   device_->addDependent(window_.get());
 
   // Initialize module state
-  core_->setData(new coreState{nullptr, nullptr, nullptr});
-  device_->setData(new deviceState{});
-  window_->setData(new windowState{});
+  core_->setData(new coreState(nullptr, nullptr, nullptr));
+  device_->setData(new deviceState());
+  window_->setData(new windowState());
 
   // Register lifecycle callbacks for each module
   setupCoreCallbacks();
@@ -78,7 +80,7 @@ void ModuleReloadManager::startMonitoring() {
                        "cascaded)! <<<\n");
         }
       }
-      std::this_thread::sleep_for(std::chrono::seconds(monitor_delay_));
+      std::this_thread::sleep_for(monitor_delay_);
     }
   });
 
@@ -92,7 +94,7 @@ void ModuleReloadManager::startMonitoring() {
                        "cascaded)! <<<\n");
         }
       }
-      std::this_thread::sleep_for(std::chrono::seconds(monitor_delay_));
+      std::this_thread::sleep_for(monitor_delay_);
     }
   });
 
@@ -105,18 +107,15 @@ void ModuleReloadManager::startMonitoring() {
           std::println(">>> Window module reloaded! <<<\n");
         }
       }
-      std::this_thread::sleep_for(std::chrono::seconds(monitor_delay_));
+      std::this_thread::sleep_for(monitor_delay_);
     }
   });
 }
 
 void ModuleReloadManager::shutdown() {
   stopRequested_.store(true);
-  for (auto &t : monitorThreads_) {
-    if (t.joinable()) {
-      t.join();
-    }
-  }
+  std::for_each(std::execution::unseq, monitorThreads_.begin(),
+                monitorThreads_.end(), [](auto &t) { t.join(); });
   monitorThreads_.clear();
 
   // Modules are destroyed in reverse dependency order.
@@ -151,6 +150,11 @@ void ModuleReloadManager::destroyCoreState(coreState *state,
   delete state;
 }
 
+void ModuleReloadManager::cleanupCoreState() {
+  destroyCoreState(static_cast<coreState *>(core_->getData()), false);
+  core_->setData(nullptr);
+}
+
 void ModuleReloadManager::setupCoreCallbacks() {
   // Capture a stable raw pointer — guaranteed valid for the lifetime of
   // the HotReload object.  unique_ptr::reset() nulls the smart pointer
@@ -179,6 +183,9 @@ void ModuleReloadManager::setupCoreCallbacks() {
         reinterpret_cast<void (*)(void *)>(corePtr->getSymbol("lib_on_unload"));
     if (fn) {
       fn(state);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_unload' in core");
     }
   });
 
@@ -190,6 +197,9 @@ void ModuleReloadManager::setupCoreCallbacks() {
         reinterpret_cast<void (*)(void *)>(corePtr->getSymbol("lib_on_reload"));
     if (fn) {
       fn(state);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_reload' in core");
     }
   });
 
@@ -202,7 +212,7 @@ void ModuleReloadManager::setupCoreCallbacks() {
       fn(data);
     } else {
       std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
-                           "found, manual cleanup");
+                           "found in core, manual cleanup");
       destroyCoreState(static_cast<coreState *>(data), true);
     }
     corePtr->setData(nullptr);
@@ -219,6 +229,9 @@ void ModuleReloadManager::setupDeviceCallbacks() {
         reinterpret_cast<void (*)(void *)>(devicePtr->getSymbol("lib_on_load"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_load' in device");
     }
   });
 
@@ -229,6 +242,9 @@ void ModuleReloadManager::setupDeviceCallbacks() {
         devicePtr->getSymbol("lib_on_unload"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_unload' in device");
     }
   });
 
@@ -239,6 +255,9 @@ void ModuleReloadManager::setupDeviceCallbacks() {
         devicePtr->getSymbol("lib_on_reload"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_reload' in device");
     }
   });
 
@@ -250,6 +269,8 @@ void ModuleReloadManager::setupDeviceCallbacks() {
     if (fn) {
       fn(data);
     } else {
+      std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
+                           "found in device, manual cleanup");
       delete static_cast<deviceState *>(data);
     }
     devicePtr->setData(nullptr);
@@ -266,6 +287,9 @@ void ModuleReloadManager::setupWindowCallbacks() {
         reinterpret_cast<void (*)(void *)>(windowPtr->getSymbol("lib_on_load"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_load' in window");
     }
   });
 
@@ -276,6 +300,9 @@ void ModuleReloadManager::setupWindowCallbacks() {
         windowPtr->getSymbol("lib_on_unload"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_unload' in window");
     }
   });
 
@@ -286,6 +313,9 @@ void ModuleReloadManager::setupWindowCallbacks() {
         windowPtr->getSymbol("lib_on_reload"));
     if (fn) {
       fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_reload' in window");
     }
   });
 
@@ -297,15 +327,12 @@ void ModuleReloadManager::setupWindowCallbacks() {
     if (fn) {
       fn(data);
     } else {
+      std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
+                           "found in window, manual cleanup");
       delete static_cast<windowState *>(data);
     }
     windowPtr->setData(nullptr);
   });
-}
-
-void ModuleReloadManager::cleanupCoreState() {
-  destroyCoreState(static_cast<coreState *>(core_->getData()), false);
-  core_->setData(nullptr);
 }
 
 #endif // ENGINE_DEBUG

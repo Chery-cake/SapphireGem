@@ -1,6 +1,7 @@
 #ifndef HOT_RELOAD_MODULES_HPP_
 #define HOT_RELOAD_MODULES_HPP_
 
+#include <chrono>
 #include <string>
 
 #ifdef ENGINE_DEBUG
@@ -82,7 +83,7 @@ private:
    */
   void cleanupCoreState();
 
-  static constexpr uint8_t monitor_delay_ = 10;
+  static constexpr std::chrono::seconds monitor_delay_{10};
 
   std::unique_ptr<HotReload> core_;
   std::unique_ptr<HotReload> device_;

@@ -1,9 +1,14 @@
+#include <exception>
+#include <shared_mutex>
 #ifdef ENGINE_DEBUG
 
 #include "hot_reload.h"
+#include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <execution>
 #include <fstream>
+#include <mutex>
 #include <print>
 #include <string>
 
@@ -235,15 +240,16 @@ void HotReload::registerDestroyCallback(const std::string &name,
 }
 
 void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
-  for (auto &entry : callbacks) {
-    try {
-      entry.callback(data);
-      std::print("[HotReload] Executed callback: '{}'\n", entry.name);
-    } catch (const std::exception &e) {
-      std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
-                 entry.name, e.what());
-    }
-  }
+  std::ranges::for_each(
+      callbacks.begin(), callbacks.end(), [this](auto &entry) {
+        try {
+          entry.callback(data);
+          std::print("[HotReload] Executed callback: '{}'\n", entry.name);
+        } catch (const std::exception &e) {
+          std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
+                     entry.name, e.what());
+        }
+      });
 }
 
 #endif // ENGINE_DEBUG
