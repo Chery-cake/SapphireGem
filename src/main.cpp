@@ -709,12 +709,11 @@ int main(int argc, char *argv[]) {
     win2->presentScene(&SCENE_2D_TAG);
   }
 
-  // int frame = 0;
+  // TODO improve frame cap
+  int frameTarget = 60;
+  float deltaTimeTarget = 1.0f / frameTarget;
   auto lastTime = std::chrono::steady_clock::now();
   while (!wMan.checkWindowsVectorEmpty()) {
-    // std::print("Frame {}\n", frame);
-    // std::print("\n");
-
     auto now = std::chrono::steady_clock::now();
     float deltaTime = std::chrono::duration<float>(now - lastTime).count();
     lastTime = now;
@@ -744,8 +743,13 @@ int main(int argc, char *argv[]) {
       break;
     }
 
-    // frame++;
-    std::this_thread::sleep_for(std::chrono::nanoseconds(100));
+    auto end = std::chrono::steady_clock::now();
+    float frameDuration = std::chrono::duration<float>(end - lastTime).count();
+    if (frameDuration < deltaTimeTarget) {
+      auto sleepDuration =
+          std::chrono::duration<float>(deltaTimeTarget - frameDuration);
+      std::this_thread::sleep_for(sleepDuration);
+    }
   }
 
   reloadManager.shutdown();
