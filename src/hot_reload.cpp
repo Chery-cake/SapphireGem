@@ -243,7 +243,7 @@ void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
   std::ranges::for_each(
       callbacks.begin(), callbacks.end(), [this](auto &entry) {
         try {
-          entry.callback(data);
+          entry.callback(data, dataMutex_);
           std::print("[HotReload] Executed callback: '{}'\n", entry.name);
         } catch (const std::exception &e) {
           std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",

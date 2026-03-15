@@ -17,7 +17,7 @@
 class HotReload {
 public:
   // Lifecycle callback types
-  using LifecycleCallback = std::function<void(void *)>;
+  using LifecycleCallback = std::function<void(void *, std::mutex &)>;
 
   HotReload(const std::string &libName, const std::string &libPath);
   virtual ~HotReload();
