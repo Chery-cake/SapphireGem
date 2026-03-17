@@ -1,7 +1,7 @@
 #ifndef MEMORY_MANAGER_H_
 #define MEMORY_MANAGER_H_
 
-#include "bump_allocator.h"
+#include "memory_allocator.h"
 #include <memory>
 #include <mutex>
 #include <unordered_map>
