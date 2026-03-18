@@ -2,8 +2,11 @@
 #define MEMORY_MANAGER_H_
 
 #include "memory_allocator.h"
+#include <cstddef>
+#include <format>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -25,8 +28,8 @@ public:
    * @return Reference to the created allocator
    * @throws std::runtime_error if allocator already exists
    */
-  BumpAllocator &createPersistentAllocator(const std::string &name,
-                                           size_t size);
+  BumpAllocator<1024> &createPersistentAllocator(const std::string &name,
+                                                 size_t size);
 
   /**
    * @brief Create a named frame (temporary) allocator
@@ -35,7 +38,8 @@ public:
    * @return Reference to the created allocator
    * @throws std::runtime_error if allocator already exists
    */
-  BumpAllocator &createFrameAllocator(const std::string &name, size_t size);
+  BumpAllocator<1024> &createFrameAllocator(const std::string &name,
+                                            size_t size);
 
   /**
    * @brief Get a named persistent allocator
@@ -43,7 +47,7 @@ public:
    * @return Reference to the allocator
    * @throws std::runtime_error if allocator doesn't exist
    */
-  BumpAllocator &getPersistentAllocator(const std::string &name);
+  BumpAllocator<1024> &getPersistentAllocator(const std::string &name);
 
   /**
    * @brief Get a named frame allocator
@@ -51,7 +55,7 @@ public:
    * @return Reference to the allocator
    * @throws std::runtime_error if allocator doesn't exist
    */
-  BumpAllocator &getFrameAllocator(const std::string &name);
+  BumpAllocator<1024> &getFrameAllocator(const std::string &name);
 
   /**
    * @brief Check if a named persistent allocator exists
@@ -140,12 +144,12 @@ private:
 
 private:
   // Named allocator registries
-  std::unordered_map<std::string, std::unique_ptr<BumpAllocator>>
+  std::unordered_map<std::string, std::unique_ptr<BumpAllocator<1024>>>
       persistentAllocators_;
-  std::unordered_map<std::string, std::unique_ptr<BumpAllocator>>
+  std::unordered_map<std::string, std::unique_ptr<BumpAllocator<1024>>>
       frameAllocators_;
 
-  mutable std::mutex allocatorMutex_;
+  mutable ::std::mutex allocatorMutex_;
 };
 
 } // namespace core

@@ -37,8 +37,8 @@ MemoryManager &MemoryManager::instance() {
 
 #endif
 
-BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,
-                                                        size_t size) {
+BumpAllocator<1024> &
+MemoryManager::createPersistentAllocator(const std::string &name, size_t size) {
   if (size == 0) {
     throw std::runtime_error("Allocator size must be greater than 0");
   }
@@ -50,12 +50,12 @@ BumpAllocator &MemoryManager::createPersistentAllocator(const std::string &name,
                              "' already exists");
   }
 
-  persistentAllocators_[name] = std::make_unique<BumpAllocator>(size);
+  persistentAllocators_[name] = std::make_unique<BumpAllocator<1024>>();
   return *persistentAllocators_[name];
 }
 
-BumpAllocator &MemoryManager::createFrameAllocator(const std::string &name,
-                                                   size_t size) {
+BumpAllocator<1024> &
+MemoryManager::createFrameAllocator(const std::string &name, size_t size) {
   if (size == 0) {
     throw std::runtime_error("Allocator size must be greater than 0");
   }
@@ -66,11 +66,12 @@ BumpAllocator &MemoryManager::createFrameAllocator(const std::string &name,
     throw std::runtime_error("Frame allocator '" + name + "' already exists");
   }
 
-  frameAllocators_[name] = std::make_unique<BumpAllocator>(size);
+  frameAllocators_[name] = std::make_unique<BumpAllocator<1024>>();
   return *frameAllocators_[name];
 }
 
-BumpAllocator &MemoryManager::getPersistentAllocator(const std::string &name) {
+BumpAllocator<1024> &
+MemoryManager::getPersistentAllocator(const std::string &name) {
   std::lock_guard<std::mutex> lock(allocatorMutex_);
 
   auto it = persistentAllocators_.find(name);
@@ -82,7 +83,7 @@ BumpAllocator &MemoryManager::getPersistentAllocator(const std::string &name) {
   return *it->second;
 }
 
-BumpAllocator &MemoryManager::getFrameAllocator(const std::string &name) {
+BumpAllocator<1024> &MemoryManager::getFrameAllocator(const std::string &name) {
   std::lock_guard<std::mutex> lock(allocatorMutex_);
 
   auto it = frameAllocators_.find(name);

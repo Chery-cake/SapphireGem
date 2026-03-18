@@ -2,13 +2,16 @@
 #define BUMP_ALLOCATOR_H_
 
 #include "core_export.h"
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 
-class CORE_API MemoryAllocator {
+namespace core {
+
+template <size_t size> class MemoryAllocator {
 public:
-  explicit MemoryAllocator(size_t size);
+  explicit MemoryAllocator();
   virtual ~MemoryAllocator();
 
   // Disable copy and move
@@ -17,6 +20,10 @@ public:
   MemoryAllocator(MemoryAllocator &&) = delete;
   MemoryAllocator &operator=(MemoryAllocator &&) = delete;
 
+  /* removed so that only the child have the implementation
+     need to check if it isn't beter to have a dumy version
+     so that thei isn't a problem if the wrong function is called
+
   virtual void *allocate(size_t size,
                          size_t alignment = alignof(std::max_align_t));
 
@@ -24,8 +31,9 @@ public:
   virtual void *pop();
 
   virtual void reset();
+  */
 
-  [[nodiscard]] const size_t &capacity() const { return total_size_; }
+  [[nodiscard]] size_t capacity() const { return size; }
 
 protected:
   mutable std::mutex memoryMutex_;
@@ -34,19 +42,19 @@ protected:
 
 private:
   uint8_t *memory_ = nullptr;
-  size_t total_size_;
 };
 
 // Bump Allocator for fast allocations
-class CORE_API BumpAllocator : public MemoryAllocator {
+template <size_t size>
+class CORE_API BumpAllocator : public MemoryAllocator<size> {
 public:
-  explicit BumpAllocator(size_t size);
-  ~BumpAllocator();
+  explicit BumpAllocator();
+  ~BumpAllocator() override;
 
-  void *allocate(size_t size,
-                 size_t alignment = alignof(std::max_align_t)) override;
+  template <typename T>
+  void *allocate(size_t alignment = alignof(std::max_align_t));
 
-  void reset() override;
+  void reset();
 
   [[nodiscard]] const size_t &bytes_allocated() const { return offset_; }
 
@@ -55,13 +63,15 @@ private:
 };
 
 // Stock Allocator for variable allocations
-class CORE_API StockAllocator : public MemoryAllocator {
+template <size_t size>
+class CORE_API StockAllocator : public MemoryAllocator<size> {
 public:
-  explicit StockAllocator(size_t size);
-  ~StockAllocator();
+  explicit StockAllocator();
+  ~StockAllocator() override;
 
-  void *allocate(size_t size,
-                 size_t alignment = alignof(std::max_align_t)) override;
+  template <typename T>
+  void *push(size_t alignment = alignof(std::max_align_t));
+  void pop(void *ptr);
 
   [[nodiscard]] const size_t &bytes_allocated() const { return offset_; }
 
@@ -70,13 +80,29 @@ private:
 };
 
 // Pool Allocator for multiple identical allocations
-class CORE_API PoolAllocator : public MemoryAllocator {
+template <typename T, size_t poolSize>
+class CORE_API PoolAllocator : public MemoryAllocator<sizeof(T) * poolSize> {
 public:
-  explicit PoolAllocator(size_t size);
-  ~PoolAllocator();
+  explicit PoolAllocator();
+  ~PoolAllocator() override;
 
-  void *allocate(size_t size,
-                 size_t alignment = alignof(std::max_align_t)) override;
+  T *allocate();
+  void deallocate(T *ptr);
+
+  size_t available() const;
+
+private:
+  union Node {
+    alignas(T) uint8_t data[sizeof(T)];
+    Node *next;
+  };
+
+  Node *freeList;
 };
+
+} // namespace core
+
+// template implementation
+#include "../src/memory_allocator_impl.hpp"
 
 #endif // BUMP_ALLOCATOR_H_
