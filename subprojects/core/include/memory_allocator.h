@@ -51,12 +51,12 @@ private:
   size_t offset_;
 };
 
-// Stock Allocator for variable allocations
+// Stack Allocator for variable allocations
 template <size_t size>
-class CORE_API StockAllocator : public MemoryAllocator<size> {
+class CORE_API StackAllocator : public MemoryAllocator<size> {
 public:
-  explicit StockAllocator();
-  ~StockAllocator() override;
+  explicit StackAllocator();
+  ~StackAllocator() override;
 
   template <typename T>
   void *push(size_t alignment = alignof(std::max_align_t));

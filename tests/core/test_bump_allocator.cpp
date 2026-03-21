@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <new>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -79,8 +80,13 @@ void test_out_of_memory() {
   assert(p1 != nullptr);
 
   // This should fail because 64 - 32 = 32, and requesting 64 more
-  void *p2 = alloc.allocate<std::array<uint8_t, 64>>();
-  assert(p2 == nullptr);
+  bool bad_alloc = false;
+  try {
+    alloc.allocate<std::array<uint8_t, 64>>();
+  } catch (const std::bad_alloc &) {
+    bad_alloc = true;
+  }
+  assert(bad_alloc);
 
   PASS();
 }

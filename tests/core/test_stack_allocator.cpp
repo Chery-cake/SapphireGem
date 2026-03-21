@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <new>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -26,7 +27,7 @@ static int tests_passed = 0;
 void test_construction() {
   TEST(construction);
 
-  core::StockAllocator<1024> alloc;
+  core::StackAllocator<1024> alloc;
   assert(alloc.capacity() == 1024);
   assert(alloc.bytes_allocated() == 0);
 
@@ -39,7 +40,7 @@ void test_construction() {
 void test_simple_allocation() {
   TEST(simple_push);
 
-  core::StockAllocator<1024> alloc;
+  core::StackAllocator<1024> alloc;
   void *ptr = alloc.push<std::array<uint8_t, 64>>();
   assert(ptr != nullptr);
   assert(alloc.bytes_allocated() >= 64 + sizeof(size_t));
@@ -53,7 +54,7 @@ void test_simple_allocation() {
 void test_multiple_allocations() {
   TEST(multiple_pushes);
 
-  core::StockAllocator<1024> alloc;
+  core::StackAllocator<1024> alloc;
   void *p1 = alloc.push<std::array<uint8_t, 128>>();
   void *p2 = alloc.push<std::array<uint8_t, 128>>();
   void *p3 = alloc.push<std::array<uint8_t, 128>>();
@@ -74,14 +75,19 @@ void test_multiple_allocations() {
 void test_out_of_memory() {
   TEST(out_of_memory);
 
-  core::StockAllocator<64> alloc;
+  core::StackAllocator<64> alloc;
   void *p1 = alloc.push<std::array<uint8_t, 32>>();
   assert(p1 != nullptr);
 
   // This should fail because 64 - (32 + sizeof(size_t)) < 32, and requesting
   // 64 more
-  void *p2 = alloc.push<std::array<uint8_t, 64>>();
-  assert(p2 == nullptr);
+  bool bad_alloc = false;
+  try {
+    alloc.push<std::array<uint8_t, 64>>();
+  } catch (const std::bad_alloc &) {
+    bad_alloc = true;
+  }
+  assert(bad_alloc);
 
   PASS();
 }
@@ -92,7 +98,7 @@ void test_out_of_memory() {
 void test_pop() {
   TEST(pop);
 
-  core::StockAllocator<256> alloc;
+  core::StackAllocator<256> alloc;
 
   void *ptr1 = alloc.push<std::array<uint8_t, 8>>();
   assert(alloc.bytes_allocated() >= (8 + sizeof(size_t)));
@@ -118,7 +124,7 @@ void test_pop() {
 void test_alignment() {
   TEST(alignment);
 
-  core::StockAllocator<4096> alloc;
+  core::StackAllocator<4096> alloc;
 
   void *p1 = alloc.push<uint8_t>(1); // Misalign intentionally
   assert(p1 != nullptr);
@@ -139,7 +145,7 @@ void test_alignment() {
 void test_capacity_unchanged() {
   TEST(capacity_unchanged);
 
-  core::StockAllocator<512> alloc;
+  core::StackAllocator<512> alloc;
   assert(alloc.capacity() == 512);
 
   void *ptr = alloc.push<std::array<uint8_t, 256>>();
@@ -153,7 +159,7 @@ void test_capacity_unchanged() {
 
 // ---------------------------------------------------------------------------
 int main() {
-  std::printf("=== StockAllocator Tests ===\n");
+  std::printf("=== StackAllocator Tests ===\n");
 
   test_construction();
   test_simple_allocation();

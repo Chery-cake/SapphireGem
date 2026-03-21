@@ -11,12 +11,12 @@ target_compile_definitions(test_bump_allocator PRIVATE
 add_test(NAME core_bump_allocator COMMAND test_bump_allocator)
 
 # --- StockAllocator Tests ---
-add_executable(test_stock_allocator test_stock_allocator.cpp)
-target_link_libraries(test_stock_allocator PRIVATE core)
-target_compile_definitions(test_stock_allocator PRIVATE
+add_executable(test_stack_allocator test_stack_allocator.cpp)
+target_link_libraries(test_stack_allocator PRIVATE core)
+target_compile_definitions(test_stack_allocator PRIVATE
     $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
-add_test(NAME core_stock_allocator COMMAND test_stock_allocator)
+add_test(NAME core_stack_allocator COMMAND test_stack_allocator)
 
 # --- PoolAllocator Tests ---
 add_executable(test_pool_allocator test_pool_allocator.cpp)

@@ -50,7 +50,7 @@ void *BumpAllocator<size>::allocate(size_t alignment) {
     std::println(stderr,
                  "[BumpAllocator] Out of memory! Requested: {}, Available: {}",
                  allocation, this->capacity() - offset_);
-    return nullptr;
+    throw std::bad_alloc();
   }
 
   offset_ += padding;
@@ -67,17 +67,17 @@ template <size_t size> void BumpAllocator<size>::reset() {
 }
 
 // ============================================================================
-// StockAllocator Implementation
+// StackAllocator Implementation
 // ============================================================================
 
 template <size_t size>
-StockAllocator<size>::StockAllocator() : MemoryAllocator<size>(), offset_(0) {}
+StackAllocator<size>::StackAllocator() : MemoryAllocator<size>(), offset_(0) {}
 
-template <size_t size> StockAllocator<size>::~StockAllocator() = default;
+template <size_t size> StackAllocator<size>::~StackAllocator() = default;
 
 template <size_t size>
 template <typename T>
-void *StockAllocator<size>::push(size_t alignment) {
+void *StackAllocator<size>::push(size_t alignment) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   alignment = std::max(alignment, alignof(T));
 
@@ -93,9 +93,9 @@ void *StockAllocator<size>::push(size_t alignment) {
 
   if (offset_ + totalSize > this->capacity()) {
     std::println(stderr,
-                 "[StockAllocator] Out of memory! Requested: {}, Available: {}",
+                 "[StackAllocator] Out of memory! Requested: {}, Available: {}",
                  totalSize, this->capacity() - offset_);
-    return nullptr;
+    throw std::bad_alloc();
   }
 
   *reinterpret_cast<size_t *>(header_addr) = totalSize;
@@ -104,7 +104,7 @@ void *StockAllocator<size>::push(size_t alignment) {
   return reinterpret_cast<void *>(aligned_addr);
 }
 
-template <size_t size> void StockAllocator<size>::pop(void *ptr) {
+template <size_t size> void StackAllocator<size>::pop(void *ptr) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   size_t *header = reinterpret_cast<size_t *>(reinterpret_cast<uint8_t *>(ptr) -
                                               sizeof(size_t));
@@ -143,8 +143,10 @@ PoolAllocator<T, poolSize>::~PoolAllocator() = default;
 template <typename T, size_t poolSize>
 T *PoolAllocator<T, poolSize>::allocate() {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
-  if (freeList == nullptr)
+  if (freeList == nullptr) {
+    std::println(stderr, "[PoolAllocator] Out of memory!");
     throw std::bad_alloc();
+  }
   Node *node = freeList;
   freeList = freeList->next;
   return reinterpret_cast<T *>(node);
