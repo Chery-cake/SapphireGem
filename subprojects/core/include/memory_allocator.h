@@ -2,7 +2,6 @@
 #define BUMP_ALLOCATOR_H_
 
 #include "core_export.h"
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -19,19 +18,6 @@ public:
   MemoryAllocator &operator=(const MemoryAllocator &) = delete;
   MemoryAllocator(MemoryAllocator &&) = delete;
   MemoryAllocator &operator=(MemoryAllocator &&) = delete;
-
-  /* removed so that only the child have the implementation
-     need to check if it isn't beter to have a dumy version
-     so that thei isn't a problem if the wrong function is called
-
-  virtual void *allocate(size_t size,
-                         size_t alignment = alignof(std::max_align_t));
-
-  virtual void *push();
-  virtual void *pop();
-
-  virtual void reset();
-  */
 
   [[nodiscard]] size_t capacity() const { return size; }
 

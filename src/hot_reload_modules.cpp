@@ -35,7 +35,7 @@ bool ModuleReloadManager::initialize(const std::string &exeDir) {
   device_->addDependent(window_.get());
 
   // Initialize module state
-  core_->setData(new coreState(nullptr, nullptr, nullptr));
+  core_->setData(new coreState(nullptr, nullptr));
   device_->setData(new deviceState());
   window_->setData(new windowState());
 
@@ -137,11 +137,6 @@ void ModuleReloadManager::destroyCoreState(coreState *state,
     if (callShutdown)
       state->thread->shutdown();
     delete state->thread;
-  }
-  if (state->memory) {
-    if (callShutdown)
-      state->memory->shutdown();
-    delete state->memory;
   }
   if (state->config) {
     if (callShutdown)

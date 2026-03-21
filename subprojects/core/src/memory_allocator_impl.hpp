@@ -1,7 +1,4 @@
 #include "memory_allocator.h"
-#include <cstddef>
-#include <cstdint>
-#include <mutex>
 #include <new>
 #include <print>
 
@@ -139,7 +136,7 @@ template <typename T, size_t poolSize>
 T *PoolAllocator<T, poolSize>::allocate() {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   if (freeList == nullptr)
-    throw std::bad_alloc;
+    throw std::bad_alloc();
   Node *node = freeList;
   freeList = freeList->next;
   return reinterpret_cast<T *>(node);

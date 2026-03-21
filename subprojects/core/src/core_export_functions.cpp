@@ -3,7 +3,6 @@
 
 #include "core_export.h"
 #include "core_export_struct.h"
-#include "memory_manager.h"
 #include "thread_manager.h"
 #include <print>
 
@@ -16,20 +15,14 @@ CORE_API void lib_on_load(void *data) {
   coreState *state = static_cast<coreState *>(data);
 
   // If we have saved singleton pointers, restore them
-  if (state && state->thread && state->memory && state->config) {
+  if (state && state->thread && state->config) {
     std::print("[Core] Restoring saved singleton instances...\n");
     core::ThreadManager::setInstance(state->thread);
-    core::MemoryManager::setInstance(state->memory);
     core::Config::setInstance(state->config);
   } else {
     // First load - create new singleton instances
     std::print("[Core] First load - initializing singletons...\n");
     if (state) {
-      state->memory = &core::MemoryManager::instance();
-      state->memory->createPersistentAllocator("core",
-                                               10 * 1024 * 1024); // 10 MB
-      state->memory->createFrameAllocator("core",
-                                          5 * 1024 * 1024); // 5 MB
       state->thread = &core::ThreadManager::instance();
       state->thread->applyConfig(core::ThreadManagerConfig());
       state->thread->createPool(
@@ -53,11 +46,6 @@ CORE_API void lib_on_unload(void *data) {
 
   coreState *state = static_cast<coreState *>(data);
 
-  if (state->memory) {
-    std::print("[Core] Persistent memory used: {} bytes\n",
-               state->memory->getPersistentBytesAllocated("core"));
-  }
-
   // DO NOT shutdown or clear the singletons - we want to preserve them!
   // Just clear the global pointers so the library can be unloaded
   std::print("[Core] Preserving singleton instances for reload...\n");
@@ -71,7 +59,6 @@ CORE_API void lib_on_reload(void *data) {
   coreState *state = static_cast<coreState *>(data);
   if (state) {
     state->thread = core::ThreadManager::getInstance();
-    state->memory = core::MemoryManager::getInstance();
     state->config = core::Config::getInstance();
     std::print("[Core] Saved singleton pointers for reload\n");
   }
@@ -94,13 +81,6 @@ CORE_API void lib_on_destroy(void *data) {
       delete state->thread;
       core::ThreadManager::setInstance(nullptr);
       state->thread = nullptr;
-    }
-
-    if (state->memory) {
-      state->memory->shutdown();
-      delete state->memory;
-      core::MemoryManager::setInstance(nullptr);
-      state->memory = nullptr;
     }
 
     if (state->config) {
