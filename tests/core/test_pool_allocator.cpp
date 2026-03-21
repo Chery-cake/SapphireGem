@@ -2,8 +2,12 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
+#include <iostream>
+#include <new>
+#include <numeric>
+#include <ostream>
+#include <random>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -26,23 +30,23 @@ static int tests_passed = 0;
 void test_construction() {
   TEST(construction);
 
-  core::BumpAllocator<1024> alloc;
-  assert(alloc.capacity() == 1024);
-  assert(alloc.bytes_allocated() == 0);
+  core::PoolAllocator<int, 10> alloc;
+  assert(alloc.capacity() == (sizeof(int) * 10));
+  assert(alloc.available() == 10);
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Simple allocation
+// Test: Simple allocate
 // ---------------------------------------------------------------------------
 void test_simple_allocation() {
   TEST(simple_allocation);
 
-  core::BumpAllocator<1024> alloc;
-  void *ptr = alloc.allocate<std::array<uint8_t, 64>>();
+  core::PoolAllocator<int, 10> alloc;
+  void *ptr = alloc.allocate();
   assert(ptr != nullptr);
-  assert(alloc.bytes_allocated() >= 64);
+  assert(alloc.available() == 9);
 
   PASS();
 }
@@ -53,75 +57,109 @@ void test_simple_allocation() {
 void test_multiple_allocations() {
   TEST(multiple_allocations);
 
-  core::BumpAllocator<1024> alloc;
-  void *p1 = alloc.allocate<std::array<uint8_t, 128>>();
-  void *p2 = alloc.allocate<std::array<uint8_t, 128>>();
-  void *p3 = alloc.allocate<std::array<uint8_t, 128>>();
+  core::PoolAllocator<int, 10> alloc;
+  void *p1 = alloc.allocate();
+  void *p2 = alloc.allocate();
+  void *p3 = alloc.allocate();
 
   assert(p1 != nullptr);
   assert(p2 != nullptr);
   assert(p3 != nullptr);
   assert(p1 != p2);
   assert(p2 != p3);
-  assert(alloc.bytes_allocated() >= 384);
+  assert(alloc.available() == 7);
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Allocation returns null when out of memory
+// Test: Push returns null when out of memory
 // ---------------------------------------------------------------------------
 void test_out_of_memory() {
   TEST(out_of_memory);
 
-  core::BumpAllocator<64> alloc;
-  void *p1 = alloc.allocate<std::array<uint8_t, 32>>();
-  assert(p1 != nullptr);
+  core::PoolAllocator<int, 10> alloc;
+  std::array<void *, 10> ptrs;
+  for (auto &ptr : ptrs) {
+    ptr = alloc.allocate();
+    assert(ptr != nullptr);
+  }
+  assert(alloc.available() == 0);
 
-  // This should fail because 64 - 32 = 32, and requesting 64 more
-  void *p2 = alloc.allocate<std::array<uint8_t, 64>>();
-  assert(p2 == nullptr);
-
-  PASS();
-}
-
-// ---------------------------------------------------------------------------
-// Test: Reset clears all allocations
-// ---------------------------------------------------------------------------
-void test_reset() {
-  TEST(reset);
-
-  core::BumpAllocator<256> alloc;
-  alloc.allocate<std::array<uint8_t, 128>>();
-  assert(alloc.bytes_allocated() >= 128);
-
-  alloc.reset();
-  assert(alloc.bytes_allocated() == 0);
-
-  // Should be able to allocate again after reset
-  void *ptr = alloc.allocate<std::array<uint8_t, 128>>();
-  assert(ptr != nullptr);
+  // This should fail because all 10 slots were allocated
+  bool bad_alloc = false;
+  try {
+    alloc.allocate();
+  } catch (const std::bad_alloc &) {
+    bad_alloc = true;
+  }
+  assert(bad_alloc);
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Aligned allocation
+// Test: Deallocate clears allocation
 // ---------------------------------------------------------------------------
-void test_alignment() {
-  TEST(alignment);
+void test_deallocate() {
+  TEST(deallocate);
 
-  core::BumpAllocator<4096> alloc;
+  core::PoolAllocator<int, 10> alloc;
+  std::array<int *, 10> ptrs;
 
-  void *p1 = alloc.allocate<uint8_t>(1); // Misalign intentionally
-  assert(p1 != nullptr);
-  void *p2 = alloc.allocate<std::array<uint8_t, 64>>(64);
-  assert(p2 != nullptr);
-  assert(reinterpret_cast<uintptr_t>(p2) % 64 == 0);
+  for (auto &ptr : ptrs) {
+    ptr = alloc.allocate();
+  }
 
-  void *p3 = alloc.allocate<std::array<uint8_t, 128>>(128);
-  assert(p3 != nullptr);
-  assert(reinterpret_cast<uintptr_t>(p3) % 128 == 0);
+  for (int i = 9; i > 4; i--) {
+    alloc.deallocate(ptrs[i]);
+    assert(ptrs[i] == nullptr);
+  }
+  assert(alloc.available() == 5);
+
+  // Should be able to allocate again after deallocate
+  for (int i = 4; i < 9; i++) {
+    ptrs[i] = alloc.allocate();
+    assert(ptrs[i] != nullptr);
+  }
+  assert(alloc.available() == 0);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: Deallocation in random order
+// ---------------------------------------------------------------------------
+void test_deallocate_random() {
+  TEST(deallocate);
+
+  core::PoolAllocator<int, 10> alloc;
+  std::array<int *, 10> ptrs;
+
+  for (auto &ptr : ptrs) {
+    ptr = alloc.allocate();
+  }
+
+  // Create shuffled indices for random deallocation
+  std::array<int, 10> indices;
+  std::ranges::iota(indices.begin(), indices.end(), 0);
+  // Ensure you seed the RNG
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(indices.begin(), indices.end(), g);
+
+  for (int i = 0; i < 5; i++) {
+    alloc.deallocate(ptrs[indices[i]]);
+    assert(ptrs[indices[i]] == nullptr);
+  }
+  assert(alloc.available() == 5);
+
+  // Should be able to allocate again after deallocate
+  for (int i = 0; i < 5; i++) {
+    ptrs[indices[i]] = alloc.allocate();
+    assert(ptrs[indices[i]] != nullptr);
+  }
+  assert(alloc.available() == 0);
 
   PASS();
 }
@@ -132,28 +170,28 @@ void test_alignment() {
 void test_capacity_unchanged() {
   TEST(capacity_unchanged);
 
-  core::BumpAllocator<512> alloc;
-  assert(alloc.capacity() == 512);
+  core::PoolAllocator<int, 10> alloc;
+  assert(alloc.capacity() == (sizeof(int) * 10));
 
-  alloc.allocate<std::array<uint8_t, 256>>();
-  assert(alloc.capacity() == 512);
+  int *ptr = alloc.allocate();
+  assert(alloc.capacity() == (sizeof(int) * 10));
 
-  alloc.reset();
-  assert(alloc.capacity() == 512);
+  alloc.deallocate(ptr);
+  assert(alloc.capacity() == (sizeof(int) * 10));
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
 int main() {
-  std::printf("=== BumpAllocator Tests ===\n");
+  std::printf("=== StockAllocator Tests ===\n");
 
   test_construction();
   test_simple_allocation();
   test_multiple_allocations();
   test_out_of_memory();
-  test_reset();
-  test_alignment();
+  test_deallocate();
+  test_deallocate_random();
   test_capacity_unchanged();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);

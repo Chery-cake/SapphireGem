@@ -1,4 +1,5 @@
-#include "bump_allocator.h"
+#include "memory_allocator.h"
+#include <array>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +26,7 @@ static int tests_passed = 0;
 void test_construction() {
   TEST(construction);
 
-  BumpAllocator alloc(1024);
+  core::StockAllocator<1024> alloc;
   assert(alloc.capacity() == 1024);
   assert(alloc.bytes_allocated() == 0);
 
@@ -33,73 +34,80 @@ void test_construction() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Simple allocation
+// Test: Simple push
 // ---------------------------------------------------------------------------
 void test_simple_allocation() {
-  TEST(simple_allocation);
+  TEST(simple_push);
 
-  BumpAllocator alloc(1024);
-  void *ptr = alloc.allocate(64);
+  core::StockAllocator<1024> alloc;
+  void *ptr = alloc.push<std::array<uint8_t, 64>>();
   assert(ptr != nullptr);
-  assert(alloc.bytes_allocated() >= 64);
+  assert(alloc.bytes_allocated() >= 64 + sizeof(size_t));
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Multiple allocations
+// Test: Multiple pushes
 // ---------------------------------------------------------------------------
 void test_multiple_allocations() {
-  TEST(multiple_allocations);
+  TEST(multiple_pushes);
 
-  BumpAllocator alloc(1024);
-  void *p1 = alloc.allocate(128);
-  void *p2 = alloc.allocate(128);
-  void *p3 = alloc.allocate(128);
+  core::StockAllocator<1024> alloc;
+  void *p1 = alloc.push<std::array<uint8_t, 128>>();
+  void *p2 = alloc.push<std::array<uint8_t, 128>>();
+  void *p3 = alloc.push<std::array<uint8_t, 128>>();
 
   assert(p1 != nullptr);
   assert(p2 != nullptr);
   assert(p3 != nullptr);
   assert(p1 != p2);
   assert(p2 != p3);
-  assert(alloc.bytes_allocated() >= 384);
+  assert(alloc.bytes_allocated() >= 384 + (3 * sizeof(size_t)));
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Allocation returns null when out of memory
+// Test: Push returns null when out of memory
 // ---------------------------------------------------------------------------
 void test_out_of_memory() {
   TEST(out_of_memory);
 
-  BumpAllocator alloc(64);
-  void *p1 = alloc.allocate(32);
+  core::StockAllocator<64> alloc;
+  void *p1 = alloc.push<std::array<uint8_t, 32>>();
   assert(p1 != nullptr);
 
-  // This should fail because 64 - 32 = 32, and requesting 64 more
-  void *p2 = alloc.allocate(64);
+  // This should fail because 64 - (32 + sizeof(size_t)) < 32, and requesting
+  // 64 more
+  void *p2 = alloc.push<std::array<uint8_t, 64>>();
   assert(p2 == nullptr);
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: Reset clears all allocations
+// Test: Pop clears last allocation
 // ---------------------------------------------------------------------------
-void test_reset() {
-  TEST(reset);
+void test_pop() {
+  TEST(pop);
 
-  BumpAllocator alloc(256);
-  alloc.allocate(128);
-  assert(alloc.bytes_allocated() >= 128);
+  core::StockAllocator<256> alloc;
 
-  alloc.reset();
-  assert(alloc.bytes_allocated() == 0);
+  void *ptr1 = alloc.push<std::array<uint8_t, 8>>();
+  assert(alloc.bytes_allocated() >= (8 + sizeof(size_t)));
+  size_t alloc1 = alloc.bytes_allocated();
 
-  // Should be able to allocate again after reset
-  void *ptr = alloc.allocate(128);
-  assert(ptr != nullptr);
+  void *ptr2 = alloc.push<std::array<uint8_t, 128>>();
+  assert(alloc.bytes_allocated() >= (128 + sizeof(size_t) + alloc1));
+
+  alloc.pop(ptr2);
+  assert(ptr1 != nullptr);
+  assert(alloc.bytes_allocated() == alloc1);
+
+  // Should be able to push again after pop
+  void *ptr3 = alloc.push<std::array<uint8_t, 128>>();
+  assert(ptr3 != nullptr);
 
   PASS();
 }
@@ -110,42 +118,17 @@ void test_reset() {
 void test_alignment() {
   TEST(alignment);
 
-  BumpAllocator alloc(4096);
+  core::StockAllocator<4096> alloc;
 
-  void *p1 = alloc.allocate(1, 1); // Misalign intentionally
-  (void)p1;
-  void *p2 = alloc.allocate(64, 64);
+  void *p1 = alloc.push<uint8_t>(1); // Misalign intentionally
+  assert(p1 != nullptr);
+  void *p2 = alloc.push<std::array<uint8_t, 64>>(64);
   assert(p2 != nullptr);
   assert(reinterpret_cast<uintptr_t>(p2) % 64 == 0);
 
-  void *p3 = alloc.allocate(128, 128);
+  void *p3 = alloc.push<std::array<uint8_t, 128>>(128);
   assert(p3 != nullptr);
   assert(reinterpret_cast<uintptr_t>(p3) % 128 == 0);
-
-  PASS();
-}
-
-// ---------------------------------------------------------------------------
-// Test: ScopedAlloc helper
-// ---------------------------------------------------------------------------
-void test_scoped_alloc() {
-  TEST(scoped_alloc);
-
-  BumpAllocator alloc(4096);
-
-  ScopedAlloc<int> scoped(alloc, 10);
-  int *arr = scoped.get();
-  assert(arr != nullptr);
-
-  // Write to the allocated memory
-  for (int i = 0; i < 10; ++i) {
-    arr[i] = i * 42;
-  }
-
-  // Verify values
-  for (int i = 0; i < 10; ++i) {
-    assert(arr[i] == i * 42);
-  }
 
   PASS();
 }
@@ -156,13 +139,13 @@ void test_scoped_alloc() {
 void test_capacity_unchanged() {
   TEST(capacity_unchanged);
 
-  BumpAllocator alloc(512);
+  core::StockAllocator<512> alloc;
   assert(alloc.capacity() == 512);
 
-  alloc.allocate(256);
+  void *ptr = alloc.push<std::array<uint8_t, 256>>();
   assert(alloc.capacity() == 512);
 
-  alloc.reset();
+  alloc.pop(ptr);
   assert(alloc.capacity() == 512);
 
   PASS();
@@ -170,15 +153,14 @@ void test_capacity_unchanged() {
 
 // ---------------------------------------------------------------------------
 int main() {
-  std::printf("=== BumpAllocator Tests ===\n");
+  std::printf("=== StockAllocator Tests ===\n");
 
   test_construction();
   test_simple_allocation();
   test_multiple_allocations();
   test_out_of_memory();
-  test_reset();
+  test_pop();
   test_alignment();
-  test_scoped_alloc();
   test_capacity_unchanged();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);

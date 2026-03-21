@@ -166,8 +166,7 @@ void test_multiple_tasks() {
   std::vector<std::future<void>> futures;
 
   for (int i = 0; i < 100; ++i) {
-    futures.push_back(
-        mgr.submitTo("multi_test", [&counter]() { counter++; }));
+    futures.push_back(mgr.submitTo("multi_test", [&counter]() { counter++; }));
   }
 
   for (auto &f : futures) {
@@ -182,10 +181,10 @@ void test_multiple_tasks() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Wait all on specific pool
+// Test: Wait on specific pool
 // ---------------------------------------------------------------------------
-void test_wait_all() {
-  TEST(wait_all);
+void test_wait() {
+  TEST(wait);
 
   auto &mgr = core::ThreadManager::instance();
 
@@ -199,7 +198,7 @@ void test_wait_all() {
     mgr.submitTo("wait_test", [&counter]() { counter++; });
   }
 
-  mgr.waitAll("wait_test");
+  mgr.wait("wait_test");
   assert(counter.load() == 50);
 
   mgr.destroyPool("wait_test");
@@ -361,7 +360,7 @@ int main() {
   test_submit_task();
   test_submit_to_nonexistent();
   test_multiple_tasks();
-  test_wait_all();
+  test_wait();
   test_pool_names();
   test_pool_config();
   test_pool_thread_count();

@@ -10,6 +10,22 @@ target_compile_definitions(test_bump_allocator PRIVATE
 )
 add_test(NAME core_bump_allocator COMMAND test_bump_allocator)
 
+# --- StockAllocator Tests ---
+add_executable(test_stock_allocator test_stock_allocator.cpp)
+target_link_libraries(test_stock_allocator PRIVATE core)
+target_compile_definitions(test_stock_allocator PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME core_stock_allocator COMMAND test_stock_allocator)
+
+# --- PoolAllocator Tests ---
+add_executable(test_pool_allocator test_pool_allocator.cpp)
+target_link_libraries(test_pool_allocator PRIVATE core)
+target_compile_definitions(test_pool_allocator PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME core_pool_allocator COMMAND test_pool_allocator)
+
 # --- Config Tests ---
 add_executable(test_config test_config.cpp)
 target_link_libraries(test_config PRIVATE core)
@@ -17,14 +33,6 @@ target_compile_definitions(test_config PRIVATE
     $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
 add_test(NAME core_config COMMAND test_config)
-
-# --- MemoryManager Tests ---
-add_executable(test_memory_manager test_memory_manager.cpp)
-target_link_libraries(test_memory_manager PRIVATE core)
-target_compile_definitions(test_memory_manager PRIVATE
-    $<$<CONFIG:Debug>:ENGINE_DEBUG>
-)
-add_test(NAME core_memory_manager COMMAND test_memory_manager)
 
 # --- ThreadManager Tests ---
 add_executable(test_thread_manager test_thread_manager.cpp)

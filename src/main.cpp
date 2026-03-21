@@ -4,6 +4,7 @@
 #include "hot_reload_modules.h"
 #include "image_array_registry.h"
 #include "material.h"
+#include "memory_allocator.h"
 #include "object.h"
 #include "renderer.h"
 #include "shader_manager.h"
@@ -15,6 +16,7 @@
 #include "vulkan_instance.h"
 #include "window.h"
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <memory>
 #include <print>

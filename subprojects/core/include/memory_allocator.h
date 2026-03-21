@@ -8,6 +8,9 @@
 
 namespace core {
 
+// TODO update so all memory allocated is a unique_ptr or something similar, so
+// it's easier to manage the allocation and deallocation
+
 template <size_t size> class MemoryAllocator {
 public:
   explicit MemoryAllocator();
@@ -73,7 +76,7 @@ public:
   ~PoolAllocator() override;
 
   T *allocate();
-  void deallocate(T *ptr);
+  void deallocate(T *&ptr);
 
   size_t available() const;
 
