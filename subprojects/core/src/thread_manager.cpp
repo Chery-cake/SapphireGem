@@ -157,10 +157,13 @@ bool ThreadManager::resizePool(const std::string &name,
 void ThreadManager::wait(const std::string &name) {
   std::lock_guard<std::mutex> lock(threadMutex_);
 
-  auto it = threadPools_.find(name);
-  if (it != threadPools_.end() && it->second.pool) {
-    it->second.pool->wait();
-  }
+  std::ranges::find_if(threadPools_, [&](const auto &pair) {
+    if (pair.first == name && pair.second.pool) {
+      pair.second.pool->wait();
+      return true;
+    }
+    return false;
+  });
 }
 
 void ThreadManager::waitAll() {

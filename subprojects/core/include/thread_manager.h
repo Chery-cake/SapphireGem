@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <sys/types.h>
+#include <type_traits>
 #include <vector>
 
 namespace core {
@@ -117,6 +118,7 @@ public:
 
   /**
    * @brief Submit a task to a named pool
+   * @template F function type to be called
    * @param name Pool name
    * @param task The task to execute
    * @param priority Task priority
@@ -125,7 +127,7 @@ public:
   template <typename F>
   auto submitTo(const std::string &name, F &&task,
                 BS::priority_t priority = BS::pr::normal)
-      -> std::future<decltype(task())> {
+      -> std::future<std::invoke_result_t<F>> {
     std::lock_guard<std::mutex> lock(threadMutex_);
     auto it = threadPools_.find(name);
     if (it == threadPools_.end()) {
@@ -136,15 +138,16 @@ public:
 
   /**
    * @brief Submit bulk of tasks to a named pool
+   * @param F function type to be called
    * @param name Pool name
    * @param bulk of tasks to execute
    * @param priority Task priority
-   * @return Future for bulk completion
+   * @return Vector of futures for bulk completion
    */
-  template <typename F, typename R>
+  template <typename F>
   auto submitBulkTo(const std::string &name, const std::vector<F> &bulk,
                     BS::priority_t priority = BS::pr::normal)
-      -> BS::multi_future<R> {
+      -> BS::multi_future<std::invoke_result_t<F>> {
     std::lock_guard<std::mutex> lock(threadMutex_);
     auto it = threadPools_.find(name);
     if (it == threadPools_.end()) {
