@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <new>
 #include <print>
 
@@ -12,16 +13,14 @@ namespace core {
 // MemoryAllocator Implementation
 // ============================================================================
 
-template <size_t size> MemoryAllocator<size>::MemoryAllocator() {
-  std::lock_guard<std::mutex> lock(memoryMutex_);
-  memory_ = static_cast<uint8_t *>(::operator new(size));
-}
+template <size_t size>
+MemoryAllocator<size>::MemoryAllocator()
+    : memory_(static_cast<uint8_t *>(::operator new(size)),
+              [](uint8_t *ptr) { ::operator delete(ptr); }) {}
 
 template <size_t size> MemoryAllocator<size>::~MemoryAllocator() {
   std::lock_guard<std::mutex> lock(memoryMutex_);
-  if (memory_ != nullptr) {
-    ::operator delete(memory_);
-  }
+  memory_.reset();
 }
 
 // ============================================================================
@@ -35,16 +34,15 @@ template <size_t size> BumpAllocator<size>::~BumpAllocator() = default;
 
 template <size_t size>
 template <typename T>
-void *BumpAllocator<size>::allocate(size_t alignment) {
+T *BumpAllocator<size>::allocate(size_t alignment) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   alignment = std::max(alignment, alignof(T));
 
   size_t allocation = sizeof(T);
   // Align current offset
-  size_t padding = 0;
   size_t current = reinterpret_cast<uintptr_t>(this->memory() + offset_);
   size_t aligned = (current + alignment - 1) & ~(alignment - 1);
-  padding = aligned - current;
+  size_t padding = aligned - current;
 
   if (offset_ + padding + allocation > this->capacity()) {
     std::println(stderr,
@@ -77,7 +75,7 @@ template <size_t size> StackAllocator<size>::~StackAllocator() = default;
 
 template <size_t size>
 template <typename T>
-void *StackAllocator<size>::push(size_t alignment) {
+T *StackAllocator<size>::push(size_t alignment) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   alignment = std::max(alignment, alignof(T));
 
@@ -104,11 +102,12 @@ void *StackAllocator<size>::push(size_t alignment) {
   return reinterpret_cast<void *>(aligned_addr);
 }
 
-template <size_t size> void StackAllocator<size>::pop(void *ptr) {
+template <size_t size> void StackAllocator<size>::pop(void *&ptr) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
   size_t *header = reinterpret_cast<size_t *>(reinterpret_cast<uint8_t *>(ptr) -
                                               sizeof(size_t));
   offset_ -= *header;
+  ptr = nullptr;
 }
 
 // ============================================================================
