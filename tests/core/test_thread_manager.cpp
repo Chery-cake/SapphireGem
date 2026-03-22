@@ -1,10 +1,17 @@
+#include "BS_thread_pool.hpp"
 #include "thread_manager.h"
 #include <atomic>
 #include <cassert>
+#include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <future>
+#include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -163,15 +170,14 @@ void test_multiple_tasks() {
   mgr.createPool(cfg);
 
   std::atomic<int> counter{0};
-  std::vector<std::future<void>> futures;
-
-  for (int i = 0; i < 100; ++i) {
-    futures.push_back(mgr.submitTo("multi_test", [&counter]() { counter++; }));
+  std::vector<std::function<void()>> functions;
+  functions.reserve(100);
+  for (int i = 0; i < 100; i++) {
+    functions.emplace_back([&counter]() { counter++; });
   }
 
-  for (auto &f : futures) {
-    f.get();
-  }
+  BS::multi_future<void> futures = mgr.submitBulkTo("multi_test", functions);
+  futures.wait();
 
   assert(counter.load() == 100);
 
@@ -194,14 +200,61 @@ void test_wait() {
   mgr.createPool(cfg);
 
   std::atomic<int> counter{0};
-  for (int i = 0; i < 50; ++i) {
-    mgr.submitTo("wait_test", [&counter]() { counter++; });
+  std::vector<std::function<void()>> functions;
+  functions.reserve(100);
+  for (int i = 0; i < 100; i++) {
+    functions.emplace_back([&counter]() {
+      counter++;
+      std::this_thread::sleep_for(std::chrono::nanoseconds(counter * 10));
+    });
   }
 
+  auto futures = mgr.submitBulkTo("wait_test", functions);
+
   mgr.wait("wait_test");
-  assert(counter.load() == 50);
+  assert(counter.load() == 100);
 
   mgr.destroyPool("wait_test");
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: Wait all pools
+// ---------------------------------------------------------------------------
+void test_wait_all() {
+  TEST(wait_all);
+
+  auto &mgr = core::ThreadManager::instance();
+
+  core::ThreadPoolConfig cfg1;
+  cfg1.name = "wait_test_1";
+  cfg1.threadCount = 2;
+  mgr.createPool(cfg1);
+
+  core::ThreadPoolConfig cfg2;
+  cfg2.name = "wait_test_2";
+  cfg2.threadCount = 2;
+  mgr.createPool(cfg2);
+
+  std::atomic<int> counter{0};
+  std::vector<std::function<void()>> functions;
+  functions.reserve(100);
+  for (int i = 0; i < 100; i++) {
+    functions.emplace_back([&counter]() {
+      counter++;
+      std::this_thread::sleep_for(std::chrono::nanoseconds(counter * 10));
+    });
+  }
+
+  auto futures1 = mgr.submitBulkTo("wait_test_1", functions);
+  auto futures2 = mgr.submitBulkTo("wait_test_2", functions);
+
+  mgr.waitAll();
+  assert(counter.load() == 200);
+
+  mgr.destroyPool("wait_test_1");
+  mgr.destroyPool("wait_test_2");
 
   PASS();
 }
@@ -294,9 +347,12 @@ void test_resize_pool() {
 
   auto &mgr = core::ThreadManager::instance();
 
+  bool called = false;
+
   core::ThreadPoolConfig cfg;
   cfg.name = "resize_test";
   cfg.threadCount = 2;
+  cfg.onReconfigure = [&called](uint32_t t) { called = true; };
   mgr.createPool(cfg);
 
   assert(mgr.getPoolThreadCount("resize_test") == 2);
@@ -304,6 +360,7 @@ void test_resize_pool() {
   bool resized = mgr.resizePool("resize_test", 4);
   assert(resized);
   assert(mgr.getPoolThreadCount("resize_test") == 4);
+  assert(called);
 
   // Resize nonexistent should fail
   bool notFound = mgr.resizePool("nonexistent", 1);
@@ -361,6 +418,7 @@ int main() {
   test_submit_to_nonexistent();
   test_multiple_tasks();
   test_wait();
+  test_wait_all();
   test_pool_names();
   test_pool_config();
   test_pool_thread_count();
