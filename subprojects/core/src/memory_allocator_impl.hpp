@@ -52,8 +52,8 @@ T *BumpAllocator<size>::allocate(size_t alignment) {
   }
 
   offset_ += padding;
-  void *result =
-      static_cast<void *>(const_cast<uint8_t *>(this->memory()) + offset_);
+  T *result =
+      reinterpret_cast<T *>(const_cast<uint8_t *>(this->memory()) + offset_);
   offset_ += allocation;
 
   return result;
@@ -99,7 +99,7 @@ T *StackAllocator<size>::push(size_t alignment) {
   *reinterpret_cast<size_t *>(header_addr) = totalSize;
   offset_ += totalSize;
 
-  return reinterpret_cast<void *>(aligned_addr);
+  return reinterpret_cast<T *>(aligned_addr);
 }
 
 template <size_t size> void StackAllocator<size>::pop(void *&ptr) {
