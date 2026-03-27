@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <execution>
 #include <memory>
+#include <mutex>
 
 namespace core {
 
@@ -46,16 +47,23 @@ bool ResourceRegistry<Tag, Asset>::set(const Tag *tag,
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = assets_.find(tag);
     wasNew = (it == assets_.end());
-
-    assets_[tag] = std::move(asset);
-    assetPtr = assets_[tag].get();
   }
 
   // Invoke remove callbacks first if replacing
   if (!wasNew) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      assetPtr = assets_[tag].get();
+    }
     std::ranges::for_each(
         removeCallbacks_.begin(), removeCallbacks_.end(),
         [&](const auto &callback) { callback(tag, assetPtr); });
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    assets_[tag] = std::move(asset);
+    assetPtr = assets_[tag].get();
   }
 
   // Then invoke add callbacks
@@ -91,14 +99,14 @@ bool ResourceRegistry<Tag, Asset>::contains(const Tag *tag) const {
 
 template <typename Tag, typename Asset>
 bool ResourceRegistry<Tag, Asset>::remove(const Tag *tag) {
-  Asset *assetPtr = nullptr;
+  std::unique_ptr<Asset> assetPtr = nullptr;
   bool removed = false;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = assets_.find(tag);
     if (it != assets_.end()) {
-      assetPtr = it->second.get();
+      assetPtr = std::move(it->second);
       assets_.erase(it);
       removed = true;
     }
@@ -107,7 +115,7 @@ bool ResourceRegistry<Tag, Asset>::remove(const Tag *tag) {
   if (removed) {
     std::ranges::for_each(
         removeCallbacks_.begin(), removeCallbacks_.end(),
-        [&](const auto &callback) { callback(tag, assetPtr); });
+        [&](const auto &callback) { callback(tag, assetPtr.get()); });
   }
 
   return removed;

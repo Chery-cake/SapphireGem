@@ -233,6 +233,6 @@ public:
 }; // namespace core
 
 // template implementation
-#include "../src/resource_registry.hpp"
+#include "../src/resource_registry_impl.hpp"
 
 #endif // RESOURCE_REGISTRY_H_
