@@ -5,9 +5,14 @@
 #include "vulkan/vulkan_core.h"
 #include "vulkan/vulkan_hpp_macros.hpp"
 #include "vulkan/vulkan_raii.hpp"
+#include <algorithm>
+#include <iterator>
 #include <memory>
 #include <print>
+#include <ranges>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace device {
 
@@ -55,42 +60,11 @@ void VulkanInstance::shutdown() {
   std::println("[VulkanInstance] Shutdown complete");
 }
 
-VulkanInstance::VulkanInstance(VulkanInstance &&other) noexcept
-    : context_(std::move(other.context_)),
-      instance_(std::move(other.instance_)),
-      debugMessenger_(std::move(other.debugMessenger_)),
-      initialized_(other.initialized_) {
-  other.initialized_ = false;
-}
-
-VulkanInstance &VulkanInstance::operator=(VulkanInstance &&other) noexcept {
-  if (this != &other) {
-    shutdown();
-    context_ = std::move(other.context_);
-    instance_ = std::move(other.instance_);
-    debugMessenger_ = std::move(other.debugMessenger_);
-    initialized_ = other.initialized_;
-    other.initialized_ = false;
-  }
-  return *this;
-}
-
 bool VulkanInstance::initialize() {
   if (initialized_) {
     std::println(stderr, "[VulkanInstance] Already initialized");
     return false;
   }
-
-#ifdef __APPLE__
-  // Point the Vulkan loader at MoltenVK's ICD manifest.
-  // The path is relative to the executable — set once before DynamicLoader.
-  // This is the only Apple-specific code needed anywhere in the engine.
-  if (!std::getenv("VK_ICD_FILENAMES")) {
-    // Only set if not already overridden (e.g. by a dev with the Vulkan
-    // SDK)
-    setenv("VK_ICD_FILENAMES", "vulkan/icd.d/MoltenVK_icd.json", 0);
-  }
-#endif
 
   vk::detail::DynamicLoader dl;
   auto instanceProc =
@@ -110,48 +84,95 @@ bool VulkanInstance::initialize() {
     return false;
   }
 
-  // Check instance layer support and add supported layers
-  std::vector<const char *> enabledLayers;
-  if (!core::Config::instance().getVulkanConfig().getInstanceLayers().empty()) {
-    auto unsupportedList = checkLayerSupport(
-        core::Config::instance().getVulkanConfig().getInstanceLayers());
-    std::unordered_set<std::string> unsupported(unsupportedList.begin(),
-                                                unsupportedList.end());
-    if (!unsupported.empty()) {
-      std::println(stderr,
-                   "[VulkanInstance] Skipping unsupported instance layers:");
-      for (const auto &layer : unsupportedList) {
-        std::println(stderr, "  - {}", layer);
-      }
-    }
-    auto &layers =
-        core::Config::instance().getVulkanConfig().getInstanceLayers();
-    for (const auto &layer : layers) {
-      if (unsupported.find(layer) == unsupported.end()) {
-        enabledLayers.push_back(layer.c_str());
-      }
-    }
+  // Check instance layer support
+  auto &layers = core::Config::instance().getVulkanConfig().getInstanceLayers();
+
+  auto unsupportedList = checkLayerSupport(layers);
+  std::unordered_set<std::string> unsupported(unsupportedList.begin(),
+                                              unsupportedList.end());
+  if (!unsupported.empty()) {
+    std::println(stderr,
+                 "[VulkanInstance] Skipping unsupported instance layers:");
+    std::ranges::for_each(
+        unsupportedList.begin(), unsupportedList.end(),
+        [](const auto &layer) { std::println(stderr, "  - {}", layer); });
+    return false;
   }
 
+  auto &optionalLayers =
+      core::Config::instance().getVulkanConfig().getOptionalInstanceLayers();
+
+  unsupportedList = checkLayerSupport(optionalLayers);
+  unsupported.insert(unsupportedList.begin(), unsupportedList.end());
+
+  if (!unsupported.empty()) {
+    std::println(stderr, "[VulkanInstance] Skipping unsupported "
+                         "optional instance layers:");
+    std::ranges::for_each(
+        unsupportedList.begin(), unsupportedList.end(),
+        [](const auto &layer) { std::println(stderr, "  - {}", layer); });
+  }
+
+  // Add supported instance layers
+  std::vector<const char *> enabledLayers;
+
+  std::ranges::copy(layers |
+                        std::views::transform([](const std::string &layer) {
+                          return layer.c_str();
+                        }),
+                    std::back_inserter(enabledLayers));
+
+  std::ranges::copy(
+      optionalLayers | std::views::filter([&unsupported](const auto &layer) {
+        return unsupported.find(layer) == unsupported.end();
+      }) | std::views::transform([](const std::string &layer) {
+        return layer.c_str();
+      }),
+      std::back_inserter(enabledLayers));
+
   // Check extension support
-  auto unsupportedExtensions = checkExtensionSupport(
-      core::Config::instance().getVulkanConfig().getInstanceExtensions());
-  if (!unsupportedExtensions.empty()) {
+  auto &exts =
+      core::Config::instance().getVulkanConfig().getInstanceExtensions();
+  auto unsupportedExtensionsList = checkExtensionSupport(exts);
+  std::unordered_set<std::string> unsupportedExt(
+      unsupportedExtensionsList.begin(), unsupportedExtensionsList.end());
+  if (!unsupportedExt.empty()) {
     std::println(stderr, "[VulkanInstance] Unsupported extensions:");
-    for (const auto &ext : unsupportedExtensions) {
-      std::println(stderr, "  - {}", ext);
-    }
+    std::ranges::for_each(
+        unsupportedExt.begin(), unsupportedExt.end(),
+        [](const auto &ext) { std::println(stderr, "  - {}", ext); });
     return false;
+  }
+
+  auto &optionalExts = core::Config::instance()
+                           .getVulkanConfig()
+                           .getOptionalInstanceExtensions();
+  unsupportedExtensionsList = checkExtensionSupport(optionalExts);
+  unsupportedExt.insert(unsupportedExtensionsList.begin(),
+                        unsupportedExtensionsList.end());
+
+  if (!unsupportedExt.empty()) {
+    std::println(stderr, "[VulkanInstance] Unsupported optional extensions:");
+    std::ranges::for_each(
+        unsupportedExt.begin(), unsupportedExt.end(),
+        [](const auto &ext) { std::println(stderr, "  - {}", ext); });
   }
 
   // Prepare extension list
   std::vector<const char *> enabledExtensions;
-  auto &extensions =
-      core::Config::instance().getVulkanConfig().getInstanceExtensions();
-  enabledExtensions.reserve(extensions.size());
-  for (const auto &ext : extensions) {
-    enabledExtensions.push_back(ext.c_str());
-  }
+
+  std::ranges::copy(exts | std::views::transform([](const std::string &ext) {
+                      return ext.c_str();
+                    }),
+                    std::back_inserter(enabledExtensions));
+
+  std::ranges::copy(
+      optionalExts | std::views::filter([&unsupportedExt](const auto &ext) {
+        return unsupportedExt.find(ext) == unsupportedExt.end();
+      }) | std::views::transform([](const std::string &ext) {
+        return ext.c_str();
+      }),
+      std::back_inserter(enabledExtensions));
 
   // Add debug extension if layers are enabled (for debug messenger)
 #ifdef ENGINE_DEBUG
@@ -192,7 +213,7 @@ bool VulkanInstance::initialize() {
 
   VULKAN_HPP_DEFAULT_DISPATCHER.init(**instance_, instanceProc);
 
-  // Setup debug messenger (RAII handles cleanup automatically)
+  // Setup debug messenger
 #ifdef ENGINE_DEBUG
   if (!setupDebugMessenger()) {
     std::println(stderr, "[VulkanInstance] Failed to setup debug messenger");
@@ -206,105 +227,55 @@ bool VulkanInstance::initialize() {
 }
 
 std::vector<std::string> VulkanInstance::getAvailableExtensions() {
-#ifdef __APPLE__
-  if (!std::getenv("VK_ICD_FILENAMES")) {
-    setenv("VK_ICD_FILENAMES", "vulkan/icd.d/MoltenVK_icd.json", 0);
-  }
-#endif
   // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
-  // on systems where the Vulkan loader is present but no ICD is installed.
   vk::detail::DynamicLoader dl;
   auto getInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-  if (!getInstanceProcAddr) {
+  if (getInstanceProcAddr == nullptr) {
     throw std::runtime_error(
         "[VulkanInstance] vkGetInstanceProcAddr not available");
   }
 
-  auto enumExtensions =
-      reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
-          getInstanceProcAddr(nullptr,
-                              "vkEnumerateInstanceExtensionProperties"));
-  if (!enumExtensions) {
-    throw std::runtime_error(
-        "[VulkanInstance] vkEnumerateInstanceExtensionProperties not "
-        "available");
-  }
+  vk::detail::DispatchLoaderDynamic dld{getInstanceProcAddr};
+  auto exts = vk::enumerateInstanceExtensionProperties(nullptr, dld);
 
-  uint32_t count = 0;
-  VkResult vkResult = enumExtensions(nullptr, &count, nullptr);
-  if (vkResult != VK_SUCCESS || count == 0) {
-    return {};
-  }
-
-  std::vector<VkExtensionProperties> extensions(count);
-  vkResult = enumExtensions(nullptr, &count, extensions.data());
-  if (vkResult != VK_SUCCESS) {
-    return {};
-  }
-
-  std::vector<std::string> result;
-  result.reserve(count);
-  for (const auto &ext : extensions) {
-    result.emplace_back(ext.extensionName);
-  }
-  return result;
+  return exts | std::views::transform([](const vk::ExtensionProperties &ext) {
+           return std::string(ext.extensionName);
+         }) |
+         std::ranges::to<std::vector<std::string>>();
 }
 
 std::vector<std::string> VulkanInstance::getAvailableLayers() {
-#ifdef __APPLE__
-  if (!std::getenv("VK_ICD_FILENAMES")) {
-    setenv("VK_ICD_FILENAMES", "vulkan/icd.d/MoltenVK_icd.json", 0);
-  }
-#endif
   // Use DynamicLoader + C API directly to avoid vk::raii::Context segfaults
-  // on systems where the Vulkan loader is present but no ICD is installed.
   vk::detail::DynamicLoader dl;
   auto getInstanceProcAddr =
       dl.getProcAddress<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-  if (!getInstanceProcAddr) {
+  if (getInstanceProcAddr == nullptr) {
     throw std::runtime_error(
         "[VulkanInstance] vkGetInstanceProcAddr not available");
   }
 
-  auto enumLayers = reinterpret_cast<PFN_vkEnumerateInstanceLayerProperties>(
-      getInstanceProcAddr(nullptr, "vkEnumerateInstanceLayerProperties"));
-  if (!enumLayers) {
-    throw std::runtime_error(
-        "[VulkanInstance] vkEnumerateInstanceLayerProperties not "
-        "available");
-  }
+  vk::detail::DispatchLoaderDynamic dld{getInstanceProcAddr};
+  auto layers = vk::enumerateInstanceLayerProperties(dld);
 
-  uint32_t count = 0;
-  VkResult vkResult = enumLayers(&count, nullptr);
-  if (vkResult != VK_SUCCESS || count == 0) {
-    return {};
-  }
-
-  std::vector<VkLayerProperties> layers(count);
-  vkResult = enumLayers(&count, layers.data());
-  if (vkResult != VK_SUCCESS) {
-    return {};
-  }
-
-  std::vector<std::string> result;
-  result.reserve(count);
-  for (const auto &layer : layers) {
-    result.emplace_back(layer.layerName);
-  }
-  return result;
+  return layers | std::views::transform([](const vk::LayerProperties &layer) {
+           return std::string(layer.layerName);
+         }) |
+         std::ranges::to<std::vector<std::string>>();
 }
 
 std::vector<std::string> VulkanInstance::checkExtensionSupport(
     const std::vector<std::string> &extensions) {
   auto available = getAvailableExtensions();
+  std::unordered_set<std::string> available_set{available.begin(),
+                                                available.end()};
+
   std::vector<std::string> unsupported;
 
-  for (const auto &ext : extensions) {
-    if (std::find(available.begin(), available.end(), ext) == available.end()) {
-      unsupported.push_back(ext);
-    }
-  }
+  std::ranges::copy_if(extensions, std::back_inserter(unsupported),
+                       [&available_set](const auto &ext) {
+                         return !available_set.contains(ext);
+                       });
 
   return unsupported;
 }
@@ -312,14 +283,15 @@ std::vector<std::string> VulkanInstance::checkExtensionSupport(
 std::vector<std::string>
 VulkanInstance::checkLayerSupport(const std::vector<std::string> &layers) {
   auto available = getAvailableLayers();
+  std::unordered_set<std::string> available_set{available.begin(),
+                                                available.end()};
+
   std::vector<std::string> unsupported;
 
-  for (const auto &layer : layers) {
-    if (std::find(available.begin(), available.end(), layer) ==
-        available.end()) {
-      unsupported.push_back(layer);
-    }
-  }
+  std::ranges::copy_if(layers, std::back_inserter(unsupported),
+                       [&available_set](const auto &layer) {
+                         return !available_set.contains(layer);
+                       });
 
   return unsupported;
 }
