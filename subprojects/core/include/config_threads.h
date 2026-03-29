@@ -136,6 +136,37 @@ public:
 
   const LoopConfig &getLoopConfig() { return loopConfig_; }
 
+  bool operator==(const ThreadsConfig &other) const {
+    return threadPoolAllocation_ == other.threadPoolAllocation_ &&
+           gpuConfig_ == other.gpuConfig_ && loopConfig_ == other.loopConfig_;
+  }
+
+  bool operator!=(const ThreadsConfig &other) const {
+    return !(*this == other);
+  }
+
+  ThreadsConfig &operator=(const ThreadsConfig &other) {
+    if (this == &other)
+      return *this; // Handle self-assignment
+
+    threadPoolAllocation_ = other.threadPoolAllocation_;
+    gpuConfig_ = other.gpuConfig_;
+    loopConfig_ = other.loopConfig_;
+
+    return *this;
+  }
+
+  ThreadsConfig &operator=(ThreadsConfig &&other) noexcept {
+    if (this == &other)
+      return *this; // Handle self-assignment
+
+    threadPoolAllocation_ = std::move(other.threadPoolAllocation_);
+    gpuConfig_ = std::move(other.gpuConfig_);
+    loopConfig_ = std::move(other.loopConfig_);
+
+    return *this;
+  }
+
   explicit ThreadsConfig(ConfigSection &pendingChanges, bool &immediateMode,
                          std::vector<Config::CallbackEntry> &callbacks,
                          std::mutex &configMutex);

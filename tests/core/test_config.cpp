@@ -1,8 +1,13 @@
 #include "config.h"
+#include "config_threads.h"
+#include "config_vulkan.h"
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
+#include <iostream>
 #include <string>
+#include <thread>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -60,14 +65,14 @@ void test_vulkan_config() {
 
   auto &config = core::Config::instance();
 
-  core::VulkanConfig vkCfg;
-  vkCfg.engineName = "TestEngine";
-  vkCfg.engineVersion = VK_MAKE_VERSION(2, 0, 0);
+  core::VulkanConfig &vkCfg = config.getVulkanConfig();
+  vkCfg.setEngineName("TestEngine");
+  vkCfg.setEngineVersion(VK_MAKE_VERSION(2, 0, 0));
 
   config.setVulkanConfig(vkCfg);
   const auto &retrieved = config.getVulkanConfig();
-  assert(retrieved.engineName == "TestEngine");
-  assert(retrieved.engineVersion == VK_MAKE_VERSION(2, 0, 0));
+  assert(retrieved.getEngineName() == "TestEngine");
+  assert(retrieved.getEngineVersion() == VK_MAKE_VERSION(2, 0, 0));
 
   PASS();
 }
@@ -78,23 +83,26 @@ void test_vulkan_config() {
 void test_instance_extensions() {
   TEST(instance_extensions);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getVulkanConfig();
   config.resetToDefaults();
 
   config.addInstanceExtension("VK_TEST_extension");
-  const auto &vkCfg = config.getVulkanConfig();
 
-  auto it = std::find(vkCfg.instanceExtensions.begin(),
-                       vkCfg.instanceExtensions.end(), "VK_TEST_extension");
-  assert(it != vkCfg.instanceExtensions.end());
+  auto it =
+      std::find(config.getInstanceExtensions().begin(),
+                config.getInstanceExtensions().end(), "VK_TEST_extension");
+  assert(it != config.getInstanceExtensions().end());
 
   bool removed = config.removeInstanceExtension("VK_TEST_extension");
   assert(removed);
 
-  const auto &vkCfg2 = config.getVulkanConfig();
-  auto it2 = std::find(vkCfg2.instanceExtensions.begin(),
-                        vkCfg2.instanceExtensions.end(), "VK_TEST_extension");
-  assert(it2 == vkCfg2.instanceExtensions.end());
+  const auto &vkCfg = core::Config::instance().getVulkanConfig();
+  auto it2 =
+      std::find(vkCfg.getInstanceExtensions().begin(),
+                vkCfg.getInstanceExtensions().end(), "VK_TEST_extension");
+  assert(it2 == vkCfg.getInstanceExtensions().end());
+
+  assert(!config.removeInstanceExtension("inexistent"));
 
   PASS();
 }
@@ -105,18 +113,17 @@ void test_instance_extensions() {
 void test_device_extensions() {
   TEST(device_extensions);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getVulkanConfig();
   config.resetToDefaults();
 
   config.addDeviceExtension("VK_TEST_device_ext");
-  const auto &vkCfg = config.getVulkanConfig();
 
-  auto it = std::find(vkCfg.deviceExtensions.begin(),
-                       vkCfg.deviceExtensions.end(), "VK_TEST_device_ext");
-  assert(it != vkCfg.deviceExtensions.end());
+  auto it = std::find(config.getDeviceExtensions().begin(),
+                      config.getDeviceExtensions().end(), "VK_TEST_device_ext");
+  assert(it != config.getDeviceExtensions().end());
 
-  bool removed = config.removeDeviceExtension("VK_TEST_device_ext");
-  assert(removed);
+  assert(config.removeDeviceExtension("VK_TEST_device_ext"));
+  assert(!config.removeDeviceExtension("inexistent"));
 
   PASS();
 }
@@ -127,18 +134,17 @@ void test_device_extensions() {
 void test_instance_layers() {
   TEST(instance_layers);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getVulkanConfig();
   config.resetToDefaults();
 
   config.addInstanceLayer("VK_LAYER_TEST_layer");
-  const auto &vkCfg = config.getVulkanConfig();
 
-  auto it = std::find(vkCfg.instanceLayers.begin(),
-                       vkCfg.instanceLayers.end(), "VK_LAYER_TEST_layer");
-  assert(it != vkCfg.instanceLayers.end());
+  auto it = std::find(config.getInstanceLayers().begin(),
+                      config.getInstanceLayers().end(), "VK_LAYER_TEST_layer");
+  assert(it != config.getInstanceLayers().end());
 
-  bool removed = config.removeInstanceLayer("VK_LAYER_TEST_layer");
-  assert(removed);
+  assert(config.removeInstanceLayer("VK_LAYER_TEST_layer"));
+  assert(!config.removeInstanceLayer("inexistent"));
 
   PASS();
 }
@@ -149,29 +155,33 @@ void test_instance_layers() {
 void test_optional_extensions() {
   TEST(optional_extensions);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getVulkanConfig();
   config.resetToDefaults();
 
   config.addOptionalInstanceExtension("VK_OPT_inst_ext");
   config.addOptionalDeviceExtension("VK_OPT_dev_ext");
   config.addOptionalInstanceLayer("VK_LAYER_OPT_layer");
 
-  const auto &vkCfg = config.getVulkanConfig();
-
-  assert(std::find(vkCfg.optionalInstanceExtensions.begin(),
-                   vkCfg.optionalInstanceExtensions.end(),
+  assert(std::find(config.getOptionalInstanceExtensions().begin(),
+                   config.getOptionalInstanceExtensions().end(),
                    "VK_OPT_inst_ext") !=
-         vkCfg.optionalInstanceExtensions.end());
-  assert(std::find(vkCfg.optionalDeviceExtensions.begin(),
-                   vkCfg.optionalDeviceExtensions.end(), "VK_OPT_dev_ext") !=
-         vkCfg.optionalDeviceExtensions.end());
-  assert(std::find(vkCfg.optionalInstanceLayers.begin(),
-                   vkCfg.optionalInstanceLayers.end(), "VK_LAYER_OPT_layer") !=
-         vkCfg.optionalInstanceLayers.end());
+         config.getOptionalInstanceExtensions().end());
+  assert(std::find(config.getOptionalDeviceExtensions().begin(),
+                   config.getOptionalDeviceExtensions().end(),
+                   "VK_OPT_dev_ext") !=
+         config.getOptionalDeviceExtensions().end());
+  assert(std::find(config.getOptionalInstanceLayers().begin(),
+                   config.getOptionalInstanceLayers().end(),
+                   "VK_LAYER_OPT_layer") !=
+         config.getOptionalInstanceLayers().end());
 
   assert(config.removeOptionalInstanceExtension("VK_OPT_inst_ext"));
   assert(config.removeOptionalDeviceExtension("VK_OPT_dev_ext"));
   assert(config.removeOptionalInstanceLayer("VK_LAYER_OPT_layer"));
+
+  assert(!config.removeOptionalInstanceExtension("inexistent"));
+  assert(!config.removeOptionalDeviceExtension("inexistent"));
+  assert(!config.removeOptionalInstanceLayer("inexistent"));
 
   PASS();
 }
@@ -182,18 +192,41 @@ void test_optional_extensions() {
 void test_thread_pool_allocation() {
   TEST(thread_pool_allocation);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getThreadsConfig();
 
   core::ThreadPoolAllocation tpa;
   tpa.workerThreads = 8;
   tpa.loopThreads = 2;
   tpa.gpuThreads = 4;
-
   config.setThreadPoolAllocation(tpa);
+
   auto retrieved = config.getThreadPoolAllocation();
   assert(retrieved.workerThreads == 8);
   assert(retrieved.loopThreads == 2);
   assert(retrieved.gpuThreads == 4);
+
+  auto effective = config.getEffectiveThreadAllocation();
+  assert(effective.workerThreads == 8);
+  assert(effective.loopThreads == 2);
+  assert(effective.gpuThreads == 4);
+
+  core::ThreadPoolAllocation tpa2;
+  tpa2.workerThreads = 0;
+  tpa2.loopThreads = 2;
+  tpa2.gpuThreads = 4;
+  config.setThreadPoolAllocation(tpa2);
+
+  retrieved = config.getThreadPoolAllocation();
+  assert(retrieved.workerThreads == 0);
+  assert(retrieved.loopThreads == 2);
+  assert(retrieved.gpuThreads == 4);
+
+  effective = config.getEffectiveThreadAllocation();
+  assert(effective.workerThreads ==
+         (std::thread::hardware_concurrency() - effective.loopThreads -
+          effective.gpuThreads));
+  assert(effective.loopThreads == 2);
+  assert(effective.gpuThreads == 4);
 
   PASS();
 }
@@ -204,7 +237,7 @@ void test_thread_pool_allocation() {
 void test_gpu_config() {
   TEST(gpu_config);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getThreadsConfig();
 
   core::GPUConfig gpuCfg;
   gpuCfg.gpuCount = 2;
@@ -226,7 +259,7 @@ void test_gpu_config() {
 void test_loop_config() {
   TEST(loop_config);
 
-  auto &config = core::Config::instance();
+  auto &config = core::Config::instance().getThreadsConfig();
 
   core::LoopConfig loopCfg;
   loopCfg.mainLoopCount = 3;
@@ -254,18 +287,56 @@ void test_change_callbacks() {
   config.resetToDefaults();
   config.setImmediateMode(true);
 
-  bool callbackInvoked = false;
-  config.registerChangeCallback(
-      "test_callback", core::ConfigSection::GPU,
-      [&callbackInvoked]() { callbackInvoked = true; });
+  uint32_t callbackInvoked = 0;
+
+  config.registerChangeCallback("test_callback_1", core::ConfigSection::Vulkan,
+                                [&callbackInvoked]() { callbackInvoked++; });
+  config.registerChangeCallback("test_callback_2",
+                                core::ConfigSection::ThreadPool,
+                                [&callbackInvoked]() { callbackInvoked++; });
+  config.registerChangeCallback("test_callback_3", core::ConfigSection::GPU,
+                                [&callbackInvoked]() { callbackInvoked++; });
+  config.registerChangeCallback("test_callback_4", core::ConfigSection::Loop,
+                                [&callbackInvoked]() { callbackInvoked++; });
+  config.registerChangeCallback("test_callback_5", core::ConfigSection::All,
+                                [&callbackInvoked]() { callbackInvoked++; });
+
+  config.getVulkanConfig().addInstanceExtension("VK_TEST_device_ext");
+  assert(callbackInvoked == 2);
+  config.getVulkanConfig().addInstanceExtension("VK_TEST_device_ext");
+  assert(callbackInvoked == 2);
+
+  core::ThreadPoolAllocation threadPool;
+  threadPool.workerThreads = 6;
+  config.getThreadsConfig().setThreadPoolAllocation(threadPool);
+  assert(callbackInvoked == 4);
+  config.getThreadsConfig().setThreadPoolAllocation(threadPool);
+  assert(callbackInvoked == 4);
 
   core::GPUConfig gpuCfg;
   gpuCfg.gpuCount = 4;
-  config.setGPUConfig(gpuCfg);
+  config.getThreadsConfig().setGPUConfig(gpuCfg);
+  assert(callbackInvoked == 6);
+  config.getThreadsConfig().setGPUConfig(gpuCfg);
+  assert(callbackInvoked == 6);
 
-  assert(callbackInvoked);
+  core::LoopConfig loopCfg;
+  loopCfg.targetFrameRate = 30;
+  config.getThreadsConfig().setLoopConfig(loopCfg);
+  assert(callbackInvoked == 8);
+  config.getThreadsConfig().setLoopConfig(loopCfg);
+  assert(callbackInvoked == 8);
 
-  config.unregisterChangeCallback("test_callback");
+  config.getVulkanConfig().removeInstanceExtension("VK_TEST_device_ext");
+  assert(callbackInvoked == 10);
+  config.getVulkanConfig().removeInstanceExtension("VK_TEST_device_ext");
+  assert(callbackInvoked == 10);
+
+  config.unregisterChangeCallback("test_callback_1");
+  config.unregisterChangeCallback("test_callback_2");
+  config.unregisterChangeCallback("test_callback_3");
+  config.unregisterChangeCallback("test_callback_4");
+  config.unregisterChangeCallback("test_callback_5");
 
   PASS();
 }
@@ -288,7 +359,7 @@ void test_batched_mode() {
 
   core::LoopConfig loopCfg;
   loopCfg.targetFrameRate = 30;
-  config.setLoopConfig(loopCfg);
+  config.getThreadsConfig().setLoopConfig(loopCfg);
 
   // In non-immediate mode, callback should not fire until applyPendingChanges
   assert(!callbackInvoked);
@@ -312,11 +383,11 @@ void test_reset_to_defaults() {
 
   core::GPUConfig gpuCfg;
   gpuCfg.gpuCount = 10;
-  config.setGPUConfig(gpuCfg);
+  config.getThreadsConfig().setGPUConfig(gpuCfg);
 
   config.resetToDefaults();
 
-  auto retrieved = config.getGPUConfig();
+  auto retrieved = config.getThreadsConfig().getGPUConfig();
   assert(retrieved.gpuCount == 1);
   assert(retrieved.enableMultiGPU == false);
 
@@ -332,8 +403,11 @@ void test_callback_names() {
   auto &config = core::Config::instance();
   config.resetToDefaults();
 
-  config.registerChangeCallback("cb_alpha", core::ConfigSection::Vulkan,
-                                []() {});
+  assert(config.registerChangeCallback("cb_alpha", core::ConfigSection::Vulkan,
+                                       []() {}));
+  assert(!config.registerChangeCallback("cb_alpha", core::ConfigSection::Vulkan,
+                                        []() {}));
+
   config.registerChangeCallback("cb_beta", core::ConfigSection::GPU, []() {});
 
   auto names = config.getCallbackNames();
@@ -349,8 +423,9 @@ void test_callback_names() {
   assert(foundAlpha);
   assert(foundBeta);
 
-  config.unregisterChangeCallback("cb_alpha");
-  config.unregisterChangeCallback("cb_beta");
+  assert(config.unregisterChangeCallback("cb_alpha"));
+  assert(config.unregisterChangeCallback("cb_beta"));
+  assert(!config.unregisterChangeCallback("cb_gama"));
 
   PASS();
 }

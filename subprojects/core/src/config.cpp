@@ -138,6 +138,47 @@ VulkanConfig &Config::getVulkanConfig() {
   return *vulkanConfig_;
 }
 
+// ========== Threads Configuration ==========
+
+void Config::setThreadsConfig(const ThreadsConfig &config) {
+  bool changed = false;
+  std::vector<CallbackEntry> callbacksToNotify;
+
+  {
+    std::lock_guard<std::mutex> lock(configMutex_);
+    if (*threadsConfig_ != config) {
+      *threadsConfig_ = config;
+      changed = true;
+
+      ConfigSection flags =
+          ConfigSection::GPU | ConfigSection::Loop | ConfigSection::ThreadPool;
+
+      if (immediateMode_) {
+
+        std::ranges::for_each(callbacks_.begin(), callbacks_.end(),
+                              [&callbacksToNotify, &flags](const auto &entry) {
+                                if (hasFlag(entry.sections, flags)) {
+                                  callbacksToNotify.push_back(entry);
+                                }
+                              });
+      } else {
+        pendingChanges_ = pendingChanges_ | flags;
+      }
+    }
+  }
+
+  // Notify callbacks outside lock
+  if (changed && immediateMode_) {
+    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+                          [](const auto &entry) { entry.callback(); });
+  }
+}
+
+ThreadsConfig &Config::getThreadsConfig() {
+  std::lock_guard<std::mutex> lock(configMutex_);
+  return *threadsConfig_;
+}
+
 // ========== Change Callbacks ==========
 
 bool Config::registerChangeCallback(const std::string &name,

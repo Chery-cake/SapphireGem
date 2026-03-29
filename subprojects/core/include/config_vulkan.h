@@ -119,6 +119,10 @@ public:
     return optionalInstanceLayers;
   }
 
+  void setEngineName(std::string name) { engineName = name; }
+  void setEngineVersion(uint32_t version) { engineVersion = version; }
+  void setMinApiVersion(uint32_t version) { minApiVersion = version; }
+
   const std::string &getEngineName() const { return engineName; }
   const uint32_t &getEngineVersion() const { return engineVersion; }
   const uint32_t &getMinApiVersion() const { return minApiVersion; }
