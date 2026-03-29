@@ -1,4 +1,6 @@
 #include "config.h"
+#include "config_threads.h"
+#include "config_vulkan.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "hot_reload_modules.h"
@@ -546,7 +548,7 @@ int main(int argc, char *argv[]) {
   core::GPUConfig gpuConfig;
   gpuConfig.enableMultiGPU = false;
   gpuConfig.gpuCount = 0; // Auto-detect
-  core::Config::instance().setGPUConfig(gpuConfig);
+  core::Config::instance().getThreadsConfig().setGPUConfig(gpuConfig);
 
   device::VulkanInstance inst;
   inst.initialize();
@@ -555,14 +557,16 @@ int main(int argc, char *argv[]) {
   device::VulkanDeviceConfig devConfig;
   devConfig.surface = nullptr;
   devConfig.enableMultiGPU =
-      core::Config::instance().getGPUConfig().enableMultiGPU;
-  devConfig.preferredGPUIndex =
-      core::Config::instance().getGPUConfig().preferredGPUIndex;
+      core::Config::instance().getThreadsConfig().getGPUConfig().enableMultiGPU;
+  devConfig.preferredGPUIndex = core::Config::instance()
+                                    .getThreadsConfig()
+                                    .getGPUConfig()
+                                    .preferredGPUIndex;
   dMan.initialize(inst, devConfig);
 
   // Update GPU count in config based on actual device count
   gpuConfig.gpuCount = static_cast<uint32_t>(dMan.getDeviceCount());
-  core::Config::instance().setGPUConfig(gpuConfig);
+  core::Config::instance().getThreadsConfig().setGPUConfig(gpuConfig);
 
   device::VMAManager vMan;
   vMan.initialize(inst.getRaiiInstance(), dMan);
@@ -582,7 +586,8 @@ int main(int argc, char *argv[]) {
 
   // Configure swapchain
   window::SwapchainConfig swapConf;
-  swapConf.vsync = core::Config::instance().getLoopConfig().enableVSync;
+  swapConf.vsync =
+      core::Config::instance().getThreadsConfig().getLoopConfig().enableVSync;
 
   // Window config with rendering chain and scene support
   window::WindowConfig wConf;
@@ -603,16 +608,18 @@ int main(int argc, char *argv[]) {
 
   // Update loop config to match window count
   {
-    core::LoopConfig loopCfg = core::Config::instance().getLoopConfig();
+    core::LoopConfig loopCfg =
+        core::Config::instance().getThreadsConfig().getLoopConfig();
     loopCfg.mainLoopCount = static_cast<uint32_t>(wMan.getWindowCount());
-    core::Config::instance().setLoopConfig(loopCfg);
+    core::Config::instance().getThreadsConfig().setLoopConfig(loopCfg);
   }
 
   // Initialize thread pools based on effective thread allocation
   {
     auto &tm = core::ThreadManager::instance();
-    auto effectiveAlloc =
-        core::Config::instance().getEffectiveThreadAllocation();
+    auto effectiveAlloc = core::Config::instance()
+                              .getThreadsConfig()
+                              .getEffectiveThreadAllocation();
 
     // Create worker pool if not already created
     if (!tm.hasPool("worker")) {

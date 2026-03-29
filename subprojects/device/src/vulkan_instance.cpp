@@ -1,5 +1,6 @@
 #include "vulkan_instance.h"
 #include "config.h"
+#include "config_vulkan.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_core.h"
 #include "vulkan/vulkan_hpp_macros.hpp"
@@ -111,9 +112,9 @@ bool VulkanInstance::initialize() {
 
   // Check instance layer support and add supported layers
   std::vector<const char *> enabledLayers;
-  if (!core::Config::instance().getVulkanConfig().instanceLayers.empty()) {
+  if (!core::Config::instance().getVulkanConfig().getInstanceLayers().empty()) {
     auto unsupportedList = checkLayerSupport(
-        core::Config::instance().getVulkanConfig().instanceLayers);
+        core::Config::instance().getVulkanConfig().getInstanceLayers());
     std::unordered_set<std::string> unsupported(unsupportedList.begin(),
                                                 unsupportedList.end());
     if (!unsupported.empty()) {
@@ -123,7 +124,8 @@ bool VulkanInstance::initialize() {
         std::println(stderr, "  - {}", layer);
       }
     }
-    auto &layers = core::Config::instance().getVulkanConfig().instanceLayers;
+    auto &layers =
+        core::Config::instance().getVulkanConfig().getInstanceLayers();
     for (const auto &layer : layers) {
       if (unsupported.find(layer) == unsupported.end()) {
         enabledLayers.push_back(layer.c_str());
@@ -133,7 +135,7 @@ bool VulkanInstance::initialize() {
 
   // Check extension support
   auto unsupportedExtensions = checkExtensionSupport(
-      core::Config::instance().getVulkanConfig().instanceExtensions);
+      core::Config::instance().getVulkanConfig().getInstanceExtensions());
   if (!unsupportedExtensions.empty()) {
     std::println(stderr, "[VulkanInstance] Unsupported extensions:");
     for (const auto &ext : unsupportedExtensions) {
@@ -145,7 +147,7 @@ bool VulkanInstance::initialize() {
   // Prepare extension list
   std::vector<const char *> enabledExtensions;
   auto &extensions =
-      core::Config::instance().getVulkanConfig().instanceExtensions;
+      core::Config::instance().getVulkanConfig().getInstanceExtensions();
   enabledExtensions.reserve(extensions.size());
   for (const auto &ext : extensions) {
     enabledExtensions.push_back(ext.c_str());
@@ -159,9 +161,9 @@ bool VulkanInstance::initialize() {
   vk::ApplicationInfo appInfo{
       core::Config::instance().getApplicationConfig().applicationName.c_str(),
       core::Config::instance().getApplicationConfig().applicationVersion,
-      core::Config::instance().getVulkanConfig().engineName.c_str(),
-      core::Config::instance().getVulkanConfig().engineVersion,
-      core::Config::instance().getVulkanConfig().minApiVersion};
+      core::Config::instance().getVulkanConfig().getEngineName().c_str(),
+      core::Config::instance().getVulkanConfig().getEngineVersion(),
+      core::Config::instance().getVulkanConfig().getMinApiVersion()};
 
   vk::InstanceCreateInfo createInfo{
       {}, &appInfo, enabledLayers, enabledExtensions};

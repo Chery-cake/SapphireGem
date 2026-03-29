@@ -133,7 +133,7 @@ void Config::setVulkanConfig(const VulkanConfig &config) {
   }
 }
 
-const VulkanConfig &Config::getVulkanConfig() const {
+VulkanConfig &Config::getVulkanConfig() {
   std::lock_guard<std::mutex> lock(configMutex_);
   return *vulkanConfig_;
 }

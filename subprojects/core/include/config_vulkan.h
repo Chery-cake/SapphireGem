@@ -95,6 +95,34 @@ public:
    */
   bool removeOptionalInstanceLayer(const std::string &layer);
 
+  const std::vector<std::string> &getInstanceExtensions() const {
+    return instanceExtensions;
+  }
+
+  const std::vector<std::string> &getDeviceExtensions() const {
+    return deviceExtensions;
+  }
+
+  const std::vector<std::string> &getInstanceLayers() const {
+    return instanceLayers;
+  }
+
+  const std::vector<std::string> &getOptionalInstanceExtensions() const {
+    return optionalInstanceExtensions;
+  }
+
+  const std::vector<std::string> &getOptionalDeviceExtensions() const {
+    return optionalDeviceExtensions;
+  }
+
+  const std::vector<std::string> &getOptionalInstanceLayers() const {
+    return optionalInstanceLayers;
+  }
+
+  const std::string &getEngineName() const { return engineName; }
+  const uint32_t &getEngineVersion() const { return engineVersion; }
+  const uint32_t &getMinApiVersion() const { return minApiVersion; }
+
   bool operator==(const VulkanConfig &other) const {
     return instanceExtensions == other.instanceExtensions &&
            deviceExtensions == other.deviceExtensions &&

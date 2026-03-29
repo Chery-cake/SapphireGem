@@ -44,7 +44,7 @@ CORE_API void lib_on_unload(void *data) {
     return;
   }
 
-  coreState *state = static_cast<coreState *>(data);
+  // coreState *state = static_cast<coreState *>(data);
 
   // DO NOT shutdown or clear the singletons - we want to preserve them!
   // Just clear the global pointers so the library can be unloaded

@@ -1,6 +1,7 @@
 #include "vulkan_device.h"
 #include "BS_thread_pool.hpp"
 #include "config.h"
+#include "config_vulkan.h"
 #include "thread_manager.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan_instance.h"
@@ -137,7 +138,7 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   // Prepare extensions
   std::vector<const char *> enabledExtensions;
   auto &requiredExtensions =
-      core::Config::instance().getVulkanConfig().deviceExtensions;
+      core::Config::instance().getVulkanConfig().getDeviceExtensions();
   for (const auto &ext : requiredExtensions) {
     enabledExtensions.push_back(ext.c_str());
   }
@@ -146,7 +147,7 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   auto availableExtensions =
       physicalDevice_->enumerateDeviceExtensionProperties();
   auto &optionalExtensions =
-      core::Config::instance().getVulkanConfig().optionalDeviceExtensions;
+      core::Config::instance().getVulkanConfig().getOptionalDeviceExtensions();
   for (const auto &optExt : optionalExtensions) {
     auto it =
         std::find_if(availableExtensions.begin(), availableExtensions.end(),

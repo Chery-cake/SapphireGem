@@ -112,7 +112,7 @@ public:
    * @brief Get current Vulkan configuration
    * @return Current Vulkan configuration
    */
-  const VulkanConfig &getVulkanConfig() const;
+  VulkanConfig &getVulkanConfig();
 
   // ========== Threads Configuration ==========
 
@@ -128,7 +128,7 @@ public:
    * @brief Get current Threads configuration
    * @return Current Threads configuration
    */
-  const ThreadsConfig &getThreadsConfig() const;
+  ThreadsConfig &getThreadsConfig();
 
   // ========== Change Callbacks ==========
 

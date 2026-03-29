@@ -128,6 +128,14 @@ public:
    */
   LoopConfig getLoopConfig() const;
 
+  const ThreadPoolAllocation &getThreadPoolAllocation() {
+    return threadPoolAllocation_;
+  }
+
+  const GPUConfig &getGpuConfig() { return gpuConfig_; }
+
+  const LoopConfig &getLoopConfig() { return loopConfig_; }
+
   explicit ThreadsConfig(ConfigSection &pendingChanges, bool &immediateMode,
                          std::vector<Config::CallbackEntry> &callbacks,
                          std::mutex &configMutex);
