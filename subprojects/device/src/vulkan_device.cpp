@@ -5,11 +5,20 @@
 #include "thread_manager.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan_instance.h"
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <print>
+#include <ranges>
 #include <set>
+#include <tuple>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace device {
 
@@ -30,37 +39,12 @@ void GPUDevice::shutdown() {
     device_->waitIdle();
   }
 
-  // RAII handles cleanup - destroy in reverse order
+  // destroy in reverse order
   device_.reset();
   physicalDevice_.reset();
 
   initialized_ = false;
   std::println("[GPUDevice] Shutdown: {}", info_.name);
-}
-
-GPUDevice::GPUDevice(GPUDevice &&other) noexcept
-    : physicalDevice_(std::move(other.physicalDevice_)),
-      device_(std::move(other.device_)), info_(std::move(other.info_)),
-      graphicsQueue_(other.graphicsQueue_), computeQueue_(other.computeQueue_),
-      transferQueue_(other.transferQueue_), presentQueue_(other.presentQueue_),
-      initialized_(other.initialized_) {
-  other.initialized_ = false;
-}
-
-GPUDevice &GPUDevice::operator=(GPUDevice &&other) noexcept {
-  if (this != &other) {
-    shutdown();
-    physicalDevice_ = std::move(other.physicalDevice_);
-    device_ = std::move(other.device_);
-    info_ = std::move(other.info_);
-    graphicsQueue_ = other.graphicsQueue_;
-    computeQueue_ = other.computeQueue_;
-    transferQueue_ = other.transferQueue_;
-    presentQueue_ = other.presentQueue_;
-    initialized_ = other.initialized_;
-    other.initialized_ = false;
-  }
-  return *this;
 }
 
 void GPUDevice::waitIdle() const {
@@ -106,7 +90,6 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
     queueCreateInfos.push_back(queueCreateInfo);
   }
 
-  // TODO pass this set up to config class
   // Get device features
   vk::PhysicalDeviceFeatures deviceFeatures{};
   deviceFeatures.setSamplerAnisotropy(vk::True);
@@ -136,27 +119,15 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   deviceFeatures14.setPNext(&deviceFeatures13);
 
   // Prepare extensions
-  std::vector<const char *> enabledExtensions;
-  auto &requiredExtensions =
-      core::Config::instance().getVulkanConfig().getDeviceExtensions();
-  for (const auto &ext : requiredExtensions) {
-    enabledExtensions.push_back(ext.c_str());
-  }
+  auto extensionNames = getAvailableExtensions();
+  std::vector<const char *> enabledExtensions =
+      extensionNames | std::views::transform([](const std::string &ext) {
+        return ext.c_str();
+      }) |
+      std::ranges::to<std::vector<const char *>>();
 
-  // Check optional extensions
-  auto availableExtensions =
-      physicalDevice_->enumerateDeviceExtensionProperties();
-  auto &optionalExtensions =
-      core::Config::instance().getVulkanConfig().getOptionalDeviceExtensions();
-  for (const auto &optExt : optionalExtensions) {
-    auto it =
-        std::find_if(availableExtensions.begin(), availableExtensions.end(),
-                     [&optExt](const vk::ExtensionProperties &props) {
-                       return optExt == props.extensionName.data();
-                     });
-    if (it != availableExtensions.end()) {
-      enabledExtensions.push_back(optExt.c_str());
-    }
+  if (enabledExtensions.empty()) {
+    return false;
   }
 
   // Create logical device
@@ -175,7 +146,7 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
     return false;
   }
 
-  // Get queues (raw handles from RAII device)
+  // Get queues (raw handles)
   if (info.queueFamilies.graphicsFamily.has_value()) {
     graphicsQueue_ =
         device_->getQueue(info.queueFamilies.graphicsFamily.value(), 0);
@@ -196,6 +167,52 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   initialized_ = true;
   std::println("[GPUDevice] Initialized: {}", info.name);
   return true;
+}
+
+std::vector<std::string> GPUDevice::getAvailableExtensions() {
+  auto available = physicalDevice_->enumerateDeviceExtensionProperties();
+  std::unordered_set<std::string> available_set;
+  std::ranges::for_each(available,
+                        [&available_set](const vk::ExtensionProperties &ext) {
+                          available_set.emplace(ext.extensionName);
+                        });
+
+  const auto &required =
+      core::Config::instance().getVulkanConfig().getDeviceExtensions();
+  const auto &optional =
+      core::Config::instance().getVulkanConfig().getOptionalDeviceExtensions();
+
+  std::vector<std::string> suported;
+  std::vector<std::string> unsuported;
+
+  std::ranges::partition_copy(
+      required.begin(), required.end(), std::back_inserter(suported),
+      std::back_inserter(unsuported), [&available_set](const std::string &ext) {
+        return available_set.contains(ext);
+      });
+
+  if (!unsuported.empty()) {
+    std::println(stderr, "[GPUDevice] Unsupported extensions:");
+    std::ranges::for_each(
+        unsuported.begin(), unsuported.end(),
+        [](const auto &ext) { std::println(stderr, "  - {}", ext); });
+    return {};
+  }
+
+  std::ranges::partition_copy(
+      optional.begin(), optional.end(), std::back_inserter(suported),
+      std::back_inserter(unsuported), [&available_set](const std::string &ext) {
+        return available_set.contains(ext);
+      });
+
+  if (!unsuported.empty()) {
+    std::println(stderr, "[GPUDevice] Unsupported optional extensions:");
+    std::ranges::for_each(
+        unsuported.begin(), unsuported.end(),
+        [](const auto &ext) { std::println(stderr, "  - {}", ext); });
+  }
+
+  return suported;
 }
 
 // ============================================================================
@@ -246,23 +263,27 @@ bool DeviceManager::initialize(VulkanInstance &instance,
   }
 
   // Sort GPUs by score
-  std::sort(availableGPUs_.begin(), availableGPUs_.end(),
-            [this](const GPUInfo &a, const GPUInfo &b) {
-              return scoreDevice(a) > scoreDevice(b);
-            });
+  std::ranges::sort(availableGPUs_.begin(), availableGPUs_.end(),
+                    [](const GPUInfo &a, const GPUInfo &b) {
+                      return scoreDevice(a) > scoreDevice(b);
+                    });
 
   // Determine which GPUs to use
   std::vector<uint32_t> selectedDevices;
 
   if (config.enableMultiGPU) {
     // Use all suitable GPUs
-    for (const auto &gpu : availableGPUs_) {
-      if (gpu.queueFamilies.hasGraphics()) { // TODO check if only graphics is
-                                             // enought, and if it don't need to
-                                             // check for present too
-        selectedDevices.push_back(gpu.index);
-      }
-    }
+
+    selectedDevices =
+        availableGPUs_ |
+        std::views::filter(
+            [](const GPUInfo &gpu) { // TODO check if only graphics is
+                                     // enough, and if it don't need to
+                                     // check for present too
+              return gpu.queueFamilies.hasGraphics();
+            }) |
+        std::views::transform([](const GPUInfo &gpu) { return gpu.index; }) |
+        std::ranges::to<std::vector<uint32_t>>();
   } else {
     // Use only the preferred or best GPU
     uint32_t selectedIndex = config.preferredGPUIndex;
@@ -278,12 +299,10 @@ bool DeviceManager::initialize(VulkanInstance &instance,
   }
 
   if (config.enableMultiGPU) {
-    bool onePresent = false;
-    for (const uint32_t &i : selectedDevices) {
-      if (availableGPUs_[i].queueFamilies.canPresent()) {
-        onePresent = true;
-      }
-    }
+    bool onePresent =
+        std::ranges::any_of(selectedDevices, [&](const uint32_t &i) {
+          return availableGPUs_[i].queueFamilies.canPresent();
+        });
     if (!onePresent) {
       std::println(stderr, "[DeviceManager] No GPU has Present Family");
       return false;
@@ -293,37 +312,47 @@ bool DeviceManager::initialize(VulkanInstance &instance,
   // Get physical devices from instance
   auto physicalDevices = instance.getRaiiInstance().enumeratePhysicalDevices();
 
-  // Create logical devices for selected GPUs
-  for (size_t i = 0; i < selectedDevices.size(); ++i) {
-    uint32_t gpuIndex = selectedDevices[i];
+  auto validGpuIndices =
+      selectedDevices |
+      std::views::filter([&physicalDevices](const uint32_t &index) {
+        if (index >= physicalDevices.size()) {
+          std::println(stderr,
+                       "[DeviceManager] GPU index {} out of range (device "
+                       "may have been removed)",
+                       index);
+          return false;
+        }
+        return true;
+      });
 
-    // Validate GPU index bounds (device may have been hot-unplugged)
-    if (gpuIndex >= physicalDevices.size()) {
-      std::println(stderr,
-                   "[DeviceManager] GPU index {} out of range (device "
-                   "may have been removed)",
-                   gpuIndex);
-      continue;
-    }
+  auto selectedGPUs =
+      validGpuIndices | std::views::transform([&](const uint32_t &index) {
+        auto it =
+            std::ranges::find_if(availableGPUs_, [&index](const GPUInfo &gpu) {
+              return gpu.index == index;
+            });
+        if (it == availableGPUs_.end()) {
+          return std::optional<std::tuple<uint32_t, GPUInfo *>>{};
+        }
+        return std::make_optional(std::make_tuple(index, std::addressof(*it)));
+      }) |
+      std::views::filter([](const auto &opt) { return opt.has_value(); }) |
+      std::views::transform([](const auto &opt) { return *opt; });
 
-    // Find GPU info
-    auto it = std::find_if(
-        availableGPUs_.begin(), availableGPUs_.end(),
-        [gpuIndex](const GPUInfo &info) { return info.index == gpuIndex; });
-
-    if (it == availableGPUs_.end()) {
-      continue;
-    }
-
-    auto device = std::make_unique<GPUDevice>();
-    if (device->initialize(instance.getRaiiInstance(),
-                           *physicalDevices[gpuIndex], *it)) {
-      if (i == 0) {
-        primaryDeviceIndex_ = static_cast<uint32_t>(devices_.size());
-      }
-      devices_.push_back(std::move(device));
-    }
-  }
+  size_t idx = 0;
+  std::ranges::for_each(
+      selectedGPUs.begin(), selectedGPUs.end(), [&](const auto &entry) {
+        auto [index, gpuPtr] = entry;
+        auto device = std::make_unique<GPUDevice>();
+        if (device->initialize(instance.getRaiiInstance(),
+                               *physicalDevices[index], *gpuPtr)) {
+          if (idx == 0) {
+            primaryDeviceIndex_ = static_cast<uint32_t>(devices_.size());
+          }
+          devices_.push_back(std::move(device));
+          idx++;
+        }
+      });
 
   if (devices_.empty()) {
     std::println(stderr, "[DeviceManager] Failed to create any logical device");

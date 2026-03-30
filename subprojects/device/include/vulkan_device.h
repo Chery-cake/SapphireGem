@@ -9,6 +9,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace device {
 
@@ -62,13 +63,11 @@ public:
   GPUDevice();
   ~GPUDevice();
 
-  // Disable copy
+  // Disable copy & move
   GPUDevice(const GPUDevice &) = delete;
   GPUDevice &operator=(const GPUDevice &) = delete;
-
-  // Enable move
-  GPUDevice(GPUDevice &&other) noexcept;
-  GPUDevice &operator=(GPUDevice &&other) noexcept;
+  GPUDevice(GPUDevice &&other) = delete;
+  GPUDevice &operator=(GPUDevice &&other) = delete;
 
   /**
    * @brief Initialize this GPU device without a surface
@@ -116,6 +115,8 @@ public:
   void waitIdle() const;
 
 private:
+  std::vector<std::string> getAvailableExtensions();
+
   std::unique_ptr<vk::raii::PhysicalDevice> physicalDevice_;
   std::unique_ptr<vk::raii::Device> device_;
   GPUInfo info_;
