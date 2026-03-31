@@ -1,8 +1,12 @@
 #include "vma_allocator.h"
+#include "config.h"
+#include "config_vulkan.h"
 #include "vk_mem_alloc_raii.hpp"
 #include "vulkan_device.h"
+#include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <print>
 #include <utility>
 
@@ -46,21 +50,6 @@ VMAAllocator::VMAAllocator() = default;
 
 VMAAllocator::~VMAAllocator() { shutdown(); }
 
-VMAAllocator::VMAAllocator(VMAAllocator &&other) noexcept
-    : allocator_(std::exchange(other.allocator_, nullptr)),
-      device_(other.device_),
-      initialized_(std::exchange(other.initialized_, false)) {}
-
-VMAAllocator &VMAAllocator::operator=(VMAAllocator &&other) noexcept {
-  if (this != &other) {
-    shutdown();
-    allocator_ = std::exchange(other.allocator_, nullptr);
-    device_ = other.device_;
-    initialized_ = std::exchange(other.initialized_, false);
-  }
-  return *this;
-}
-
 vma::Allocator VMAAllocator::getAllocator() const {
   return allocator_ ? static_cast<vma::Allocator>(**allocator_)
                     : vma::Allocator{};
@@ -68,6 +57,7 @@ vma::Allocator VMAAllocator::getAllocator() const {
 
 bool VMAAllocator::initialize(const vk::raii::Instance &instance,
                               GPUDevice &device) {
+  std::lock_guard<std::mutex> lock(allocatorMutex_);
   if (initialized_) {
     std::println(stderr, "[VMAAllocator] Already initialized");
     return false;
@@ -78,7 +68,7 @@ bool VMAAllocator::initialize(const vk::raii::Instance &instance,
   // Setup VMA allocator create info using Vulkan-Hpp dynamic dispatch
   vma::AllocatorCreateInfo allocatorInfo{};
   allocatorInfo.vulkanApiVersion =
-      VK_API_VERSION_1_3;           // TODO get through config class
+      core::Config::instance().getVulkanConfig().getMinApiVersion();
   allocatorInfo.instance = nullptr; // must be null
   allocatorInfo.physicalDevice = device.getPhysicalDevice();
   allocatorInfo.device = nullptr; // must be null
@@ -111,6 +101,7 @@ bool VMAAllocator::initialize(const vk::raii::Instance &instance,
 }
 
 void VMAAllocator::shutdown() {
+  std::lock_guard<std::mutex> lock(allocatorMutex_);
   if (!initialized_) {
     return;
   }
@@ -377,9 +368,8 @@ void VMAManager::shutdown() {
     return;
   }
 
-  for (auto &allocator : allocators_) {
-    allocator->shutdown();
-  }
+  std::ranges::for_each(allocators_.begin(), allocators_.end(),
+                        [](auto &allocator) { allocator->shutdown(); });
   allocators_.clear();
 
   initialized_ = false;

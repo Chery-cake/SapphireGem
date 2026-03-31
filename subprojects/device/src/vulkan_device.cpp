@@ -91,12 +91,16 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   }
 
   // Get device features
+  // TODO see to add optional features
   vk::PhysicalDeviceFeatures deviceFeatures{};
   deviceFeatures.setSamplerAnisotropy(vk::True);
   deviceFeatures.setFillModeNonSolid(vk::True);
   deviceFeatures.setWideLines(vk::True);
   deviceFeatures.setGeometryShader(vk::True);
   deviceFeatures.setTessellationShader(vk::True);
+  deviceFeatures.setShaderInt16(vk::True);
+  deviceFeatures.setShaderInt64(vk::True);
+  deviceFeatures.setShaderFloat64(vk::True);
 
   vk::PhysicalDeviceVulkan11Features deviceFeatures11{};
   deviceFeatures11.sType = vk::StructureType::ePhysicalDeviceVulkan11Features;
@@ -105,6 +109,7 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   vk::PhysicalDeviceVulkan12Features deviceFeatures12{};
   deviceFeatures12.setDescriptorIndexing(vk::True);
   deviceFeatures12.setShaderSampledImageArrayNonUniformIndexing(vk::True);
+  deviceFeatures12.setShaderStorageBufferArrayNonUniformIndexing(vk::True);
   deviceFeatures12.setRuntimeDescriptorArray(vk::True);
   deviceFeatures12.setDescriptorBindingPartiallyBound(vk::True);
   deviceFeatures12.setDescriptorBindingVariableDescriptorCount(vk::True);

@@ -108,7 +108,7 @@ struct DEVICE_API ImageCreateInfo {
   vk::ImageTiling tiling = vk::ImageTiling::eOptimal;
   vk::ImageUsageFlags usage;
   vma::MemoryUsage memoryUsage = vma::MemoryUsage::eAuto;
-  vma::AllocationCreateFlags flags = {};
+  vma::AllocationCreateFlags flags;
   std::string debugName;
 };
 
@@ -123,13 +123,11 @@ public:
   VMAAllocator();
   ~VMAAllocator();
 
-  // Disable copy
+  // Disable copy & move
   VMAAllocator(const VMAAllocator &) = delete;
   VMAAllocator &operator=(const VMAAllocator &) = delete;
-
-  // Enable move
-  VMAAllocator(VMAAllocator &&other) noexcept;
-  VMAAllocator &operator=(VMAAllocator &&other) noexcept;
+  VMAAllocator(VMAAllocator &&other) = delete;
+  VMAAllocator &operator=(VMAAllocator &&other) = delete;
 
   /**
    * @brief Initialize the allocator for a device
