@@ -2,8 +2,10 @@
 #include "slang-com-ptr.h"
 #include "slang.h"
 #include "vulkan_device.h"
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <print>
@@ -23,12 +25,12 @@ vk::ShaderStageFlagBits CompiledShader::getVkStage() const {
     return vk::ShaderStageFlagBits::eFragment;
   case ShaderStage::Geometry:
     return vk::ShaderStageFlagBits::eGeometry;
+  case ShaderStage::Compute:
+    return vk::ShaderStageFlagBits::eCompute;
   case ShaderStage::TessellationControl:
     return vk::ShaderStageFlagBits::eTessellationControl;
   case ShaderStage::TessellationEvaluation:
     return vk::ShaderStageFlagBits::eTessellationEvaluation;
-  case ShaderStage::Compute:
-    return vk::ShaderStageFlagBits::eCompute;
   default:
     return vk::ShaderStageFlagBits::eVertex;
   }
@@ -36,7 +38,11 @@ vk::ShaderStageFlagBits CompiledShader::getVkStage() const {
 
 vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
   return vk::PipelineShaderStageCreateInfo{
-      {}, getVkStage(), module, "main"};// TODO find a better way to deal with this naming problem entryPoint.c_str()};
+      {},
+      getVkStage(),
+      module,
+      "main"}; // TODO find a better way to deal with this naming problem
+               // entryPoint.c_str()};
 }
 
 // ============================================================================
@@ -73,7 +79,8 @@ bool ShaderManager::initialize(GPUDevice &device) {
   }
 
   // Default shader base path
-  shaderBasePath_ = "assets/shaders";
+  shaderBasePath_ = "assets/shaders"; // TODO remove or change interaction for
+                                      // loading mod shaders
   includePaths_.push_back(shaderBasePath_);
 
   initialized_ = true;
@@ -107,6 +114,7 @@ bool ShaderManager::initializeSlang() {
   }
 
   // Configure target for SPIR-V 1.5
+  // TODO try and pass this to a config class
   slangState_->targetDesc.format = SLANG_SPIRV;
   slangState_->targetDesc.profile =
       slangState_->globalSession->findProfile("spirv_1_5");
@@ -138,9 +146,8 @@ slang::ISession *ShaderManager::createCompileSession() {
   // Build search paths array
   std::vector<const char *> searchPathPtrs;
   searchPathPtrs.reserve(includePaths_.size());
-  for (const auto &path : includePaths_) {
-    searchPathPtrs.push_back(path.c_str());
-  }
+  std::ranges::transform(includePaths_, std::back_inserter(searchPathPtrs),
+                         [](const std::string &path) { return path.c_str(); });
 
   // Configure session
   slang::SessionDesc sessionDesc{};
@@ -190,6 +197,7 @@ std::string ShaderManager::computeFileHash(const std::string &filePath) {
 
   std::stringstream ss;
   ss << std::hex << hash;
+  file.close();
   return ss.str();
 }
 
@@ -201,12 +209,12 @@ SlangStage ShaderManager::stageToSlangStage(ShaderStage stage) {
     return SlangStage::SLANG_STAGE_FRAGMENT;
   case ShaderStage::Geometry:
     return SlangStage::SLANG_STAGE_GEOMETRY;
+  case ShaderStage::Compute:
+    return SlangStage::SLANG_STAGE_COMPUTE;
   case ShaderStage::TessellationControl:
     return SlangStage::SLANG_STAGE_HULL;
   case ShaderStage::TessellationEvaluation:
     return SlangStage::SLANG_STAGE_DOMAIN;
-  case ShaderStage::Compute:
-    return SlangStage::SLANG_STAGE_COMPUTE;
   default:
     return SlangStage::SLANG_STAGE_VERTEX;
   }
@@ -245,7 +253,7 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   std::string normalizedStr = normalizedPath.string();
   std::string baseStr = basePath.string();
   if (normalizedStr.length() < baseStr.length() ||
-      normalizedStr.compare(0, baseStr.length(), baseStr) != 0) {
+      normalizedStr.starts_with(baseStr)) {
     result.errorMessage =
         "Invalid shader path: access denied (path traversal attempt)";
     return result;
@@ -266,8 +274,8 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   slang::IModule *module =
       session->loadModule(fullPath.c_str(), diagnosticsBlob.writeRef());
 
-  if (!module) {
-    if (diagnosticsBlob) {
+  if (module == nullptr) {
+    if (diagnosticsBlob != nullptr) {
       result.errorMessage =
           static_cast<const char *>(diagnosticsBlob->getBufferPointer());
     } else {
@@ -281,16 +289,16 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   SlangResult findResult = module->findEntryPointByName(
       request.entryPoint.c_str(), entryPoint.writeRef());
 
-  if (SLANG_FAILED(findResult) || !entryPoint) {
+  if (SLANG_FAILED(findResult) || entryPoint == nullptr) {
     // Try with explicit stage if not marked in source
     Slang::ComPtr<slang::IBlob> epDiagnostics;
     findResult = module->findAndCheckEntryPoint(
         request.entryPoint.c_str(), stageToSlangStage(request.stage),
         entryPoint.writeRef(), epDiagnostics.writeRef());
 
-    if (SLANG_FAILED(findResult) || !entryPoint) {
+    if (SLANG_FAILED(findResult) || entryPoint == nullptr) {
       result.errorMessage = "Entry point not found: " + request.entryPoint;
-      if (epDiagnostics) {
+      if (epDiagnostics != nullptr) {
         result.errorMessage += "\n";
         result.errorMessage +=
             static_cast<const char *>(epDiagnostics->getBufferPointer());
@@ -309,7 +317,7 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
       composedProgram.writeRef(), diagnosticsBlob.writeRef());
 
   if (SLANG_FAILED(composeResult)) {
-    if (diagnosticsBlob) {
+    if (diagnosticsBlob != nullptr) {
       result.errorMessage =
           static_cast<const char *>(diagnosticsBlob->getBufferPointer());
     } else {
@@ -324,7 +332,7 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
                                                  diagnosticsBlob.writeRef());
 
   if (SLANG_FAILED(linkResult)) {
-    if (diagnosticsBlob) {
+    if (diagnosticsBlob != nullptr) {
       result.errorMessage =
           static_cast<const char *>(diagnosticsBlob->getBufferPointer());
     } else {
@@ -340,8 +348,8 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
       0, // Target index
       codeBlob.writeRef(), diagnosticsBlob.writeRef());
 
-  if (SLANG_FAILED(codeResult) || !codeBlob) {
-    if (diagnosticsBlob) {
+  if (SLANG_FAILED(codeResult) || codeBlob == nullptr) {
+    if (diagnosticsBlob != nullptr) {
       result.errorMessage =
           static_cast<const char *>(diagnosticsBlob->getBufferPointer());
     } else {
