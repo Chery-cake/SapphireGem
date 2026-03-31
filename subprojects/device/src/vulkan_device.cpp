@@ -100,7 +100,7 @@ bool GPUDevice::initialize(const vk::raii::Instance &instance,
   deviceFeatures.setTessellationShader(vk::True);
   deviceFeatures.setShaderInt16(vk::True);
   deviceFeatures.setShaderInt64(vk::True);
-  deviceFeatures.setShaderFloat64(vk::True);
+  // deviceFeatures.setShaderFloat64(vk::True);
 
   vk::PhysicalDeviceVulkan11Features deviceFeatures11{};
   deviceFeatures11.sType = vk::StructureType::ePhysicalDeviceVulkan11Features;

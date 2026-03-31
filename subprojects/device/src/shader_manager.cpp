@@ -253,7 +253,7 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
   std::string normalizedStr = normalizedPath.string();
   std::string baseStr = basePath.string();
   if (normalizedStr.length() < baseStr.length() ||
-      normalizedStr.starts_with(baseStr)) {
+      !normalizedStr.starts_with(baseStr)) {
     result.errorMessage =
         "Invalid shader path: access denied (path traversal attempt)";
     return result;
