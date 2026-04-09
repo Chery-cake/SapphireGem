@@ -2,10 +2,12 @@
 #include <algorithm>
 #include <cstdint>
 #include <execution>
+#include <functional>
 #include <mutex>
 #include <numeric>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace core {
@@ -157,7 +159,7 @@ bool ThreadManager::resizePool(const std::string &name,
 void ThreadManager::wait(const std::string &name) {
   std::lock_guard<std::mutex> lock(threadMutex_);
 
-  std::ranges::find_if(threadPools_, [&](const auto &pair) {
+  std::ranges::find_if(threadPools_, [&name](const auto &pair) {
     if (pair.first == name && pair.second.pool) {
       pair.second.pool->wait();
       return true;
@@ -169,22 +171,20 @@ void ThreadManager::wait(const std::string &name) {
 void ThreadManager::waitAll() {
   std::lock_guard<std::mutex> lock(threadMutex_);
 
-  std::ranges::for_each(threadPools_.begin(), threadPools_.end(),
-                        [](auto &pair) {
-                          if (pair.second.pool) {
-                            pair.second.pool->wait();
-                          }
-                        });
+  std::for_each(std::execution::unseq, threadPools_.begin(), threadPools_.end(),
+                [](auto &pair) {
+                  if (pair.second.pool) {
+                    pair.second.pool->wait();
+                  }
+                });
 }
 
 std::vector<std::string> ThreadManager::getPoolNames() const {
   std::lock_guard<std::mutex> lock(threadMutex_);
 
-  std::vector<std::string> names =
-      threadPools_ |
-      std::views::transform([](const auto &pair) { return pair.first; }) |
-      std::ranges::to<std::vector>();
-  return names;
+  return threadPools_ |
+         std::views::transform([](const auto &pair) { return pair.first; }) |
+         std::ranges::to<std::vector>();
 }
 
 ThreadPoolConfig ThreadManager::getPoolConfig(const std::string &name) const {
@@ -214,21 +214,23 @@ void ThreadManager::applyConfig(const ThreadManagerConfig &config) {
     totalWorkerCount_ = totalThreads;
 
     // Collect GPU pool callbacks for invocation outside lock
-    std::ranges::for_each(
-        threadPools_.begin(), threadPools_.end(), [&callbacks](auto &pair) {
-          if (pair.second.config.onReconfigure) {
-            callbacks.emplace_back(pair.second.config.onReconfigure,
-                                   pair.second.config.threadCount);
-          }
-        });
+
+    callbacks =
+        threadPools_ | std::views::filter([](const auto &pair) {
+          return static_cast<bool>(pair.second.config.onReconfigure);
+        }) |
+        std::views::transform([](const auto &pair) {
+          return std::pair<std::function<void(uint32_t)>, uint32_t>{
+              pair.second.config.onReconfigure, pair.second.config.threadCount};
+        }) |
+        std::ranges::to<std::vector>();
 
     currentConfig_ = config;
     currentConfig_.totalThreads = totalThreads;
   }
 
   // Notify pools outside lock to avoid deadlock
-  std::ranges::for_each(callbacks.begin(), callbacks.end(),
-                        [](auto &pair) { pair.first(pair.second); });
+  std::ranges::for_each(callbacks, [](auto &pair) { pair.first(pair.second); });
 }
 
 ThreadManagerConfig ThreadManager::getConfig() const {

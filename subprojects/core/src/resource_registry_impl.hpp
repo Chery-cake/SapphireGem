@@ -1,6 +1,7 @@
 #include "resource_registry.h"
 #include <algorithm>
 #include <execution>
+#include <iterator>
 #include <memory>
 #include <mutex>
 
@@ -24,8 +25,7 @@ bool ResourceRegistry<Tag, Asset>::add(const Tag *tag,
   // Invoke callbacks outside the lock
   if (inserted) {
     std::ranges::for_each(
-        addCallbacks_.begin(), addCallbacks_.end(),
-        [&](const auto &callback) { callback(tag, assetPtr); });
+        addCallbacks_, [&](const auto &callback) { callback(tag, assetPtr); });
   }
 
   return inserted;
@@ -55,9 +55,9 @@ bool ResourceRegistry<Tag, Asset>::set(const Tag *tag,
       std::lock_guard<std::mutex> lock(mutex_);
       assetPtr = assets_[tag].get();
     }
-    std::ranges::for_each(
-        removeCallbacks_.begin(), removeCallbacks_.end(),
-        [&](const auto &callback) { callback(tag, assetPtr); });
+    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
+      callback(tag, assetPtr);
+    });
   }
 
   {
@@ -67,7 +67,7 @@ bool ResourceRegistry<Tag, Asset>::set(const Tag *tag,
   }
 
   // Then invoke add callbacks
-  std::ranges::for_each(addCallbacks_.begin(), addCallbacks_.end(),
+  std::ranges::for_each(addCallbacks_,
                         [&](const auto &callback) { callback(tag, assetPtr); });
 
   return wasNew;
@@ -113,9 +113,9 @@ bool ResourceRegistry<Tag, Asset>::remove(const Tag *tag) {
   }
 
   if (removed) {
-    std::ranges::for_each(
-        removeCallbacks_.begin(), removeCallbacks_.end(),
-        [&](const auto &callback) { callback(tag, assetPtr.get()); });
+    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
+      callback(tag, assetPtr.get());
+    });
   }
 
   return removed;
@@ -137,9 +137,9 @@ std::unique_ptr<Asset> ResourceRegistry<Tag, Asset>::extract(const Tag *tag) {
   }
 
   if (result) {
-    std::ranges::for_each(
-        removeCallbacks_.begin(), removeCallbacks_.end(),
-        [&](const auto &callback) { callback(tag, assetPtr); });
+    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
+      callback(tag, assetPtr);
+    });
   }
 
   return result;
@@ -159,9 +159,9 @@ ResourceRegistry<Tag, Asset>::getAll() const {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<Entry> entries;
   entries.reserve(assets_.size());
-  std::ranges::for_each(assets_.begin(), assets_.end(), [&](const auto &pair) {
-    entries.push_back(Entry{pair.first, pair.second.get()});
-  });
+  std::ranges::transform(
+      assets_, std::back_inserter(entries),
+      [](const auto &pair) { return Entry{pair.first, pair.second.get()}; });
   return entries;
 }
 
@@ -171,10 +171,9 @@ void ResourceRegistry<Tag, Asset>::clear() {
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::ranges::for_each(
-        assets_.begin(), assets_.end(), [&](const auto &pair) {
-          entries.push_back(Entry{pair.first, pair.second.get()});
-        });
+    std::ranges::transform(
+        assets_, std::back_inserter(entries),
+        [](const auto &pair) { return Entry{pair.first, pair.second.get()}; });
     assets_.clear();
   }
 

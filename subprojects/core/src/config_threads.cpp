@@ -1,5 +1,7 @@
 #include "config_threads.h"
+#include "config.h"
 #include <algorithm>
+#include <iterator>
 #include <mutex>
 #include <thread>
 
@@ -51,13 +53,11 @@ void ThreadsConfig::setThreadPoolAllocation(
       changed = true;
 
       if (immediateMode) {
-        std::ranges::for_each(
-            callbacks.begin(), callbacks.end(),
-            [&callbacksToNotify](const auto &entry) {
-              if (hasFlag(entry.sections, ConfigSection::ThreadPool)) {
-                callbacksToNotify.push_back(entry);
-              }
-            });
+        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
+                             [](const auto &entry) {
+                               return hasFlag(entry.sections,
+                                              ConfigSection::ThreadPool);
+                             });
       } else {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::ThreadPool;
@@ -66,7 +66,7 @@ void ThreadsConfig::setThreadPoolAllocation(
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+    std::ranges::for_each(callbacksToNotify,
                           [](const auto &entry) { entry.callback(); });
   }
 }
@@ -122,13 +122,11 @@ void ThreadsConfig::setGPUConfig(const GPUConfig &config) {
       changed = true;
 
       if (immediateMode) {
-        std::ranges::for_each(
-            callbacks.begin(), callbacks.end(),
-            [&callbacksToNotify](const auto &entry) {
-              if (hasFlag(entry.sections, ConfigSection::GPU)) {
-                callbacksToNotify.push_back(entry);
-              }
-            });
+        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
+                             [](const auto &entry) {
+                               return hasFlag(entry.sections,
+                                              ConfigSection::GPU);
+                             });
       } else {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::GPU;
@@ -137,7 +135,7 @@ void ThreadsConfig::setGPUConfig(const GPUConfig &config) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+    std::ranges::for_each(callbacksToNotify,
                           [](const auto &entry) { entry.callback(); });
   }
 }
@@ -160,13 +158,11 @@ void ThreadsConfig::setLoopConfig(const LoopConfig &config) {
       changed = true;
 
       if (immediateMode) {
-        std::ranges::for_each(
-            callbacks.begin(), callbacks.end(),
-            [&callbacksToNotify](const auto &entry) {
-              if (hasFlag(entry.sections, ConfigSection::Loop)) {
-                callbacksToNotify.push_back(entry);
-              }
-            });
+        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
+                             [](const auto &entry) {
+                               return hasFlag(entry.sections,
+                                              ConfigSection::Loop);
+                             });
       } else {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Loop;
@@ -175,7 +171,7 @@ void ThreadsConfig::setLoopConfig(const LoopConfig &config) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+    std::ranges::for_each(callbacksToNotify,
                           [](const auto &entry) { entry.callback(); });
   }
 }

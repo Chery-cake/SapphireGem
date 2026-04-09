@@ -22,9 +22,9 @@ enum class DEVICE_API ShaderStage : uint8_t {
   Vertex,
   Fragment,
   Geometry,
+  Compute,
   TessellationControl,
   TessellationEvaluation,
-  Compute
 };
 
 /**

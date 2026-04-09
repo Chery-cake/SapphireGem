@@ -122,7 +122,7 @@ inline std::time_t HotReload::getFileModTime() {
             std::chrono::system_clock::now());
     return std::chrono::system_clock::to_time_t(timeDiff);
   } catch (std::exception &e) {
-    std::println("Couldn't get the write time from library {} with error: {}",
+    std::println("[HotReload] Couldn't get the write time from library {} with error: {}",
                  name, e.what());
     return 0;
   }

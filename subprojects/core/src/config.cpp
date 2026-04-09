@@ -1,8 +1,8 @@
 #include "config.h"
 #include "config_threads.h"
 #include "config_vulkan.h"
-#include "vulkan/vulkan.hpp"
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <mutex>
 
@@ -69,19 +69,18 @@ void Config::resetToDefaults() {
     pendingChanges_ = ConfigSection::All;
 
     if (immediateMode_) {
-      std::ranges::for_each(callbacks_.begin(), callbacks_.end(),
-                            [&](const auto &entry) {
-                              if (hasFlag(pendingChanges_, entry.sections)) {
-                                callbacksToNotify.push_back(entry);
-                              }
-                            });
+
+      std::ranges::copy_if(callbacks_, std::back_inserter(callbacksToNotify),
+                           [&](const auto &entry) {
+                             return hasFlag(pendingChanges_, entry.sections);
+                           });
 
       pendingChanges_ = ConfigSection::None;
     }
   }
 
   // Notify callbacks outside lock
-  std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+  std::ranges::for_each(callbacksToNotify,
                         [](const auto &entry) { entry.callback(); });
 }
 
@@ -113,13 +112,11 @@ void Config::setVulkanConfig(const VulkanConfig &config) {
 
       if (immediateMode_) {
 
-        std::ranges::for_each(
-            callbacks_.begin(), callbacks_.end(),
-            [&callbacksToNotify](const auto &entry) {
-              if (hasFlag(entry.sections, ConfigSection::Vulkan)) {
-                callbacksToNotify.push_back(entry);
-              }
-            });
+        std::ranges::copy_if(callbacks_, std::back_inserter(callbacksToNotify),
+                             [](const auto &entry) {
+                               return hasFlag(entry.sections,
+                                              ConfigSection::Vulkan);
+                             });
       } else {
         pendingChanges_ = pendingChanges_ | ConfigSection::Vulkan;
       }
@@ -128,7 +125,7 @@ void Config::setVulkanConfig(const VulkanConfig &config) {
 
   // Notify callbacks outside lock
   if (changed && immediateMode_) {
-    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+    std::ranges::for_each(callbacksToNotify,
                           [](const auto &entry) { entry.callback(); });
   }
 }
@@ -155,12 +152,10 @@ void Config::setThreadsConfig(const ThreadsConfig &config) {
 
       if (immediateMode_) {
 
-        std::ranges::for_each(callbacks_.begin(), callbacks_.end(),
-                              [&callbacksToNotify, &flags](const auto &entry) {
-                                if (hasFlag(entry.sections, flags)) {
-                                  callbacksToNotify.push_back(entry);
-                                }
-                              });
+        std::ranges::copy_if(callbacks_, std::back_inserter(callbacksToNotify),
+                             [&flags](const auto &entry) {
+                               return hasFlag(entry.sections, flags);
+                             });
       } else {
         pendingChanges_ = pendingChanges_ | flags;
       }
@@ -169,7 +164,7 @@ void Config::setThreadsConfig(const ThreadsConfig &config) {
 
   // Notify callbacks outside lock
   if (changed && immediateMode_) {
-    std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+    std::ranges::for_each(callbacksToNotify,
                           [](const auto &entry) { entry.callback(); });
   }
 }
@@ -187,9 +182,9 @@ bool Config::registerChangeCallback(const std::string &name,
   std::lock_guard<std::mutex> lock(configMutex_);
 
   // Check if callback with this name already exists
-  if (std::ranges::any_of(
-          callbacks_.begin(), callbacks_.end(),
-          [&name](const auto &entry) { return entry.name == name; })) {
+  if (std::ranges::any_of(callbacks_, [&name](const auto &entry) {
+        return entry.name == name;
+      })) {
     return false;
   }
 
@@ -200,9 +195,10 @@ bool Config::registerChangeCallback(const std::string &name,
 bool Config::unregisterChangeCallback(const std::string &name) {
   std::lock_guard<std::mutex> lock(configMutex_);
 
-  auto it = std::ranges::find_if(
-      callbacks_.begin(), callbacks_.end(),
-      [&name](const CallbackEntry &entry) { return entry.name == name; });
+  auto it =
+      std::ranges::find_if(callbacks_, [&name](const CallbackEntry &entry) {
+        return entry.name == name;
+      });
 
   if (it != callbacks_.end()) {
     callbacks_.erase(it);
@@ -217,9 +213,8 @@ std::vector<std::string> Config::getCallbackNames() const {
 
   std::vector<std::string> names;
   names.reserve(callbacks_.size());
-  std::ranges::for_each(
-      callbacks_.begin(), callbacks_.end(),
-      [&names](const auto &entry) { names.push_back(entry.name); });
+  std::ranges::transform(callbacks_, std::back_inserter(names),
+                         [](const auto &entry) { return entry.name; });
   return names;
 }
 
@@ -233,17 +228,15 @@ void Config::applyPendingChanges() {
     pendingChanges_ = ConfigSection::None;
 
     if (changes != ConfigSection::None) {
-      std::ranges::for_each(callbacks_.begin(), callbacks_.end(),
-                            [&changes, &callbacksToNotify](const auto &entry) {
-                              if (hasFlag(changes, entry.sections)) {
-                                callbacksToNotify.push_back(entry);
-                              }
-                            });
+      std::ranges::copy_if(callbacks_, std::back_inserter(callbacksToNotify),
+                           [&changes](const auto &entry) {
+                             return hasFlag(changes, entry.sections);
+                           });
     }
   }
 
   // Notify callbacks outside lock
-  std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+  std::ranges::for_each(callbacksToNotify,
                         [](const auto &entry) { entry.callback(); });
 }
 
@@ -262,17 +255,14 @@ void Config::notifyCallbacks(ConfigSection changedSections) {
 
   {
     std::lock_guard<std::mutex> lock(configMutex_);
-    std::ranges::for_each(
-        callbacks_.begin(), callbacks_.end(),
-        [&changedSections, &callbacksToNotify](const auto &entry) {
-          if (hasFlag(changedSections, entry.sections)) {
-            callbacksToNotify.push_back(entry);
-          }
-        });
+    std::ranges::copy_if(callbacks_, std::back_inserter(callbacksToNotify),
+                         [&changedSections](const auto &entry) {
+                           return hasFlag(changedSections, entry.sections);
+                         });
   }
 
   // Notify callbacks outside lock
-  std::ranges::for_each(callbacksToNotify.begin(), callbacksToNotify.end(),
+  std::ranges::for_each(callbacksToNotify,
                         [](const auto &entry) { entry.callback(); });
 }
 

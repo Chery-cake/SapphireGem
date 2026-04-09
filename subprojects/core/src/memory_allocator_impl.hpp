@@ -6,6 +6,7 @@
 #include <memory>
 #include <new>
 #include <print>
+#include <ranges>
 
 namespace core {
 
@@ -128,10 +129,11 @@ PoolAllocator<T, poolSize>::PoolAllocator()
       (base_mem + NodeAlignment - 1) & ~(NodeAlignment - 1);
   Node *mem = reinterpret_cast<Node *>(aligned_base);
 
-  for (size_t i = 0; i < poolSize - 1; i++) {
-    reinterpret_cast<Node *>(mem + (i * sizeof(T)))->next =
-        reinterpret_cast<Node *>(mem + ((i + 1) * sizeof(T)));
-  }
+  std::ranges::for_each(
+      std::views::iota(size_t{0}, poolSize - 1), [&mem](size_t i) {
+        reinterpret_cast<Node *>(mem + (i * sizeof(T)))->next =
+            reinterpret_cast<Node *>(mem + ((i + 1) * sizeof(T)));
+      });
   reinterpret_cast<Node *>(mem + ((poolSize - 1) * sizeof(T)))->next = nullptr;
   freeList = reinterpret_cast<Node *>(mem);
 }
