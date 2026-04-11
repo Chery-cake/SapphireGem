@@ -151,11 +151,11 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
   if (!freeList.empty()) {
     uint32_t freeIdx = freeList.back();
     freeList.pop_back();
-    arr[freeIdx] = {view, false, true, false};
+    arr[freeIdx] = {.view = view, .committed = false, .dirty = true, .tombstone = false};
     handle.index = freeIdx;
   } else {
     handle.index = static_cast<uint32_t>(arr.size());
-    arr.push_back({view, false, true, false});
+    arr.push_back({.view = view, .committed = false, .dirty = true, .tombstone = false});
   }
 
   return handle;

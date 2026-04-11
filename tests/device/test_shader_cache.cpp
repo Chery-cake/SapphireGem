@@ -183,7 +183,7 @@ void test_compute_renderer_default() {
 
 // ---------------------------------------------------------------------------
 int main() {
-  std::printf("=== Shader Cache & Face Material Tests ===\n");
+  std::printf("=== Shader Cache & GPU Data Tests ===\n");
 
   test_shader_tag_construction();
   test_shader_manager_default();

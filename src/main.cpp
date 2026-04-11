@@ -667,7 +667,9 @@ public:
     // Generate a random convex polytope
     // Use a simple approach: start with an icosahedron and randomly
     // select N faces (6-12) to create the polytope
-    std::mt19937 rng(42); // Fixed seed for reproducibility
+    // Fixed seed (42) for reproducible polytope generation across runs.
+    // Change to std::random_device{}() for variety in demo builds.
+    std::mt19937 rng(42);
     std::uniform_int_distribution<int> faceDist(6, 12);
     int targetFaces = faceDist(rng);
 
