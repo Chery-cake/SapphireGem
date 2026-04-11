@@ -1,4 +1,5 @@
 #include "object.h"
+#include "shader_manager.h"
 #include <cassert>
 #include <cstdio>
 #include <string>

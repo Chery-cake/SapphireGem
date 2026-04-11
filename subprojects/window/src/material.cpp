@@ -51,7 +51,7 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
     return false;
   }
 
-  if (shaderTag_ != nullptr) {
+  if (shaderTag_ == nullptr) {
     std::println(stderr, "[Material] No shader tag set for material: {}",
                  name_);
     return false;
@@ -67,7 +67,7 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
   }
   shaderProgram_ = acquireResult.value();
 
-  if (shaderProgram_ != nullptr || !shaderProgram_->compiled) {
+  if (shaderProgram_ == nullptr || !shaderProgram_->compiled) {
     std::println(stderr, "[Material] Shader program not compiled for: {}",
                  name_);
     return false;
