@@ -1,7 +1,6 @@
 #include "config.h"
 #include "config_threads.h"
 #include "config_vulkan.h"
-#include "compute_renderer.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "hot_reload_modules.h"
@@ -105,22 +104,17 @@ private:
   device::TextureId cubeTextureId_;
   device::TextureId atlasTextureId_;
 
-  // Compute renderer for pre-computed geometry
-  std::shared_ptr<device::ComputeRenderer> computeRenderer_;
-
 public:
   explicit CubeScene3D(
       const window::SceneTag &sceneTag,
       std::shared_ptr<window::Texture> checkerboard,
       std::shared_ptr<window::Texture> layerAtlas,
       std::shared_ptr<device::ImageArrayRegistry> registry,
-      std::shared_ptr<device::TextureTableManager> textureTable,
-      std::shared_ptr<device::ComputeRenderer> computeRenderer)
+      std::shared_ptr<device::TextureTableManager> textureTable)
       : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
         layerAtlasTex_(std::move(layerAtlas)),
         imageRegistry_(std::move(registry)),
-        textureTable_(std::move(textureTable)),
-        computeRenderer_(std::move(computeRenderer)) {}
+        textureTable_(std::move(textureTable)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -313,38 +307,44 @@ public:
     cube_->setAtlasTextureId(atlasTextureId_);
     cube_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
-    // Assign per-face materials using the new FaceMaterialDesc system
+    // Assign per-face materials using the new FaceMaterial system
     // Each cube face = 2 triangles, 12 triangles total
     // Face 0 (front +Z, tri 0-1): texture from file, no effect
-    cube_->setFaceMaterial(0, {cubeTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
-    cube_->setFaceMaterial(1, {cubeTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
-    // Face 1 (back -Z, tri 2-3): atlas layered texture, no effect
-    cube_->setFaceMaterial(2, {atlasTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
-    cube_->setFaceMaterial(3, {atlasTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
-    // Face 2 (left -X, tri 4-5): gradient + wave
-    cube_->setFaceMaterial(4, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
-    cube_->setFaceMaterial(5, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
-    // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
-    cube_->setFaceMaterial(6, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
-    cube_->setFaceMaterial(7, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
-    // Face 4 (top +Y, tri 8-9): plain colour, no effect
-    cube_->setFaceMaterial(8, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
-    cube_->setFaceMaterial(9, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
-    // Face 5 (bottom -Y, tri 10-11): plain colour, no effect
-    cube_->setFaceMaterial(10, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
-    cube_->setFaceMaterial(11, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
-
-    // Use ComputeRenderer to pre-compute cube geometry (static, runs once)
-    if (computeRenderer_ && computeRenderer_->isInitialized()) {
-      std::vector<device::GPUFaceData> gpuFaceData(12);
-      for (uint32_t i = 0; i < 12; ++i) {
-        auto desc = cube_->getFaceMaterial(i);
-        gpuFaceData[i] = {desc.textureId.index, desc.effectFlags,
-                          desc.effectParam0, desc.effectParam1};
-      }
-      computeRenderer_->precomputeGeometry(
-          allocator, device, "cube_obj", 36, 12, gpuFaceData);
+    {
+      device::FaceMaterial fm;
+      fm.textureId = cubeTextureId_.index;
+      cube_->setFaceMaterial(0, fm);
+      cube_->setFaceMaterial(1, fm);
     }
+    // Face 1 (back -Z, tri 2-3): atlas layered texture, no effect
+    {
+      device::FaceMaterial fm;
+      fm.textureId = atlasTextureId_.index;
+      cube_->setFaceMaterial(2, fm);
+      cube_->setFaceMaterial(3, fm);
+    }
+    // Face 2 (left -X, tri 4-5): gradient + wave
+    {
+      device::FaceMaterial fm;
+      fm.addEffect({device::EffectType::eGradient, 0.05f, 4.0f});
+      fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
+      cube_->setFaceMaterial(4, fm);
+      cube_->setFaceMaterial(5, fm);
+    }
+    // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
+    {
+      device::FaceMaterial fm;
+      fm.addEffect({device::EffectType::eGradient, 0.05f, 4.0f});
+      fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
+      cube_->setFaceMaterial(6, fm);
+      cube_->setFaceMaterial(7, fm);
+    }
+    // Face 4 (top +Y, tri 8-9): plain colour, no effect
+    cube_->setFaceMaterial(8, {});
+    cube_->setFaceMaterial(9, {});
+    // Face 5 (bottom -Y, tri 10-11): plain colour, no effect
+    cube_->setFaceMaterial(10, {});
+    cube_->setFaceMaterial(11, {});
 
     // Pipeline config with push constants for time + textureId +
     // atlasTextureId
@@ -589,7 +589,6 @@ private:
   std::shared_ptr<window::Texture> layerAtlasTex_;
   std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   std::shared_ptr<device::TextureTableManager> textureTable_;
-  std::shared_ptr<device::ComputeRenderer> computeRenderer_;
 
 public:
   explicit PolytopeDemoScene(
@@ -597,13 +596,11 @@ public:
       std::shared_ptr<window::Texture> checkerboard,
       std::shared_ptr<window::Texture> layerAtlas,
       std::shared_ptr<device::ImageArrayRegistry> registry,
-      std::shared_ptr<device::TextureTableManager> textureTable,
-      std::shared_ptr<device::ComputeRenderer> computeRenderer)
+      std::shared_ptr<device::TextureTableManager> textureTable)
       : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
         layerAtlasTex_(std::move(layerAtlas)),
         imageRegistry_(std::move(registry)),
-        textureTable_(std::move(textureTable)),
-        computeRenderer_(std::move(computeRenderer)) {}
+        textureTable_(std::move(textureTable)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -737,14 +734,13 @@ public:
     for (int fi = 0; fi < numFaces; ++fi) {
       uint32_t faceIdx = static_cast<uint32_t>(fi);
       int matType = typeDist(rng);
-      device::FaceMaterialDesc desc;
+      device::FaceMaterial fm;
 
       switch (matType) {
       case 0: // Solid colour — no texture, no effect
-        desc.effectFlags = device::EFFECT_NONE;
         break;
       case 1: // Gradient
-        desc.effectFlags = device::EFFECT_GRADIENT;
+        fm.addEffect({device::EffectType::eGradient});
         break;
       case 2: { // Single image file (checkerboard)
         device::TextureId texId = textureTable_->addRecord(1);
@@ -753,8 +749,7 @@ public:
                                  ? static_cast<int32_t>(checkerHandle.index)
                                  : -1;
         textureTable_->setLayers(texId, {layer});
-        desc.textureId = texId;
-        desc.effectFlags = device::EFFECT_NONE;
+        fm.textureId = texId.index;
         break;
       }
       case 3: { // Image from atlas (random sub-region)
@@ -769,21 +764,18 @@ public:
         layer.atlasUvScaleX = 0.5f;
         layer.atlasUvScaleY = 1.0f / 3.0f;
         textureTable_->setLayers(texId, {layer});
-        desc.textureId = texId;
-        desc.effectFlags = device::EFFECT_NONE;
+        fm.textureId = texId.index;
         break;
       }
       case 4: // Wave effect
-        desc.effectFlags = device::EFFECT_WAVE;
-        desc.effectParam0 = 0.05f; // amplitude
-        desc.effectParam1 = 4.0f;  // frequency
+        fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
         break;
       case 5: // Drawing effect
-        desc.effectFlags = device::EFFECT_DRAWING;
+        fm.addEffect({device::EffectType::eDrawing});
         break;
       }
 
-      polytope_->setFaceMaterial(faceIdx, desc);
+      polytope_->setFaceMaterial(faceIdx, fm);
     }
 
     // Upload texture tables to GPU
@@ -799,20 +791,6 @@ public:
     }
 
     polytope_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
-
-    // Use ComputeRenderer to pre-compute geometry
-    if (computeRenderer_ && computeRenderer_->isInitialized()) {
-      std::vector<device::GPUFaceData> gpuFaceData(static_cast<size_t>(numFaces));
-      for (int i = 0; i < numFaces; ++i) {
-        auto desc = polytope_->getFaceMaterial(static_cast<uint32_t>(i));
-        gpuFaceData[static_cast<size_t>(i)] = {desc.textureId.index, desc.effectFlags,
-                                                desc.effectParam0, desc.effectParam1};
-      }
-      computeRenderer_->precomputeGeometry(
-          allocator, device, "polytope_obj",
-          static_cast<uint32_t>(numFaces) * 3,
-          static_cast<uint32_t>(numFaces), gpuFaceData);
-    }
 
     window::PipelineConfig pConfig;
     pConfig.topology = vk::PrimitiveTopology::eTriangleList;
@@ -1057,17 +1035,12 @@ int main(int argc, char *argv[]) {
   // TextureRecord/TextureLayer SSBOs and descriptor bindings stay consistent
   auto sharedTextureTable = std::make_shared<device::TextureTableManager>();
 
-  // Create a shared compute renderer for pre-computed geometry
-  auto sharedComputeRenderer = std::make_shared<device::ComputeRenderer>();
-  sharedComputeRenderer->initialize(dMan.getPrimaryDevice(), sMan,
-                                    secondaryGPUs);
-
   // Create scenes using the tag system and add them to windows
   // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
     auto sceneCube = std::make_unique<CubeScene3D>(
         SCENE_CUBE_TAG, checkerboardTex, layerAtlasTex, sharedImageRegistry,
-        sharedTextureTable, sharedComputeRenderer);
+        sharedTextureTable);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
@@ -1099,7 +1072,7 @@ int main(int argc, char *argv[]) {
     if (win3->hasRenderer()) {
       auto scenePolytope = std::make_unique<PolytopeDemoScene>(
           SCENE_POLYTOPE_TAG, checkerboardTex, layerAtlasTex,
-          sharedImageRegistry, sharedTextureTable, sharedComputeRenderer);
+          sharedImageRegistry, sharedTextureTable);
       win3->addScene(&SCENE_POLYTOPE_TAG, std::move(scenePolytope));
       win3->presentScene(&SCENE_POLYTOPE_TAG);
     }

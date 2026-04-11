@@ -326,14 +326,14 @@ public:
    * @param faceIndex  Face (triangle) index
    * @param desc       Face material description
    */
-  void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterialDesc &desc);
+  void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterial &desc);
 
   /**
    * @brief Get the material description for a face
    * @param faceIndex  Face (triangle) index
    * @return Face material description (default if not set)
    */
-  [[nodiscard]] device::FaceMaterialDesc
+  [[nodiscard]] device::FaceMaterial
   getFaceMaterial(uint32_t faceIndex) const;
 
   /**
@@ -425,7 +425,7 @@ private:
   // Per-face texture ID overrides (submesh overrides)
   std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
   // Per-face material descriptions
-  std::vector<device::FaceMaterialDesc> faceMaterials_;
+  std::vector<device::FaceMaterial> faceMaterials_;
   // Global bindless descriptor set (set 1), set externally
   vk::DescriptorSet bindlessDescriptorSet_;
 

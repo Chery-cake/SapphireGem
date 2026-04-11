@@ -20,35 +20,35 @@ static int tests_passed = 0;
   } while (0)
 
 // ---------------------------------------------------------------------------
-// Test: FaceMaterialDesc default values
+// Test: FaceMaterial default values
 // ---------------------------------------------------------------------------
-void test_face_material_desc_defaults() {
-  TEST(face_material_desc_defaults);
+void test_face_material_defaults() {
+  TEST(face_material_defaults);
 
-  device::FaceMaterialDesc desc{};
-  assert(desc.effectFlags == 0);
-  assert(desc.effectParam0 == 0.0f);
-  assert(desc.effectParam1 == 0.0f);
+  device::FaceMaterial fm{};
+  assert(fm.effectFlags == 0);
+  assert(fm.effectParam0 == 0.0f);
+  assert(fm.effectParam1 == 0.0f);
+  assert(!fm.hasEffects());
 
   PASS();
 }
 
 // ---------------------------------------------------------------------------
-// Test: FaceMaterialDesc with values
+// Test: FaceMaterial with values
 // ---------------------------------------------------------------------------
-void test_face_material_desc_values() {
-  TEST(face_material_desc_values);
+void test_face_material_values() {
+  TEST(face_material_values);
 
-  device::FaceMaterialDesc desc;
-  desc.textureId = device::TextureId{5};
-  desc.effectFlags = device::EFFECT_WAVE | device::EFFECT_DRAWING;
-  desc.effectParam0 = 0.1f;
-  desc.effectParam1 = 8.0f;
+  device::FaceMaterial fm;
+  fm.textureId = 5;
+  fm.addEffect({device::EffectType::eWave, 0.1f, 8.0f});
+  fm.addEffect({device::EffectType::eDrawing});
 
-  assert(desc.textureId.index == 5);
-  assert(desc.effectFlags == (device::EFFECT_WAVE | device::EFFECT_DRAWING));
-  assert(desc.effectParam0 == 0.1f);
-  assert(desc.effectParam1 == 8.0f);
+  assert(fm.textureId == 5);
+  assert(fm.effectFlags == (device::EFFECT_WAVE | device::EFFECT_DRAWING));
+  assert(fm.effectParam0 == 0.1f);
+  assert(fm.effectParam1 == 8.0f);
 
   PASS();
 }
@@ -80,24 +80,23 @@ void test_object3d_face_material() {
   window::Object<3> obj(TEST_OBJ_TAG, std::move(vertices), std::move(indices));
 
   // Default face materials
-  auto desc0 = obj.getFaceMaterial(0);
-  assert(desc0.effectFlags == 0);
+  auto fm0 = obj.getFaceMaterial(0);
+  assert(fm0.effectFlags == 0);
 
   // Set face material on face 0
-  device::FaceMaterialDesc mat;
-  mat.textureId = device::TextureId{42};
-  mat.effectFlags = device::EFFECT_GRADIENT;
-  mat.effectParam0 = 0.5f;
+  device::FaceMaterial mat;
+  mat.textureId = 42;
+  mat.addEffect({device::EffectType::eGradient, 0.5f});
   obj.setFaceMaterial(0, mat);
 
   auto retrieved = obj.getFaceMaterial(0);
-  assert(retrieved.textureId.index == 42);
+  assert(retrieved.textureId == 42);
   assert(retrieved.effectFlags == device::EFFECT_GRADIENT);
   assert(retrieved.effectParam0 == 0.5f);
 
   // Face 1 should be unchanged
-  auto desc1 = obj.getFaceMaterial(1);
-  assert(desc1.effectFlags == 0);
+  auto fm1 = obj.getFaceMaterial(1);
+  assert(fm1.effectFlags == 0);
 
   PASS();
 }
@@ -117,10 +116,8 @@ void test_object2d_face_material() {
 
   window::Object<2> obj(TEST_OBJ_TAG, std::move(vertices), std::move(indices));
 
-  device::FaceMaterialDesc mat;
-  mat.effectFlags = device::EFFECT_WAVE;
-  mat.effectParam0 = 0.05f;
-  mat.effectParam1 = 4.0f;
+  device::FaceMaterial mat;
+  mat.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
   obj.setFaceMaterial(1, mat);
 
   auto retrieved = obj.getFaceMaterial(1);
@@ -132,10 +129,10 @@ void test_object2d_face_material() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Object face material auto-resize
+// Test: Object face index validation (out-of-range ignored)
 // ---------------------------------------------------------------------------
-void test_face_material_auto_resize() {
-  TEST(face_material_auto_resize);
+void test_face_material_index_validation() {
+  TEST(face_material_index_validation);
 
   std::vector<window::Vertex<3>> vertices(3);
   for (auto &v : vertices) {
@@ -146,17 +143,19 @@ void test_face_material_auto_resize() {
 
   window::Object<3> obj(TEST_OBJ_TAG, std::move(vertices), std::move(indices));
 
-  // Setting face material beyond initial face count should work
-  device::FaceMaterialDesc mat;
-  mat.effectFlags = device::EFFECT_DRAWING;
+  // Object has 1 face (indices 0,1,2). Setting face 10 should be rejected
+  // (logged as error and ignored since faces_ is non-empty and 10 >= 1).
+  device::FaceMaterial mat;
+  mat.addEffect({device::EffectType::eDrawing});
   obj.setFaceMaterial(10, mat);
 
-  auto retrieved = obj.getFaceMaterial(10);
-  assert(retrieved.effectFlags == device::EFFECT_DRAWING);
-
-  // Out-of-range access returns default
-  auto outOfRange = obj.getFaceMaterial(100);
+  // Out-of-range read returns default
+  auto outOfRange = obj.getFaceMaterial(10);
   assert(outOfRange.effectFlags == 0);
+
+  // Valid face 0 read returns default (was never set)
+  auto valid = obj.getFaceMaterial(0);
+  assert(valid.effectFlags == 0);
 
   PASS();
 }
@@ -165,11 +164,11 @@ void test_face_material_auto_resize() {
 int main() {
   std::printf("=== Face Material Tests ===\n");
 
-  test_face_material_desc_defaults();
-  test_face_material_desc_values();
+  test_face_material_defaults();
+  test_face_material_values();
   test_object3d_face_material();
   test_object2d_face_material();
-  test_face_material_auto_resize();
+  test_face_material_index_validation();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
   return (tests_passed == tests_run) ? 0 : 1;

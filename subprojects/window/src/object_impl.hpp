@@ -356,8 +356,18 @@ void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
 
 template <uint32_t Dim>
 void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
-                                  const device::FaceMaterialDesc &desc) {
+                                  const device::FaceMaterial &desc) {
   std::lock_guard<std::mutex> lock(objectMutex_);
+
+  // Validate face index against actual face count
+  if (!faces_.empty() && faceIndex >= static_cast<uint32_t>(faces_.size())) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} out of range "
+                 "(object '{}' has {} faces)",
+                 faceIndex, name_, faces_.size());
+    return;
+  }
+
   if (faceMaterials_.size() <= faceIndex) {
     faceMaterials_.resize(faceIndex + 1);
   }
@@ -365,7 +375,7 @@ void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
 }
 
 template <uint32_t Dim>
-device::FaceMaterialDesc Object<Dim>::getFaceMaterial(uint32_t faceIndex) const {
+device::FaceMaterial Object<Dim>::getFaceMaterial(uint32_t faceIndex) const {
   std::lock_guard<std::mutex> lock(objectMutex_);
   if (faceIndex < static_cast<uint32_t>(faceMaterials_.size())) {
     return faceMaterials_[faceIndex];

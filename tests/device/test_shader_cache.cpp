@@ -127,15 +127,91 @@ void test_effect_flag_constants() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: FaceMaterialDesc defaults
+// Test: FaceMaterial defaults
 // ---------------------------------------------------------------------------
-void test_face_material_desc_defaults() {
-  TEST(face_material_desc_defaults);
+void test_face_material_defaults() {
+  TEST(face_material_defaults);
 
-  device::FaceMaterialDesc desc{};
-  assert(desc.effectFlags == 0);
-  assert(desc.effectParam0 == 0.0f);
-  assert(desc.effectParam1 == 0.0f);
+  device::FaceMaterial fm{};
+  assert(fm.effectFlags == 0);
+  assert(fm.effectParam0 == 0.0f);
+  assert(fm.effectParam1 == 0.0f);
+  assert(!fm.hasEffects());
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: FaceMaterial effects array operations
+// ---------------------------------------------------------------------------
+void test_face_material_effects_array() {
+  TEST(face_material_effects_array);
+
+  device::FaceMaterial fm{};
+
+  // Add a gradient effect
+  assert(fm.addEffect({device::EffectType::eGradient, 0.5f, 1.0f}));
+  assert(fm.hasEffects());
+  assert(fm.effectFlags == device::EFFECT_GRADIENT);
+  assert(fm.effectParam0 == 0.5f);
+  assert(fm.effectParam1 == 1.0f);
+
+  // Add a wave effect
+  assert(fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f}));
+  assert(fm.effectFlags == (device::EFFECT_GRADIENT | device::EFFECT_WAVE));
+  // First effect's params are kept
+  assert(fm.effectParam0 == 0.5f);
+
+  // Remove gradient
+  assert(fm.removeEffect(device::EffectType::eGradient));
+  assert(fm.effectFlags == device::EFFECT_WAVE);
+  // Now wave is the first active effect
+  assert(fm.effectParam0 == 0.05f);
+  assert(fm.effectParam1 == 4.0f);
+
+  // Clear all
+  fm.clearEffects();
+  assert(!fm.hasEffects());
+  assert(fm.effectFlags == 0);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: FaceMaterial max effects limit
+// ---------------------------------------------------------------------------
+void test_face_material_max_effects() {
+  TEST(face_material_max_effects);
+
+  device::FaceMaterial fm{};
+
+  // Fill all slots
+  for (uint32_t i = 0; i < device::MAX_FACE_EFFECTS; ++i) {
+    assert(fm.addEffect({device::EffectType::eGradient}));
+  }
+
+  // Next add should fail
+  assert(!fm.addEffect({device::EffectType::eWave}));
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: GPUFaceData::fromFaceMaterial
+// ---------------------------------------------------------------------------
+void test_gpu_face_data_from_face_material() {
+  TEST(gpu_face_data_from_face_material);
+
+  device::FaceMaterial fm{};
+  fm.textureId = 42;
+  fm.addEffect({device::EffectType::eWave, 0.1f, 8.0f});
+  fm.addEffect({device::EffectType::eDrawing});
+
+  device::GPUFaceData gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.textureId == 42);
+  assert(gpu.effectFlags == (device::EFFECT_WAVE | device::EFFECT_DRAWING));
+  assert(gpu.effectParam0 == 0.1f);
+  assert(gpu.effectParam1 == 8.0f);
 
   PASS();
 }
@@ -155,28 +231,15 @@ void test_bindless_push_constants() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: ComputedGeometryBuffer default state
+// Test: EffectType enum values
 // ---------------------------------------------------------------------------
-void test_computed_geometry_buffer_default() {
-  TEST(computed_geometry_buffer_default);
+void test_effect_type_enum() {
+  TEST(effect_type_enum);
 
-  device::ComputedGeometryBuffer buf;
-  assert(buf.vertexCount == 0);
-  assert(buf.faceCount == 0);
-  assert(!buf.precomputed);
-
-  PASS();
-}
-
-// ---------------------------------------------------------------------------
-// Test: ComputeRenderer default state
-// ---------------------------------------------------------------------------
-void test_compute_renderer_default() {
-  TEST(compute_renderer_default);
-
-  device::ComputeRenderer renderer;
-  assert(!renderer.isInitialized());
-  assert(renderer.getBuffer("nonexistent") == nullptr);
+  assert(static_cast<uint32_t>(device::EffectType::eNone) == 0);
+  assert(static_cast<uint32_t>(device::EffectType::eGradient) == 1);
+  assert(static_cast<uint32_t>(device::EffectType::eWave) == 2);
+  assert(static_cast<uint32_t>(device::EffectType::eDrawing) == 3);
 
   PASS();
 }
@@ -191,10 +254,12 @@ int main() {
   test_shader_stage_values();
   test_gpu_face_data_layout();
   test_effect_flag_constants();
-  test_face_material_desc_defaults();
+  test_face_material_defaults();
+  test_face_material_effects_array();
+  test_face_material_max_effects();
+  test_gpu_face_data_from_face_material();
   test_bindless_push_constants();
-  test_computed_geometry_buffer_default();
-  test_compute_renderer_default();
+  test_effect_type_enum();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
   return (tests_passed == tests_run) ? 0 : 1;
