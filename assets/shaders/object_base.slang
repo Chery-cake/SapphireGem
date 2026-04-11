@@ -47,11 +47,9 @@ struct PushData {
 // ---------------------------------------------------------------------------
 struct VSOutput {
     float4 pos : SV_Position;
-    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
-    float waveAmount;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
     nointerpolation float effectParam0;
@@ -60,16 +58,13 @@ struct VSOutput {
 
 struct GSOutput {
     float4 pos : SV_Position;
-    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
-    float waveAmount;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
     nointerpolation float effectParam0;
     nointerpolation float effectParam1;
-    float lightFactor;
 };
 
 // ---------------------------------------------------------------------------
@@ -124,15 +119,6 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.effectParam0 = face.effectParam0;
     output.effectParam1 = face.effectParam1;
 
-    // Determine render mode from effect flags
-    if (face.effectFlags != 0) {
-        output.renderMode = 3; // Effects mode
-    } else if (face.textureId != 0xFFFFFFFF) {
-        output.renderMode = 1; // Texture mode
-    } else {
-        output.renderMode = 0; // Plain colour
-    }
-
     // Apply wave displacement to ALL vertices unconditionally.
     // Since the cube uses shared vertex indices, adjacent faces
     // sharing vertices must see the same displacement to avoid seams.
@@ -142,9 +128,6 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     if ((face.effectFlags & EFFECT_WAVE) != 0) {
         float3 disp = waveVertexDisplacement(pos, pc.time, amplitude, frequency);
         pos += disp;
-        output.waveAmount = disp.y;
-    } else {
-        output.waveAmount = 0.0;
     }
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
@@ -178,16 +161,13 @@ void geomMain(
     for (int i = 0; i < 3; i++) {
         GSOutput output;
         output.pos          = input[i].pos;
-        output.renderMode   = input[i].renderMode;
         output.color        = input[i].color * lightFactor;
         output.uv           = input[i].uv;
         output.modelPos     = input[i].modelPos;
-        output.waveAmount   = input[i].waveAmount;
         output.textureId    = input[i].textureId;
         output.effectFlags  = input[i].effectFlags;
         output.effectParam0 = input[i].effectParam0;
         output.effectParam1 = input[i].effectParam1;
-        output.lightFactor  = lightFactor;
         outputStream.Append(output);
     }
     outputStream.RestartStrip();

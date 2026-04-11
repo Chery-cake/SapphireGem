@@ -54,78 +54,78 @@ inline float4 applyWaveColor(float2 uv, float time, float amplitude,
     color.b = wave3 * 0.8 + 0.2;
 
     return float4(saturate(color), 1.0);
-                             }
+}
 
-                             // ---------------------------------------------------------------------------
-                             // Wave vertex displacement (applied in vertex shader)
-                             // ---------------------------------------------------------------------------
-                             inline float3 waveVertexDisplacement(float3 pos, float time, float amplitude,
-                                                                  float frequency) {
-                                 float amp = amplitude > 0.0 ? amplitude : 0.05;
-                                 float freq = frequency > 0.0 ? frequency : 4.0;
+// ---------------------------------------------------------------------------
+// Wave vertex displacement (applied in vertex shader)
+// ---------------------------------------------------------------------------
+inline float3 waveVertexDisplacement(float3 pos, float time, float amplitude,
+                                     float frequency) {
+    float amp = amplitude > 0.0 ? amplitude : 0.05;
+    float freq = frequency > 0.0 ? frequency : 4.0;
 
-                                 float wave = sin(pos.x * freq + time * 2.0) * amp;
-                                 wave += cos(pos.z * freq + time * 1.5) * amp;
-                                 return float3(0.0, wave, 0.0);
-                                                                  }
+    float wave = sin(pos.x * freq + time * 2.0) * amp;
+    wave += cos(pos.z * freq + time * 1.5) * amp;
+    return float3(0.0, wave, 0.0);
+}
 
-                                                                  // ---------------------------------------------------------------------------
-                                                                  // 2D wave vertex displacement (for Object<2>)
-                                                                  // ---------------------------------------------------------------------------
-                                                                  inline float2 waveVertexDisplacement2D(float2 pos, float time, float amplitude,
-                                                                                                         float frequency) {
-                                                                      float amp = amplitude > 0.0 ? amplitude : 0.04;
-                                                                      float freq = frequency > 0.0 ? frequency : 6.0;
+// ---------------------------------------------------------------------------
+// 2D wave vertex displacement (for Object<2>)
+// ---------------------------------------------------------------------------
+inline float2 waveVertexDisplacement2D(float2 pos, float time, float amplitude,
+                                       float frequency) {
+    float amp = amplitude > 0.0 ? amplitude : 0.04;
+    float freq = frequency > 0.0 ? frequency : 6.0;
 
-                                                                      float dx = sin(pos.y * freq + time * 2.5) * amp;
-                                                                      float dy = cos(pos.x * freq * 0.83 + time * 2.0) * amp;
-                                                                      return float2(dx, dy);
-                                                                                                         }
+    float dx = sin(pos.y * freq + time * 2.5) * amp;
+    float dy = cos(pos.x * freq * 0.83 + time * 2.0) * amp;
+    return float2(dx, dy);
+}
 
-                                                                                                         // ---------------------------------------------------------------------------
-                                                                                                         // Procedural drawing effect: concentric rings SDF pattern
-                                                                                                         // ---------------------------------------------------------------------------
-                                                                                                         inline float4 applyDrawing(float2 uv, float time) {
-                                                                                                             float2 center = float2(0.5, 0.5);
-                                                                                                             float dist = length(uv - center);
+// ---------------------------------------------------------------------------
+// Procedural drawing effect: concentric rings SDF pattern
+// ---------------------------------------------------------------------------
+inline float4 applyDrawing(float2 uv, float time) {
+    float2 center = float2(0.5, 0.5);
+    float dist = length(uv - center);
 
-                                                                                                             // Animated concentric rings
-                                                                                                             float rings = sin(dist * 30.0 - time * 3.0) * 0.5 + 0.5;
-                                                                                                             // Cross-hatch Lissajous overlay
-                                                                                                             float lissX = sin(uv.x * 20.0 + time * 2.0) * 0.5 + 0.5;
-                                                                                                             float lissY = cos(uv.y * 15.0 + time * 1.5) * 0.5 + 0.5;
-                                                                                                             float pattern = rings * 0.7 + (lissX * lissY) * 0.3;
+    // Animated concentric rings
+    float rings = sin(dist * 30.0 - time * 3.0) * 0.5 + 0.5;
+    // Cross-hatch Lissajous overlay
+    float lissX = sin(uv.x * 20.0 + time * 2.0) * 0.5 + 0.5;
+    float lissY = cos(uv.y * 15.0 + time * 1.5) * 0.5 + 0.5;
+    float pattern = rings * 0.7 + (lissX * lissY) * 0.3;
 
-                                                                                                             float3 color = float3(pattern * 0.2, pattern * 0.6, pattern * 0.9);
-                                                                                                             return float4(saturate(color), 1.0);
-                                                                                                         }
+    float3 color = float3(pattern * 0.2, pattern * 0.6, pattern * 0.9);
+    return float4(saturate(color), 1.0);
+}
 
-                                                                                                         // ---------------------------------------------------------------------------
-                                                                                                         // Dispatch per-face effect based on effectFlags bitmask
-                                                                                                         // Returns the modified colour. If multiple effects are set, they are blended.
-                                                                                                         // ---------------------------------------------------------------------------
-                                                                                                         inline float4 dispatchFaceEffect(uint effectFlags, float2 uv, float2 modelPos,
-                                                                                                                                          float time, float amplitude, float frequency,
-                                                                                                                                          float yRange) {
-                                                                                                             float4 result = float4(0.0, 0.0, 0.0, 0.0);
-                                                                                                             int count = 0;
+// ---------------------------------------------------------------------------
+// Dispatch per-face effect based on effectFlags bitmask
+// Returns the modified colour. If multiple effects are set, they are blended.
+// ---------------------------------------------------------------------------
+inline float4 dispatchFaceEffect(uint effectFlags, float2 uv, float2 modelPos,
+                                 float time, float amplitude, float frequency,
+                                 float yRange) {
+    float4 result = float4(0.0, 0.0, 0.0, 0.0);
+    int count = 0;
 
-                                                                                                             if ((effectFlags & EFFECT_GRADIENT) != 0) {
-                                                                                                                 result += applyGradient(modelPos, yRange);
-                                                                                                                 count++;
-                                                                                                             }
-                                                                                                             if ((effectFlags & EFFECT_WAVE) != 0) {
-                                                                                                                 result += applyWaveColor(uv, time, amplitude, frequency);
-                                                                                                                 count++;
-                                                                                                             }
-                                                                                                             if ((effectFlags & EFFECT_DRAWING) != 0) {
-                                                                                                                 result += applyDrawing(uv, time);
-                                                                                                                 count++;
-                                                                                                             }
+    if ((effectFlags & EFFECT_GRADIENT) != 0) {
+        result += applyGradient(modelPos, yRange);
+        count++;
+    }
+    if ((effectFlags & EFFECT_WAVE) != 0) {
+        result += applyWaveColor(uv, time, amplitude, frequency);
+        count++;
+    }
+    if ((effectFlags & EFFECT_DRAWING) != 0) {
+        result += applyDrawing(uv, time);
+        count++;
+    }
 
-                                                                                                             if (count > 1) {
-                                                                                                                 result /= float(count);
-                                                                                                             }
+    if (count > 1) {
+        result /= float(count);
+    }
 
-                                                                                                             return result;
-                                                                                                                                          }
+    return result;
+}
