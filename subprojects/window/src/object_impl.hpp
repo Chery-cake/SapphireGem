@@ -1,4 +1,5 @@
 #pragma once
+#include "bindless_types.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
 #include "vulkan/vulkan.hpp"
@@ -22,6 +23,9 @@ Object<Dim>::Object(const ObjectTag &tag, std::vector<VertexType> vertices,
 
   // Auto-calculate faces from indices
   calculateFaces();
+
+  // Initialize per-face material array
+  faceMaterials_.resize(faces_.size());
 }
 
 template <uint32_t Dim> Object<Dim>::~Object() { release(); }
@@ -44,8 +48,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
-  submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
-  atlasTextureId_ = other.atlasTextureId_;
+  faceMaterials_ = std::move(other.faceMaterials_);
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -73,8 +76,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
-    submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
-    atlasTextureId_ = other.atlasTextureId_;
+    faceMaterials_ = std::move(other.faceMaterials_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -307,33 +309,6 @@ template <uint32_t Dim> void Object<Dim>::setTextureId(device::TextureId id) {
   baseTextureId_ = id;
 }
 
-template <uint32_t Dim>
-void Object<Dim>::setAtlasTextureId(device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  atlasTextureId_ = id;
-}
-
-template <uint32_t Dim>
-void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
-                                            device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  if (id.isValid()) {
-    submeshTextureOverrides_[faceIndex] = id;
-  } else {
-    submeshTextureOverrides_.erase(faceIndex);
-  }
-}
-
-template <uint32_t Dim>
-device::TextureId Object<Dim>::getEffectiveTextureId(uint32_t faceIndex) const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  auto it = submeshTextureOverrides_.find(faceIndex);
-  if (it != submeshTextureOverrides_.end()) {
-    return it->second;
-  }
-  return baseTextureId_;
-}
-
 template <uint32_t Dim> device::TextureId Object<Dim>::getTextureId() const {
   std::lock_guard<std::mutex> lock(objectMutex_);
   return baseTextureId_;
@@ -343,6 +318,49 @@ template <uint32_t Dim>
 void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
   std::lock_guard<std::mutex> lock(objectMutex_);
   bindlessDescriptorSet_ = set;
+}
+
+// ============================================================================
+// Per-face material system
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
+                                  const device::FaceMaterial &desc) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  // Validate face index against actual face count when faces are known
+  if (!faces_.empty() && faceIndex >= static_cast<uint32_t>(faces_.size())) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} out of range "
+                 "(object '{}' has {} faces)",
+                 faceIndex, name_, faces_.size());
+    return;
+  }
+
+  // When faces_ is empty (pre-init), allow but cap to prevent unbounded
+  // growth
+  if (faces_.empty() && faceIndex > 1024) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} too large "
+                 "(object '{}' has no faces yet)",
+                 faceIndex, name_);
+    return;
+  }
+
+  if (faceMaterials_.size() <= faceIndex) {
+    faceMaterials_.resize(faceIndex + 1);
+  }
+  faceMaterials_[faceIndex] = desc;
+}
+
+template <uint32_t Dim>
+device::FaceMaterial Object<Dim>::getFaceMaterial(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (faceIndex < static_cast<uint32_t>(faceMaterials_.size())) {
+    return faceMaterials_[faceIndex];
+  }
+  return {};
 }
 
 // ============================================================================
@@ -466,11 +484,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + textureId + atlasTextureId (bindless)
+  // Push constants: time + objectId (bindless)
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
-                                           atlasTextureId_.index};
+    device::BindlessPushConstants pushData(time_, baseTextureId_.index);
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);

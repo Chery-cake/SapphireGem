@@ -20,4 +20,12 @@ target_compile_definitions(test_vulkan_instance PRIVATE
 )
 add_test(NAME device_vulkan_instance COMMAND test_vulkan_instance)
 
+# --- Shader Cache & Face Material Tests ---
+add_executable(test_shader_cache test_shader_cache.cpp)
+target_link_libraries(test_shader_cache PRIVATE device core)
+target_compile_definitions(test_shader_cache PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME device_shader_cache COMMAND test_shader_cache)
+
 message(STATUS "Device tests configured")

@@ -6,6 +6,7 @@
 #include "slang.h"
 #include "vulkan/vulkan_raii.hpp"
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -14,6 +15,13 @@ namespace device {
 
 // Forward declarations
 class GPUDevice;
+
+/**
+ * @brief Error type for shader compilation failures
+ */
+struct DEVICE_API ShaderError {
+  std::string message;
+};
 
 /**
  * @brief Shader stage types
@@ -168,10 +176,14 @@ public:
    * Increments the reference count. The shader will remain compiled
    * as long as at least one reference exists.
    *
+   * Uses a SPIR-V disk cache to avoid recompilation when possible.
+   * Cache files are stored in assets/shaders/cache/<name>_<hash>_<stage>.spv.
+   *
    * @param tag Shader tag identifying the program
-   * @return Pointer to compiled shader program, or nullptr on failure
+   * @return Pointer to compiled shader program, or ShaderError on failure
    */
-  ShaderProgram *acquire(const ShaderTag *tag);
+  [[nodiscard]] std::expected<ShaderProgram *, ShaderError>
+  acquire(const ShaderTag *tag);
 
   /**
    * @brief Release a shader program, potentially freeing memory
@@ -250,6 +262,18 @@ private:
   std::unique_ptr<CompiledShader> compileStage(const std::string &sourcePath,
                                                const std::string &entryPoint,
                                                ShaderStage stage);
+
+  // SPIR-V disk cache helpers
+  std::string getCachePath(const std::string &name, const std::string &hash,
+                           ShaderStage stage) const;
+  static std::string stageSuffix(ShaderStage stage);
+  static bool loadCachedSpirv(const std::string &cachePath,
+                              std::vector<uint32_t> &spirvOut);
+  static bool writeCachedSpirv(const std::string &cachePath,
+                               const std::vector<uint32_t> &spirv);
+  std::unique_ptr<CompiledShader>
+  compileStageWithCache(const std::string &name, const std::string &sourcePath,
+                        const std::string &entryPoint, ShaderStage stage);
 
   // Create a thread-local or locked session for compilation
   slang::ISession *createCompileSession();

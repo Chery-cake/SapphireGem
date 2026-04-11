@@ -104,11 +104,36 @@ public:
    * caller's responsibility to keep the AllocatedImage alive for
    * as long as the handle is in use.
    *
+   * Only the original source image should be registered — never
+   * mip-generated variants or atlas sub-regions.  All atlas cropping,
+   * UV transforms, tiling, rotations, and layer compositing are done
+   * at render time in shaders via TextureLayer data.
+   *
+   * Prefers reusing freed slots from removeImage() before appending.
+   *
    * @param kind   Which image array to place the image in
    * @param view   Vulkan image view
    * @return ImageHandle with the descriptor array index
    */
-  ImageHandle registerImage(ImageKind kind, vk::ImageView view);
+  [[nodiscard]] ImageHandle registerImage(ImageKind kind, vk::ImageView view);
+
+  /**
+   * @brief Remove a previously registered image, freeing its slot
+   *
+   * The slot is marked as a tombstone and can be reused by future
+   * registerImage() calls. A partial descriptor update is scheduled
+   * to unbind the slot (writes a null image view).
+   *
+   * The ImageHandle becomes invalid after removal.
+   *
+   * Multi-GPU note: when removing an image on one device, it is the
+   * caller's responsibility to perform the same removal on secondary
+   * devices.
+   *
+   * @param kind   Which image array the handle belongs to
+   * @param handle ImageHandle returned by registerImage()
+   */
+  void removeImage(ImageKind kind, ImageHandle handle);
 
   // ------------------------------------------------------------------
   // Descriptor commit  (must be called from device thread)
@@ -167,12 +192,16 @@ private:
   struct ImageEntry {
     vk::ImageView view;
     bool committed = false;
+    bool dirty = false;     ///< Needs descriptor update (added or removed)
+    bool tombstone = false; ///< Slot freed by removeImage()
   };
 
   static constexpr uint32_t kKindCount =
       static_cast<uint32_t>(ImageKind::eCount);
 
-  std::vector<ImageEntry> imageArrays_[kKindCount];
+  std::array<std::vector<ImageEntry>, kKindCount> imageArrays_;
+  std::array<std::vector<uint32_t>, kKindCount>
+      freeLists_; ///< Free slot indices per kind
 
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
