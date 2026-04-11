@@ -86,13 +86,51 @@ enum class ProcessingType : uint32_t {
  * @brief Push constant data for bindless shaders
  *
  * Matches the PushData struct in bindless shader files.
- * Used by Object::draw() to push time + textureId + atlasTextureId.
+ * Used by Object::draw() to push time + objectId.
  */
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
   uint32_t textureId = TextureId::INVALID;
   uint32_t atlasTextureId = TextureId::INVALID;
 };
+
+/**
+ * @brief Effect flag constants for per-face GPU data
+ *
+ * These bitmask values control per-face rendering effects in shaders.
+ * A face can combine multiple effects via bitwise OR.
+ */
+inline constexpr uint32_t EFFECT_NONE = 0;
+inline constexpr uint32_t EFFECT_GRADIENT = 1u << 0;
+inline constexpr uint32_t EFFECT_WAVE = 1u << 1;
+inline constexpr uint32_t EFFECT_DRAWING = 1u << 2;
+
+/**
+ * @brief Per-face material description (CPU side)
+ *
+ * Describes which material/shader pipeline a face uses, which
+ * TextureRecord it references, and per-face effect parameters.
+ */
+struct DEVICE_API FaceMaterialDesc {
+  TextureId textureId;            ///< TextureRecord index
+  uint32_t effectFlags = 0;       ///< Bitmask: EFFECT_GRADIENT, EFFECT_WAVE, etc.
+  float effectParam0 = 0.0f;      ///< e.g. wave amplitude
+  float effectParam1 = 0.0f;      ///< e.g. wave frequency
+};
+
+/**
+ * @brief Per-face GPU data uploaded to an SSBO
+ *
+ * Must match the FaceData struct in shaders (std430 layout).
+ */
+struct DEVICE_API GPUFaceData {
+  uint32_t textureId;   ///< Index into TextureRecord[]
+  uint32_t effectFlags; ///< Bitmask
+  float effectParam0;
+  float effectParam1;
+};
+static_assert(sizeof(GPUFaceData) == 16,
+              "GPUFaceData must be 16 bytes (std430)");
 
 } // namespace device
 

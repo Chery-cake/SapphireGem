@@ -22,6 +22,9 @@ Object<Dim>::Object(const ObjectTag &tag, std::vector<VertexType> vertices,
 
   // Auto-calculate faces from indices
   calculateFaces();
+
+  // Initialize per-face material array
+  faceMaterials_.resize(faces_.size());
 }
 
 template <uint32_t Dim> Object<Dim>::~Object() { release(); }
@@ -45,6 +48,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
   submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+  faceMaterials_ = std::move(other.faceMaterials_);
   atlasTextureId_ = other.atlasTextureId_;
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -74,6 +78,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
     submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
+    faceMaterials_ = std::move(other.faceMaterials_);
     atlasTextureId_ = other.atlasTextureId_;
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -343,6 +348,29 @@ template <uint32_t Dim>
 void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
   std::lock_guard<std::mutex> lock(objectMutex_);
   bindlessDescriptorSet_ = set;
+}
+
+// ============================================================================
+// Per-face material system
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
+                                  const device::FaceMaterialDesc &desc) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (faceMaterials_.size() <= faceIndex) {
+    faceMaterials_.resize(faceIndex + 1);
+  }
+  faceMaterials_[faceIndex] = desc;
+}
+
+template <uint32_t Dim>
+device::FaceMaterialDesc Object<Dim>::getFaceMaterial(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (faceIndex < static_cast<uint32_t>(faceMaterials_.size())) {
+    return faceMaterials_[faceIndex];
+  }
+  return {};
 }
 
 // ============================================================================

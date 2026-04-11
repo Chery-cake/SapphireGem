@@ -10,10 +10,12 @@
 #include "vulkan/vulkan_raii.hpp"
 #include "vulkan_device.h"
 #include "window_export.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <ranges>
 
 namespace window {
 
@@ -310,6 +312,30 @@ public:
    */
   [[nodiscard]] device::TextureId getTextureId() const;
 
+  // =========================================================================
+  // Per-face material system
+  // =========================================================================
+
+  /**
+   * @brief Set the material description for a specific face
+   *
+   * Each face can have its own texture, effect flags, and parameters.
+   * The face SSBO is marked dirty and will be re-uploaded on the next
+   * draw or explicit upload call.
+   *
+   * @param faceIndex  Face (triangle) index
+   * @param desc       Face material description
+   */
+  void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterialDesc &desc);
+
+  /**
+   * @brief Get the material description for a face
+   * @param faceIndex  Face (triangle) index
+   * @return Face material description (default if not set)
+   */
+  [[nodiscard]] device::FaceMaterialDesc
+  getFaceMaterial(uint32_t faceIndex) const;
+
   /**
    * @brief Set the global bindless descriptor set to bind at draw time
    *
@@ -398,6 +424,8 @@ private:
   device::TextureId atlasTextureId_;
   // Per-face texture ID overrides (submesh overrides)
   std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
+  // Per-face material descriptions
+  std::vector<device::FaceMaterialDesc> faceMaterials_;
   // Global bindless descriptor set (set 1), set externally
   vk::DescriptorSet bindlessDescriptorSet_;
 

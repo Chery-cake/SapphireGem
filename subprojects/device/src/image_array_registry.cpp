@@ -112,6 +112,9 @@ void ImageArrayRegistry::shutdown() {
   for (auto &arr : imageArrays_) {
     arr.clear();
   }
+  for (auto &fl : freeLists_) {
+    fl.clear();
+  }
   initialized_ = false;
 }
 
@@ -130,11 +133,12 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
   }
 
   auto &arr = imageArrays_[kindIdx];
+  auto &freeList = freeLists_[kindIdx];
 
   // Deduplicate: return existing handle if the same view is already
-  // registered
+  // registered (skip tombstones)
   for (uint32_t i = 0; i < static_cast<uint32_t>(arr.size()); ++i) {
-    if (arr[i].view == view) {
+    if (!arr[i].tombstone && arr[i].view == view) {
       ImageHandle handle;
       handle.index = i;
       return handle;
@@ -142,9 +146,61 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
   }
 
   ImageHandle handle;
-  handle.index = static_cast<uint32_t>(arr.size());
-  arr.push_back({view, false});
+
+  // Prefer reusing freed slots from the free list
+  if (!freeList.empty()) {
+    uint32_t freeIdx = freeList.back();
+    freeList.pop_back();
+    arr[freeIdx] = {view, false, true, false};
+    handle.index = freeIdx;
+  } else {
+    handle.index = static_cast<uint32_t>(arr.size());
+    arr.push_back({view, false, true, false});
+  }
+
   return handle;
+}
+
+// ============================================================================
+// Image removal
+// ============================================================================
+
+void ImageArrayRegistry::removeImage(ImageKind kind, ImageHandle handle) {
+  std::lock_guard<std::mutex> lock(registryMutex_);
+
+  uint32_t kindIdx = static_cast<uint32_t>(kind);
+  if (kindIdx >= kKindCount) {
+    std::println(stderr, "[ImageArrayRegistry] removeImage: Invalid ImageKind {}",
+                 kindIdx);
+    return;
+  }
+
+  auto &arr = imageArrays_[kindIdx];
+  auto &freeList = freeLists_[kindIdx];
+
+  if (!handle.isValid() || handle.index >= static_cast<uint32_t>(arr.size())) {
+    std::println(stderr,
+                 "[ImageArrayRegistry] removeImage: Invalid handle index {}",
+                 handle.index);
+    return;
+  }
+
+  auto &entry = arr[handle.index];
+  if (entry.tombstone) {
+    std::println(stderr,
+                 "[ImageArrayRegistry] removeImage: Slot {} already freed",
+                 handle.index);
+    return;
+  }
+
+  entry.view = vk::ImageView{};
+  entry.tombstone = true;
+  entry.dirty = true;
+  entry.committed = false;
+  freeList.push_back(handle.index);
+
+  std::println("[ImageArrayRegistry] Removed image at kind={}, index={}",
+               kindIdx, handle.index);
 }
 
 // ============================================================================
@@ -162,49 +218,45 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
   }
 
   std::vector<vk::WriteDescriptorSet> writes;
-  // We need to keep imageInfos alive until updateDescriptorSets
-  std::vector<std::vector<vk::DescriptorImageInfo>> allImageInfos(kKindCount);
+  // Keep imageInfos alive until updateDescriptorSets
+  // Use per-write storage to support incremental updates
+  std::vector<std::vector<vk::DescriptorImageInfo>> allImageInfos;
 
-  // --- Image array bindings (bindings kBindingImages2D, kBindingAtlases,
-  //     kBindingMaps – i.e. 3, 4, 5) ---
+  // --- Incremental image array bindings (bindings 3, 4, 5) ---
   for (uint32_t k = 0; k < kKindCount; ++k) {
     auto &arr = imageArrays_[k];
     if (arr.empty()) {
       continue;
     }
 
-    // Check if any entries are uncommitted (dirty)
-    bool hasPending = false;
-    for (auto &entry : arr) {
-      if (!entry.committed) {
-        hasPending = true;
-        break;
+    // Find dirty entries and write only those
+    for (uint32_t i = 0; i < static_cast<uint32_t>(arr.size()); ++i) {
+      auto &entry = arr[i];
+      if (!entry.dirty && entry.committed) {
+        continue;
       }
-    }
 
-    if (!hasPending) {
-      continue;
-    }
+      // Create a single-element descriptor write for this slot
+      allImageInfos.emplace_back();
+      auto &infos = allImageInfos.back();
 
-    // Build image info for all entries (full overwrite)
-    auto &infos = allImageInfos[k];
-    infos.reserve(arr.size());
-    for (auto &entry : arr) {
       vk::DescriptorImageInfo imgInfo;
-      imgInfo.imageView = entry.view;
+      imgInfo.imageView = entry.view; // null for tombstones
       imgInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
       infos.push_back(imgInfo);
-      entry.committed = true;
-    }
 
-    vk::WriteDescriptorSet w{};
-    w.dstSet = *descriptorSets_[0];
-    w.dstBinding = kBindingImages2D + k; // binding 3/4/5 for each kind
-    w.dstArrayElement = 0;
-    w.descriptorCount = static_cast<uint32_t>(infos.size());
-    w.descriptorType = vk::DescriptorType::eSampledImage;
-    w.pImageInfo = infos.data();
-    writes.push_back(w);
+      vk::WriteDescriptorSet w{};
+      w.dstSet = *descriptorSets_[0];
+      w.dstBinding = kBindingImages2D + k;
+      w.dstArrayElement = i;
+      w.descriptorCount = 1;
+      w.descriptorType = vk::DescriptorType::eSampledImage;
+      w.pImageInfo = infos.data();
+      writes.push_back(w);
+
+      entry.committed = true;
+      entry.dirty = false;
+    }
   }
 
   // --- Sampler binding (binding 0) ---
@@ -286,7 +338,13 @@ uint32_t ImageArrayRegistry::getImageCount(ImageKind kind) const {
   if (k >= kKindCount) {
     return 0;
   }
-  return static_cast<uint32_t>(imageArrays_[k].size());
+  uint32_t count = 0;
+  for (const auto &entry : imageArrays_[k]) {
+    if (!entry.tombstone) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 // ============================================================================
