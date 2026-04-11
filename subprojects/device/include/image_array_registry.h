@@ -115,7 +115,7 @@ public:
    * @param view   Vulkan image view
    * @return ImageHandle with the descriptor array index
    */
-  ImageHandle registerImage(ImageKind kind, vk::ImageView view);
+  [[nodiscard]] ImageHandle registerImage(ImageKind kind, vk::ImageView view);
 
   /**
    * @brief Remove a previously registered image, freeing its slot

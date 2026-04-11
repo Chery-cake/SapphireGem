@@ -20,4 +20,12 @@ target_compile_definitions(test_window_manager PRIVATE
 )
 add_test(NAME window_manager COMMAND test_window_manager)
 
+# --- Face Material Tests ---
+add_executable(test_face_material test_face_material.cpp)
+target_link_libraries(test_face_material PRIVATE window device core)
+target_compile_definitions(test_face_material PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME window_face_material COMMAND test_face_material)
+
 message(STATUS "Window tests configured")

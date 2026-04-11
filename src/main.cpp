@@ -18,6 +18,7 @@
 #include "vulkan_device.h"
 #include "vulkan_instance.h"
 #include "window.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -26,6 +27,7 @@
 #include <numeric>
 #include <print>
 #include <random>
+#include <ranges>
 #include <thread>
 
 // ============================================================================
