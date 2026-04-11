@@ -359,12 +359,21 @@ void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
                                   const device::FaceMaterial &desc) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
-  // Validate face index against actual face count
+  // Validate face index against actual face count when faces are known
   if (!faces_.empty() && faceIndex >= static_cast<uint32_t>(faces_.size())) {
     std::println(stderr,
                  "[Object] setFaceMaterial: face index {} out of range "
                  "(object '{}' has {} faces)",
                  faceIndex, name_, faces_.size());
+    return;
+  }
+
+  // When faces_ is empty (pre-init), allow but cap to prevent unbounded growth
+  if (faces_.empty() && faceIndex > 1024) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} too large "
+                 "(object '{}' has no faces yet)",
+                 faceIndex, name_);
     return;
   }
 

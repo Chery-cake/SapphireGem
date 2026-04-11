@@ -161,6 +161,7 @@ void test_face_material_effects_array() {
   assert(fm.effectFlags == (device::EFFECT_GRADIENT | device::EFFECT_WAVE));
   // First effect's params are kept
   assert(fm.effectParam0 == 0.5f);
+  assert(fm.effectParam1 == 1.0f);
 
   // Remove gradient
   assert(fm.removeEffect(device::EffectType::eGradient));
