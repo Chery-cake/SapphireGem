@@ -503,7 +503,7 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
 
 template <uint32_t Dim>
 void Object<Dim>::uploadFaceData(uint32_t frameIndex) {
-  if (!initialized_ && faceDataBuffers_.empty()) {
+  if (!initialized_ || faceDataBuffers_.empty()) {
     return;
   }
 
