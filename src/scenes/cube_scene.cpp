@@ -222,18 +222,18 @@ bool CubeScene3D::load(device::GPUDevice &device,
   // Face 2 (left -X, tri 4-5): gradient + wave
   {
     device::FaceMaterial fm;
-    fm.addEffect(
+    (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
-    fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
+    (void)fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
     cube_->setFaceMaterial(4, fm);
     cube_->setFaceMaterial(5, fm);
   }
   // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
   {
     device::FaceMaterial fm;
-    fm.addEffect(
+    (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
-    fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
+    (void)fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
     cube_->setFaceMaterial(6, fm);
     cube_->setFaceMaterial(7, fm);
   }

@@ -57,7 +57,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
   initialized_ = other.initialized_;
-  faceDataDirty_ = other.faceDataDirty_;
+  geometryDirty_ = other.geometryDirty_;
   other.initialized_ = false;
 }
 
@@ -87,7 +87,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     descriptorSets_ = std::move(other.descriptorSets_);
     descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
-    faceDataDirty_ = other.faceDataDirty_;
+    geometryDirty_ = other.geometryDirty_;
     other.initialized_ = false;
   }
   return *this;
@@ -232,12 +232,14 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Create face data storage buffers (one per frame in flight)
+  // Host-visible (CpuToGpu + persistently mapped) so the CPU can write
+  // per-face data directly every frame without staging.
   const vk::DeviceSize faceDataSize =
       std::max(faces_.size(), static_cast<size_t>(1)) *
       sizeof(device::GPUFaceData);
   faceDataBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto ssbo = allocator.createStorageBuffer(
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
         faceDataSize, std::string(name_) + "_facedata_" + std::to_string(i));
     if (!ssbo.isValid()) {
       std::println(stderr,
@@ -319,7 +321,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Upload initial face data to all frames
-  faceDataDirty_ = true;
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     uploadFaceData(i);
   }
@@ -338,7 +339,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
-  faceDataDirty_ = true;
+  geometryDirty_ = true;
   initialized_ = false;
 }
 
@@ -403,7 +404,6 @@ void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
     faceMaterials_.resize(faceIndex + 1);
   }
   faceMaterials_[faceIndex] = desc;
-  faceDataDirty_ = true;
 }
 
 template <uint32_t Dim>
@@ -495,12 +495,6 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
     std::memcpy(mapped, &gpuData, sizeof(GPUUBO));
     uniformBuffers_[frameIndex].unmap();
   }
-
-  // Re-upload face data SSBO if dirty
-  if (faceDataDirty_) {
-    uploadFaceData(frameIndex);
-    faceDataDirty_ = false;
-  }
 }
 
 // ============================================================================
@@ -543,7 +537,7 @@ void Object<Dim>::uploadFaceData(uint32_t frameIndex) {
 // ============================================================================
 
 template <uint32_t Dim>
-void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
+void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
   if (!initialized_) {
@@ -561,6 +555,9 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     std::println(stderr, "[Object] No valid pipeline for draw '{}'", name_);
     return;
   }
+
+  // Upload face data SSBO for this frame (cheap memcpy to persistently mapped buffer)
+  uploadFaceData(frameIndex);
 
   // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,

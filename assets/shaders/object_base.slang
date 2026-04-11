@@ -52,8 +52,7 @@ struct VSOutput {
     float3 modelPos;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
-    nointerpolation float effectParam0;
-    nointerpolation float effectParam1;
+    nointerpolation float params[2];
 };
 
 struct GSOutput {
@@ -63,8 +62,7 @@ struct GSOutput {
     float3 modelPos;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
-    nointerpolation float effectParam0;
-    nointerpolation float effectParam1;
+    nointerpolation float params[2];
 };
 
 // ---------------------------------------------------------------------------
@@ -116,15 +114,15 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     FaceData face = faceDataBuffer[triIndex];
     output.textureId = face.textureId;
     output.effectFlags = face.effectFlags;
-    output.effectParam0 = face.effectParam0;
-    output.effectParam1 = face.effectParam1;
+    output.params[0] = face.params[0];
+    output.params[1] = face.params[1];
 
     // Apply wave displacement to ALL vertices unconditionally.
     // Since the cube uses shared vertex indices, adjacent faces
     // sharing vertices must see the same displacement to avoid seams.
     // We use the face's parameters but apply to all verts.
-    float amplitude = face.effectParam0;
-    float frequency = face.effectParam1;
+    float amplitude = face.params[0];
+    float frequency = face.params[1];
     if ((face.effectFlags & EFFECT_WAVE) != 0) {
         float3 disp = waveVertexDisplacement(pos, pc.time, amplitude, frequency);
         pos += disp;
@@ -166,8 +164,8 @@ void geomMain(
         output.modelPos     = input[i].modelPos;
         output.textureId    = input[i].textureId;
         output.effectFlags  = input[i].effectFlags;
-        output.effectParam0 = input[i].effectParam0;
-        output.effectParam1 = input[i].effectParam1;
+        output.params[0]    = input[i].params[0];
+        output.params[1]    = input[i].params[1];
         outputStream.Append(output);
     }
     outputStream.RestartStrip();
@@ -185,7 +183,7 @@ float4 fragMain(GSOutput input) : SV_TARGET {
     if (flags != 0) {
         float4 effectColor = dispatchFaceEffect(
             flags, input.uv, input.modelPos.xy, pc.time,
-            input.effectParam0, input.effectParam1, 1.0);
+            input.params[0], input.params[1], 1.0);
 
         // If there's also a texture, blend it
         if (texId != 0xFFFFFFFF) {

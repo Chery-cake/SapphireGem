@@ -259,7 +259,7 @@ public:
    * @param cmd Command buffer to record draw commands
    * @param frameIndex Current frame in flight index
    */
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex);
 
   // =========================================================================
   // Bindless texture ID support
@@ -318,9 +318,9 @@ public:
    * @brief Upload face data SSBO for the specified frame
    *
    * Converts each FaceMaterial to GPUFaceData and writes the array
-   * into the per-frame storage buffer. Called automatically by
-   * updateUniforms() when faceDataDirty_ is true, or can be called
-   * explicitly.
+   * into the per-frame storage buffer. Called unconditionally by
+   * draw() since the buffer is persistently mapped and the memcpy
+   * is cheap.
    *
    * @param frameIndex  Frame in flight index
    */
@@ -414,7 +414,8 @@ private:
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
-  bool faceDataDirty_ = true; ///< True when face materials need GPU re-upload
+  /// True when geometry topology has changed and GPU resources must be rebuilt
+  bool geometryDirty_ = true;
   mutable std::mutex objectMutex_;
 };
 

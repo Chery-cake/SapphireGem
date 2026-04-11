@@ -191,13 +191,27 @@ public:
                                       const std::string &debugName = "");
 
   /**
-   * @brief Create a storage buffer
+   * @brief Create a storage buffer (GPU-only, for transfer-destination use)
    * @param size Buffer size
    * @param debugName Optional debug name
    * @return Created storage buffer
    */
   AllocatedBuffer createStorageBuffer(vk::DeviceSize size,
                                       const std::string &debugName = "");
+
+  /**
+   * @brief Create a host-visible storage buffer (CPU-writable every frame)
+   *
+   * Uses CpuToGpu memory with persistent mapping so the CPU can write
+   * directly without staging. Ideal for per-frame SSBOs that change
+   * frequently (e.g. per-face material data).
+   *
+   * @param size Buffer size
+   * @param debugName Optional debug name
+   * @return Created storage buffer
+   */
+  AllocatedBuffer createHostVisibleStorageBuffer(vk::DeviceSize size,
+                                                 const std::string &debugName = "");
 
   // ========== Image Operations ==========
 

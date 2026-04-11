@@ -135,43 +135,66 @@ faceEffectParamCount(EffectType type) noexcept {
   }
 }
 
-/// Maximum number of float params any single EffectType requires (GPU constraint)
-inline constexpr uint32_t MAX_EFFECT_PARAMS = 2;
+/// Maximum total floats (params + padding) per FaceEffect, so that
+/// sizeof(FaceEffect) is always a known compile-time multiple of 16 bytes.
+inline constexpr uint32_t FACE_EFFECT_TOTAL_FLOATS = 4; // 16 bytes of float data
 
 /**
- * @brief A single effect entry with type and a fixed-size parameter array.
+ * @brief A single effect entry with type, param count, and a fixed-size data
+ *        array.
  *
- * The parameter array always has MAX_EFFECT_PARAMS slots, zero-initialized.
- * The number of meaningful slots is determined by faceEffectParamCount(type).
+ * The data array always has FACE_EFFECT_TOTAL_FLOATS slots, zero-initialized.
+ * The first `paramCount` slots hold meaningful parameters; the rest are padding.
+ * sizeof(FaceEffect) == 24 bytes (4 + 4 + 16).
  */
 struct DEVICE_API FaceEffect {
   EffectType type = EffectType::eNone;
-  std::array<float, MAX_EFFECT_PARAMS> params{}; ///< Zero-initialized
+  uint32_t paramCount = 0; ///< How many data[] entries are meaningful
+  std::array<float, FACE_EFFECT_TOTAL_FLOATS> data{}; ///< Zero-initialized
 
   FaceEffect() = default;
 
   /**
    * @brief Construct a FaceEffect with just a type (zero-param effects).
    */
-  explicit FaceEffect(EffectType t) : type(t), params{} {}
+  explicit FaceEffect(EffectType t) : type(t), paramCount(0), data{} {}
 
   /**
-   * @brief Convenience constructor for effects with exactly 2 params.
+   * @brief Construct from an initializer list of params.
    *
-   * If the effect type does not take 2 params, a warning is logged
-   * and the extra values are stored but may be ignored on the GPU.
+   * Fills data[0..n-1] from params, zero-fills the rest.
+   * If more params than FACE_EFFECT_TOTAL_FLOATS are given, truncates with
+   * a warning.
    */
-  FaceEffect(EffectType t, float p0, float p1) : type(t), params{p0, p1} {
-    if (faceEffectParamCount(t) != 2) {
+  FaceEffect(EffectType t, std::initializer_list<float> params)
+      : type(t),
+        paramCount(static_cast<uint32_t>(
+            std::min(params.size(),
+                     static_cast<size_t>(FACE_EFFECT_TOTAL_FLOATS)))),
+        data{} {
+    if (params.size() > FACE_EFFECT_TOTAL_FLOATS) {
       std::println(stderr,
-                   "[FaceEffect] Warning: effect type {} expects {} params, "
-                   "but 2 were provided — GPU may ignore extras",
-                   static_cast<uint32_t>(t), faceEffectParamCount(t));
+                   "[FaceEffect] Warning: effect type {} was given {} params "
+                   "but max is {} — truncating",
+                   static_cast<uint32_t>(t), params.size(),
+                   FACE_EFFECT_TOTAL_FLOATS);
+    }
+    uint32_t i = 0;
+    for (float p : params) {
+      if (i >= FACE_EFFECT_TOTAL_FLOATS)
+        break;
+      data[i++] = p;
     }
   }
 
+  /**
+   * @brief Convenience constructor for effects with exactly 2 params.
+   */
+  FaceEffect(EffectType t, float p0, float p1) : FaceEffect(t, {p0, p1}) {}
+
   [[nodiscard]] bool isActive() const { return type != EffectType::eNone; }
 };
+static_assert(sizeof(FaceEffect) == 24, "FaceEffect must be 24 bytes");
 
 /// Maximum number of simultaneous effects per face
 inline constexpr uint32_t MAX_FACE_EFFECTS = 4;
@@ -246,25 +269,28 @@ struct DEVICE_API FaceMaterial {
  *   bit 1 (0x02): wave
  *   bit 2 (0x04): drawing
  *
- * There are only 2 float param slots (effectParam0, effectParam1) for all
- * effects combined on a face. Params are packed in effect-slot order: the
- * first parameterized effect fills as many slots as it needs (up to 2),
- * then the second parameterized effect takes whatever remains. If both
- * slots are consumed, subsequent parameterized effects' params are silently
- * dropped — the GPU budget is fixed at 2 floats.
+ * There are only 2 float param slots for all effects combined on a face.
+ * Params are packed in effect-slot order: the first parameterized effect
+ * fills as many slots as it needs (up to 2), then the second parameterized
+ * effect takes whatever remains. If both slots are consumed, subsequent
+ * parameterized effects' params are silently dropped — the GPU budget is
+ * fixed at 2 floats.
  *
  * Non-parameterized effects (e.g. eDrawing) set their bit but consume no
  * param slots.
  *
- * Example: eDrawing + eWave(0.05, 4.0) → flags=0x06, p0=0.05, p1=4.0
+ * params[0]: first param of the first parameterized active effect
+ * params[1]: second param of the first parameterized active effect
+ *            (or first param of the second if the first has only 1 param)
+ *
+ * Example: eDrawing + eWave(0.05, 4.0) → flags=0x06, params={0.05, 4.0}
  * Example: eGradient(0.5, 0.0) + eWave(0.05, 4.0) → flags=0x03,
- *          p0=0.5, p1=0.0 (gradient consumes both slots; wave params dropped)
+ *          params={0.5, 0.0} (gradient consumes both; wave params dropped)
  */
 struct DEVICE_API GPUFaceData {
   uint32_t textureId;   ///< Index into TextureRecord[]
   uint32_t effectFlags; ///< Bitmask derived from effects array
-  float effectParam0;
-  float effectParam1;
+  float params[2];      ///< Packed params, same layout on GPU
 
   /**
    * @brief Construct from a FaceMaterial
@@ -299,11 +325,11 @@ struct DEVICE_API GPUFaceData {
       // Pack params into the shared 2-slot budget
       uint32_t needed = faceEffectParamCount(fx.type);
       for (uint32_t i = 0; i < needed && slotsFilled < 2; ++i) {
-        slots[slotsFilled++] = fx.params[i];
+        slots[slotsFilled++] = fx.data[i];
       }
     }
 
-    return {fm.textureId, flags, slots[0], slots[1]};
+    return {fm.textureId, flags, {slots[0], slots[1]}};
   }
 };
 static_assert(sizeof(GPUFaceData) == 16,

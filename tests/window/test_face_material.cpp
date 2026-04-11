@@ -31,8 +31,8 @@ void test_face_material_defaults() {
 
   auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == 0);
-  assert(gpu.effectParam0 == 0.0f);
-  assert(gpu.effectParam1 == 0.0f);
+  assert(gpu.params[0] == 0.0f);
+  assert(gpu.params[1] == 0.0f);
 
   PASS();
 }
@@ -52,8 +52,8 @@ void test_face_material_values() {
 
   auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == (0x02u | 0x04u)); // WAVE | DRAWING
-  assert(gpu.effectParam0 == 0.1f);
-  assert(gpu.effectParam1 == 8.0f);
+  assert(gpu.params[0] == 0.1f);
+  assert(gpu.params[1] == 8.0f);
 
   PASS();
 }
@@ -98,7 +98,7 @@ void test_object3d_face_material() {
   assert(retrieved.textureId == 42);
   auto gpuR = device::GPUFaceData::fromFaceMaterial(retrieved);
   assert(gpuR.effectFlags == 0x01u); // GRADIENT
-  assert(gpuR.effectParam0 == 0.5f);
+  assert(gpuR.params[0] == 0.5f);
 
   // Face 1 should be unchanged
   auto fm1 = obj.getFaceMaterial(1);
@@ -130,8 +130,8 @@ void test_object2d_face_material() {
   auto retrieved = obj.getFaceMaterial(1);
   auto gpuR = device::GPUFaceData::fromFaceMaterial(retrieved);
   assert(gpuR.effectFlags == 0x02u); // WAVE
-  assert(gpuR.effectParam0 == 0.05f);
-  assert(gpuR.effectParam1 == 4.0f);
+  assert(gpuR.params[0] == 0.05f);
+  assert(gpuR.params[1] == 4.0f);
 
   PASS();
 }
