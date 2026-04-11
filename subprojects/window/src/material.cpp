@@ -2,6 +2,7 @@
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan_device.h"
+#include <expected>
 #include <mutex>
 #include <print>
 
@@ -58,9 +59,15 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
   }
 
   // Acquire shader program (compiles if needed, increments ref count)
-  shaderProgram_ = shaderManager.acquire(shaderTag_);
+  auto acquireResult = shaderManager.acquire(shaderTag_);
+  if (!acquireResult.has_value()) {
+    std::println(stderr, "[Material] Failed to acquire shader program for: {} - {}",
+                 name_, acquireResult.error().message);
+    return false;
+  }
+  shaderProgram_ = acquireResult.value();
   if (!shaderProgram_ || !shaderProgram_->compiled) {
-    std::println(stderr, "[Material] Failed to acquire shader program for: {}",
+    std::println(stderr, "[Material] Shader program not compiled for: {}",
                  name_);
     return false;
   }

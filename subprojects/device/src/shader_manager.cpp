@@ -41,8 +41,7 @@ vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
       {},
       getVkStage(),
       module,
-      "main"}; // TODO find a better way to deal with this naming problem
-               // entryPoint.c_str()};
+      entryPoint.c_str()};
 }
 
 // ============================================================================
@@ -82,6 +81,19 @@ bool ShaderManager::initialize(GPUDevice &device) {
   shaderBasePath_ = "assets/shaders"; // TODO remove or change interaction for
                                       // loading mod shaders
   includePaths_.push_back(shaderBasePath_);
+
+  // Create SPIR-V cache directory if it doesn't exist
+  {
+    auto cachePath =
+        std::filesystem::path(shaderBasePath_) / "cache";
+    std::error_code ec;
+    std::filesystem::create_directories(cachePath, ec);
+    if (ec) {
+      std::println(stderr,
+                   "[ShaderManager] Warning: could not create cache dir '{}': {}",
+                   cachePath.string(), ec.message());
+    }
+  }
 
   initialized_ = true;
   std::println("[ShaderManager] Initialized successfully");
@@ -376,9 +388,10 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
 // Tag-based shader management
 // ============================================================================
 
-ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
+std::expected<ShaderProgram *, ShaderError>
+ShaderManager::acquire(const ShaderTag *tag) {
   if (!initialized_ || !tag) {
-    return nullptr;
+    return std::unexpected(ShaderError{"ShaderManager not initialized or null tag"});
   }
 
   // Check if already in registry
@@ -392,66 +405,56 @@ ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
   bool hasFailure = false;
 
   if (tag->vertexEntry) {
-    program->vertex =
-        compileStage(tag->sourcePath, tag->vertexEntry, ShaderStage::Vertex);
+    program->vertex = compileStageWithCache(tag->name, tag->sourcePath,
+                                            tag->vertexEntry, ShaderStage::Vertex);
     if (!program->vertex || !program->vertex->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile vertex stage '{}' "
                    "with entry point '{}' in '{}'",
                    tag->name, tag->vertexEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println("[ShaderManager] Compiled vertex entry point '{}' for '{}'",
-                   tag->vertexEntry, tag->name);
     }
   }
   if (tag->fragmentEntry) {
-    program->fragment = compileStage(tag->sourcePath, tag->fragmentEntry,
-                                     ShaderStage::Fragment);
+    program->fragment = compileStageWithCache(tag->name, tag->sourcePath,
+                                              tag->fragmentEntry,
+                                              ShaderStage::Fragment);
     if (!program->fragment || !program->fragment->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile fragment stage '{}' "
                    "with entry point '{}' in '{}'",
                    tag->name, tag->fragmentEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println(
-          "[ShaderManager] Compiled fragment entry point '{}' for '{}'",
-          tag->fragmentEntry, tag->name);
     }
   }
   if (tag->geometryEntry) {
-    program->geometry = compileStage(tag->sourcePath, tag->geometryEntry,
-                                     ShaderStage::Geometry);
+    program->geometry = compileStageWithCache(tag->name, tag->sourcePath,
+                                              tag->geometryEntry,
+                                              ShaderStage::Geometry);
     if (!program->geometry || !program->geometry->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile geometry stage '{}' "
                    "with entry point '{}' in '{}'",
                    tag->name, tag->geometryEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println(
-          "[ShaderManager] Compiled geometry entry point '{}' for '{}'",
-          tag->geometryEntry, tag->name);
     }
   }
   if (tag->computeEntry) {
-    program->compute =
-        compileStage(tag->sourcePath, tag->computeEntry, ShaderStage::Compute);
+    program->compute = compileStageWithCache(tag->name, tag->sourcePath,
+                                             tag->computeEntry,
+                                             ShaderStage::Compute);
     if (!program->compute || !program->compute->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile compute stage '{}' "
                    "with entry point '{}' in '{}'",
                    tag->name, tag->computeEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println("[ShaderManager] Compiled compute entry point '{}' for '{}'",
-                   tag->computeEntry, tag->name);
     }
   }
   if (tag->tessCtrlEntry) {
-    program->tessControl = compileStage(tag->sourcePath, tag->tessCtrlEntry,
-                                        ShaderStage::TessellationControl);
+    program->tessControl = compileStageWithCache(
+        tag->name, tag->sourcePath, tag->tessCtrlEntry,
+        ShaderStage::TessellationControl);
     if (!program->tessControl || !program->tessControl->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile tessellation "
@@ -459,36 +462,27 @@ ShaderProgram *ShaderManager::acquire(const ShaderTag *tag) {
                    "with entry point '{}' in '{}'",
                    tag->name, tag->tessCtrlEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println("[ShaderManager] Compiled tessellation control entry point "
-                   "'{}' for '{}'",
-                   tag->tessCtrlEntry, tag->name);
     }
   }
   if (tag->tessEvalEntry) {
-    program->tessEval = compileStage(tag->sourcePath, tag->tessEvalEntry,
-                                     ShaderStage::TessellationEvaluation);
+    program->tessEval = compileStageWithCache(
+        tag->name, tag->sourcePath, tag->tessEvalEntry,
+        ShaderStage::TessellationEvaluation);
     if (!program->tessEval || !program->tessEval->isValid) {
       std::println(stderr,
                    "[ShaderManager] Failed to compile tessellation evaluation "
                    "stage '{}' with entry point '{}' in '{}'",
                    tag->name, tag->tessEvalEntry, tag->sourcePath);
       hasFailure = true;
-    } else {
-      std::println("[ShaderManager] Compiled tessellation evaluation entry "
-                   "point '{}' for '{}'",
-                   tag->tessEvalEntry, tag->name);
     }
   }
 
   // Validate that at least one stage compiled successfully
   auto stageInfos = program->getStageInfos();
   if (stageInfos.empty()) {
-    std::println(stderr,
-                 "[ShaderManager] No valid shader stages compiled for '{}' "
-                 "from source '{}'",
-                 tag->name, tag->sourcePath);
-    return nullptr;
+    return std::unexpected(ShaderError{
+        std::string("No valid shader stages compiled for '") + tag->name +
+        "' from source '" + tag->sourcePath + "'"});
   }
 
   if (hasFailure) {
@@ -591,5 +585,130 @@ ShaderManager::createShaderModule(const std::vector<uint32_t> &spirvCode) {
 }
 
 void ShaderManager::clearCache() { shaderRegistry_.clear(); }
+
+// ============================================================================
+// SPIR-V Disk Cache
+// ============================================================================
+
+std::string ShaderManager::stageSuffix(ShaderStage stage) {
+  switch (stage) {
+  case ShaderStage::Vertex:
+    return "_vert";
+  case ShaderStage::Fragment:
+    return "_frag";
+  case ShaderStage::Geometry:
+    return "_geom";
+  case ShaderStage::Compute:
+    return "_comp";
+  case ShaderStage::TessellationControl:
+    return "_tesc";
+  case ShaderStage::TessellationEvaluation:
+    return "_tese";
+  default:
+    return "_unknown";
+  }
+}
+
+std::string ShaderManager::getCachePath(const std::string &name,
+                                        const std::string &hash,
+                                        ShaderStage stage) const {
+  return shaderBasePath_ + "/cache/" + name + "_" + hash + stageSuffix(stage) +
+         ".spv";
+}
+
+bool ShaderManager::loadCachedSpirv(const std::string &cachePath,
+                                    std::vector<uint32_t> &spirvOut) {
+  if (!std::filesystem::exists(cachePath)) {
+    return false;
+  }
+
+  std::ifstream file(cachePath, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  auto fileSize = file.tellg();
+  if (fileSize <= 0 || static_cast<size_t>(fileSize) % sizeof(uint32_t) != 0) {
+    return false;
+  }
+
+  file.seekg(0, std::ios::beg);
+  spirvOut.resize(static_cast<size_t>(fileSize) / sizeof(uint32_t));
+  file.read(reinterpret_cast<char *>(spirvOut.data()),
+            static_cast<std::streamsize>(fileSize));
+  return file.good();
+}
+
+bool ShaderManager::writeCachedSpirv(const std::string &cachePath,
+                                     const std::vector<uint32_t> &spirv) {
+  std::ofstream file(cachePath, std::ios::binary | std::ios::trunc);
+  if (!file.is_open()) {
+    return false;
+  }
+
+  file.write(reinterpret_cast<const char *>(spirv.data()),
+             static_cast<std::streamsize>(spirv.size() * sizeof(uint32_t)));
+  return file.good();
+}
+
+std::unique_ptr<CompiledShader> ShaderManager::compileStageWithCache(
+    const std::string &name, const std::string &sourcePath,
+    const std::string &entryPoint, ShaderStage stage) {
+
+  // Construct full path to compute hash
+  std::string fullPath = sourcePath;
+  if (!std::filesystem::path(fullPath).is_absolute()) {
+    fullPath = shaderBasePath_ + "/" + sourcePath;
+  }
+
+  std::string sourceHash = computeFileHash(fullPath);
+
+  // Try loading from cache
+  std::string cachePath = getCachePath(name, sourceHash, stage);
+  std::vector<uint32_t> spirvCode;
+
+  {
+    std::lock_guard<std::mutex> lock(slangMutex_);
+    if (loadCachedSpirv(cachePath, spirvCode)) {
+      // Create shader module from cached SPIR-V
+      auto module = createShaderModule(spirvCode);
+      if (module != nullptr) {
+        auto shader = std::make_unique<CompiledShader>();
+        shader->module = std::move(module);
+        shader->stage = stage;
+        shader->entryPoint = entryPoint;
+        shader->sourcePath = sourcePath;
+        shader->sourceHash = sourceHash;
+        shader->isValid = true;
+        std::println(
+            "[ShaderManager] Loaded cached SPIR-V for '{}/{}'", name,
+            stageSuffix(stage).substr(1));
+        return shader;
+      }
+    }
+  }
+
+  // Cache miss or invalid — compile via Slang
+  auto shader = compileStage(sourcePath, entryPoint, stage);
+  if (!shader || !shader->isValid) {
+    return shader;
+  }
+
+  // Write compiled SPIR-V to cache (recompile to get SPIR-V bytes)
+  ShaderCompileRequest request;
+  request.sourcePath = sourcePath;
+  request.entryPoint = entryPoint;
+  request.stage = stage;
+  auto result = compile(request);
+  if (result.success) {
+    std::lock_guard<std::mutex> lock(slangMutex_);
+    if (writeCachedSpirv(cachePath, result.spirvCode)) {
+      std::println("[ShaderManager] Compiled and cached '{}/{}'", name,
+                   stageSuffix(stage).substr(1));
+    }
+  }
+
+  return shader;
+}
 
 } // namespace device
