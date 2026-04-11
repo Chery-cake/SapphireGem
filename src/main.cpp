@@ -1,6 +1,7 @@
 #include "config.h"
 #include "config_threads.h"
 #include "config_vulkan.h"
+#include "compute_renderer.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "hot_reload_modules.h"
@@ -18,35 +19,46 @@
 #include "vulkan_instance.h"
 #include "window.h"
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <memory>
+#include <numeric>
 #include <print>
+#include <random>
 #include <thread>
 
 // ============================================================================
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Bindless cube shader tag (vertex + fragment + geometry)
+// Object base shader tag (vertex + fragment + geometry) – replaces old per-object shaders
+static constexpr device::ShaderTag OBJECT_BASE_SHADER_TAG{
+    "object_base", "object_base.slang", "vertMain", "fragMain", "geomMain"};
+
+// Legacy shader tags (kept for reference, replaced by OBJECT_BASE_SHADER_TAG)
 static constexpr device::ShaderTag CUBE_BINDLESS_SHADER_TAG{
     "cube_bindless", "cube_bindless.slang", "vertMain", "fragMain", "geomMain"};
-
-// Bindless 2D quad shader tag (vertex + fragment + geometry)
 static constexpr device::ShaderTag QUAD_2D_BINDLESS_SHADER_TAG{
     "quad2d_bindless", "quad2d_bindless.slang", "vertMain", "fragMain",
     "geomMain"};
 
-// Material tags (no texture binding plan — textures accessed via bindless)
+// Material tags – cube and quad now use the unified object_base shader
 static constexpr window::MaterialTag CUBE_MATERIAL_TAG{
-    "cube_bindless_mat", &CUBE_BINDLESS_SHADER_TAG};
+    "cube_bindless_mat", &OBJECT_BASE_SHADER_TAG};
 static constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{
     "quad2d_bindless_mat", &QUAD_2D_BINDLESS_SHADER_TAG};
+
+// Polytope material tag (new Window 3)
+static constexpr window::MaterialTag POLYTOPE_MATERIAL_TAG{
+    "polytope_mat", &OBJECT_BASE_SHADER_TAG};
 
 // Object tags
 static constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj", &CUBE_MATERIAL_TAG};
 static constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
                                                    &QUAD_2D_MATERIAL_TAG};
+static constexpr window::ObjectTag POLYTOPE_OBJ_TAG{"polytope_obj",
+                                                     &POLYTOPE_MATERIAL_TAG};
 
 // Texture tags for shared assets (still used for CPU-side image loading)
 static const window::ImageTag CHECKERBOARD_IMAGE{window::ImageFromFile{
@@ -69,6 +81,7 @@ static const window::TextureTag LAYER_ATLAS_TEX_TAG{"layer_atlas_tex",
 // Scene tags
 static constexpr window::SceneTag SCENE_CUBE_TAG{"scene_cube"};
 static constexpr window::SceneTag SCENE_2D_TAG{"scene_2d"};
+static constexpr window::SceneTag SCENE_POLYTOPE_TAG{"scene_polytope"};
 
 // ============================================================================
 // Concrete Scene Implementations
@@ -90,17 +103,22 @@ private:
   device::TextureId cubeTextureId_;
   device::TextureId atlasTextureId_;
 
+  // Compute renderer for pre-computed geometry
+  std::shared_ptr<device::ComputeRenderer> computeRenderer_;
+
 public:
   explicit CubeScene3D(
       const window::SceneTag &sceneTag,
       std::shared_ptr<window::Texture> checkerboard,
       std::shared_ptr<window::Texture> layerAtlas,
       std::shared_ptr<device::ImageArrayRegistry> registry,
-      std::shared_ptr<device::TextureTableManager> textureTable)
+      std::shared_ptr<device::TextureTableManager> textureTable,
+      std::shared_ptr<device::ComputeRenderer> computeRenderer)
       : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
         layerAtlasTex_(std::move(layerAtlas)),
         imageRegistry_(std::move(registry)),
-        textureTable_(std::move(textureTable)) {}
+        textureTable_(std::move(textureTable)),
+        computeRenderer_(std::move(computeRenderer)) {}
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -292,6 +310,39 @@ public:
     cube_->setTextureId(cubeTextureId_);
     cube_->setAtlasTextureId(atlasTextureId_);
     cube_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+
+    // Assign per-face materials using the new FaceMaterialDesc system
+    // Each cube face = 2 triangles, 12 triangles total
+    // Face 0 (front +Z, tri 0-1): texture from file, no effect
+    cube_->setFaceMaterial(0, {cubeTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
+    cube_->setFaceMaterial(1, {cubeTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
+    // Face 1 (back -Z, tri 2-3): atlas layered texture, no effect
+    cube_->setFaceMaterial(2, {atlasTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
+    cube_->setFaceMaterial(3, {atlasTextureId_, device::EFFECT_NONE, 0.0f, 0.0f});
+    // Face 2 (left -X, tri 4-5): gradient + wave
+    cube_->setFaceMaterial(4, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
+    cube_->setFaceMaterial(5, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
+    // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
+    cube_->setFaceMaterial(6, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
+    cube_->setFaceMaterial(7, {{}, device::EFFECT_GRADIENT | device::EFFECT_WAVE, 0.05f, 4.0f});
+    // Face 4 (top +Y, tri 8-9): plain colour, no effect
+    cube_->setFaceMaterial(8, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
+    cube_->setFaceMaterial(9, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
+    // Face 5 (bottom -Y, tri 10-11): plain colour, no effect
+    cube_->setFaceMaterial(10, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
+    cube_->setFaceMaterial(11, {{}, device::EFFECT_NONE, 0.0f, 0.0f});
+
+    // Use ComputeRenderer to pre-compute cube geometry (static, runs once)
+    if (computeRenderer_ && computeRenderer_->isInitialized()) {
+      std::vector<device::GPUFaceData> gpuFaceData(12);
+      for (uint32_t i = 0; i < 12; ++i) {
+        auto desc = cube_->getFaceMaterial(i);
+        gpuFaceData[i] = {desc.textureId.index, desc.effectFlags,
+                          desc.effectParam0, desc.effectParam1};
+      }
+      computeRenderer_->precomputeGeometry(
+          allocator, device, "cube_obj", 36, 12, gpuFaceData);
+    }
 
     // Pipeline config with push constants for time + textureId +
     // atlasTextureId
@@ -522,6 +573,305 @@ public:
 };
 
 // ============================================================================
+// PolytopeDemoScene (Window 3) – Random convex polytope with per-face materials
+// ============================================================================
+
+class PolytopeDemoScene : public window::Scene {
+private:
+  std::unique_ptr<window::Material> material_;
+  std::unique_ptr<window::Object<3>> polytope_;
+  float rotX_ = 0.0f, rotY_ = 0.0f, rotZ_ = 0.0f;
+  float totalTime_ = 0.0f;
+
+  std::shared_ptr<window::Texture> checkerboardTex_;
+  std::shared_ptr<window::Texture> layerAtlasTex_;
+  std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
+  std::shared_ptr<device::TextureTableManager> textureTable_;
+  std::shared_ptr<device::ComputeRenderer> computeRenderer_;
+
+public:
+  explicit PolytopeDemoScene(
+      const window::SceneTag &sceneTag,
+      std::shared_ptr<window::Texture> checkerboard,
+      std::shared_ptr<window::Texture> layerAtlas,
+      std::shared_ptr<device::ImageArrayRegistry> registry,
+      std::shared_ptr<device::TextureTableManager> textureTable,
+      std::shared_ptr<device::ComputeRenderer> computeRenderer)
+      : Scene(sceneTag), checkerboardTex_(std::move(checkerboard)),
+        layerAtlasTex_(std::move(layerAtlas)),
+        imageRegistry_(std::move(registry)),
+        textureTable_(std::move(textureTable)),
+        computeRenderer_(std::move(computeRenderer)) {}
+
+  bool load(device::GPUDevice &device,
+            std::vector<device::GPUDevice *> &secondaryGPUs,
+            device::VMAAllocator &allocator,
+            device::ShaderManager &shaderManager,
+            window::Renderer &renderer) override {
+    (void)secondaryGPUs;
+
+    if (!imageRegistry_->isInitialized()) {
+      if (!imageRegistry_->initialize(device)) {
+        std::println(stderr, "[{}] Failed to initialize image registry",
+                     getName());
+        return false;
+      }
+    }
+
+    material_ = std::make_unique<window::Material>(POLYTOPE_MATERIAL_TAG);
+    if (!material_->initialize(shaderManager)) {
+      std::println(stderr, "[{}] Failed to initialize polytope material",
+                   getName());
+      return false;
+    }
+
+    // Upload textures if not already done
+    if (checkerboardTex_ && !checkerboardTex_->isUploaded()) {
+      if (!checkerboardTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload checkerboard texture",
+                     getName());
+        return false;
+      }
+      checkerboardTex_->createSampler(device);
+    }
+    if (layerAtlasTex_ && !layerAtlasTex_->isUploaded()) {
+      if (!layerAtlasTex_->upload(allocator, device)) {
+        std::println(stderr, "[{}] Failed to upload layer atlas texture",
+                     getName());
+        return false;
+      }
+      layerAtlasTex_->createSampler(device);
+    }
+
+    // Register images in the shared bindless registry
+    device::ImageHandle checkerHandle;
+    if (checkerboardTex_ && checkerboardTex_->isUploaded()) {
+      const auto *layer = checkerboardTex_->getLayer(0);
+      if (layer && layer->loaded) {
+        checkerHandle = imageRegistry_->registerImage(
+            device::ImageKind::eImage2D, layer->gpuImage.getView());
+      }
+    }
+
+    device::ImageHandle atlasHandle;
+    if (layerAtlasTex_ && layerAtlasTex_->isUploaded()) {
+      const auto *layer = layerAtlasTex_->getLayer(0);
+      if (layer && layer->loaded) {
+        atlasHandle = imageRegistry_->registerImage(
+            device::ImageKind::eAtlas, layer->gpuImage.getView());
+      }
+    }
+
+    // Generate a random convex polytope
+    // Use a simple approach: start with an icosahedron and randomly
+    // select N faces (6-12) to create the polytope
+    std::mt19937 rng(42); // Fixed seed for reproducibility
+    std::uniform_int_distribution<int> faceDist(6, 12);
+    int targetFaces = faceDist(rng);
+
+    // Generate an icosahedron-like shape as base geometry
+    // For simplicity, generate random points on a unit sphere
+    // and use them as triangle fan vertices
+    std::vector<window::Vertex<3>> vertices;
+    std::vector<uint32_t> indices;
+
+    // Golden ratio icosahedron vertices
+    const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
+    const float scale = 0.5f / std::sqrt(1.0f + phi * phi);
+
+    std::vector<glm::vec3> icoVerts = {
+        {-1, phi, 0}, { 1, phi, 0}, {-1, -phi, 0}, { 1, -phi, 0},
+        {0, -1, phi}, {0,  1, phi}, {0, -1, -phi}, {0,  1, -phi},
+        {phi, 0, -1}, {phi, 0,  1}, {-phi, 0, -1}, {-phi, 0, 1},
+    };
+    for (auto &v : icoVerts) {
+      v *= scale;
+    }
+
+    // Icosahedron face indices (20 triangles)
+    std::vector<std::array<int, 3>> icoFaces = {
+        {0, 11, 5},  {0, 5, 1},   {0, 1, 7},   {0, 7, 10},  {0, 10, 11},
+        {1, 5, 9},   {5, 11, 4},  {11, 10, 2},  {10, 7, 6},  {7, 1, 8},
+        {3, 9, 4},   {3, 4, 2},   {3, 2, 6},   {3, 6, 8},   {3, 8, 9},
+        {4, 9, 5},   {2, 4, 11},  {6, 2, 10},  {8, 6, 7},   {9, 8, 1},
+    };
+
+    // Select up to targetFaces from the icosahedron
+    int numFaces = std::min(targetFaces, static_cast<int>(icoFaces.size()));
+
+    // Shuffle faces and pick the first N
+    std::vector<int> faceIndices(static_cast<size_t>(icoFaces.size()));
+    std::iota(faceIndices.begin(), faceIndices.end(), 0);
+    std::ranges::shuffle(faceIndices, rng);
+
+    // Random colours
+    std::uniform_real_distribution<float> colorDist(0.2f, 1.0f);
+
+    for (int fi = 0; fi < numFaces; ++fi) {
+      auto &face = icoFaces[static_cast<size_t>(faceIndices[static_cast<size_t>(fi)])];
+      float r = colorDist(rng), g = colorDist(rng), b = colorDist(rng);
+
+      uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+      for (int vi = 0; vi < 3; ++vi) {
+        window::Vertex<3> vert;
+        auto &p = icoVerts[static_cast<size_t>(face[static_cast<size_t>(vi)])];
+        vert.position = {p.x, p.y, p.z};
+        vert.color = {r, g, b};
+        vertices.push_back(vert);
+      }
+      indices.push_back(baseIdx);
+      indices.push_back(baseIdx + 1);
+      indices.push_back(baseIdx + 2);
+    }
+
+    polytope_ = std::make_unique<window::Object<3>>(
+        POLYTOPE_OBJ_TAG, std::move(vertices), std::move(indices));
+
+    // Assign random per-face materials
+    std::uniform_int_distribution<int> typeDist(0, 5);
+
+    for (int fi = 0; fi < numFaces; ++fi) {
+      uint32_t faceIdx = static_cast<uint32_t>(fi);
+      int matType = typeDist(rng);
+      device::FaceMaterialDesc desc;
+
+      switch (matType) {
+      case 0: // Solid colour — no texture, no effect
+        desc.effectFlags = device::EFFECT_NONE;
+        break;
+      case 1: // Gradient
+        desc.effectFlags = device::EFFECT_GRADIENT;
+        break;
+      case 2: { // Single image file (checkerboard)
+        device::TextureId texId = textureTable_->addRecord(1);
+        device::GPUTextureLayer layer;
+        layer.image2DIndex = checkerHandle.isValid()
+                                 ? static_cast<int32_t>(checkerHandle.index)
+                                 : -1;
+        textureTable_->setLayers(texId, {layer});
+        desc.textureId = texId;
+        desc.effectFlags = device::EFFECT_NONE;
+        break;
+      }
+      case 3: { // Image from atlas (random sub-region)
+        device::TextureId texId = textureTable_->addRecord(1);
+        device::GPUTextureLayer layer;
+        layer.atlasIndex = atlasHandle.isValid()
+                               ? static_cast<int32_t>(atlasHandle.index)
+                               : -1;
+        std::uniform_real_distribution<float> uvDist(0.0f, 0.5f);
+        layer.atlasUvOffsetX = uvDist(rng);
+        layer.atlasUvOffsetY = uvDist(rng);
+        layer.atlasUvScaleX = 0.5f;
+        layer.atlasUvScaleY = 1.0f / 3.0f;
+        textureTable_->setLayers(texId, {layer});
+        desc.textureId = texId;
+        desc.effectFlags = device::EFFECT_NONE;
+        break;
+      }
+      case 4: // Wave effect
+        desc.effectFlags = device::EFFECT_WAVE;
+        desc.effectParam0 = 0.05f; // amplitude
+        desc.effectParam1 = 4.0f;  // frequency
+        break;
+      case 5: // Drawing effect
+        desc.effectFlags = device::EFFECT_DRAWING;
+        break;
+      }
+
+      polytope_->setFaceMaterial(faceIdx, desc);
+    }
+
+    // Upload texture tables to GPU
+    if (!textureTable_->uploadToGPU(allocator, device)) {
+      std::println(stderr, "[{}] Failed to upload texture tables", getName());
+      return false;
+    }
+
+    if (checkerboardTex_ && checkerboardTex_->getSampler()) {
+      imageRegistry_->commitDescriptors(device, checkerboardTex_->getSampler(),
+                                        &textureTable_->getRecordBuffer(),
+                                        &textureTable_->getLayerBuffer());
+    }
+
+    polytope_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+
+    // Use ComputeRenderer to pre-compute geometry
+    if (computeRenderer_ && computeRenderer_->isInitialized()) {
+      std::vector<device::GPUFaceData> gpuFaceData(static_cast<size_t>(numFaces));
+      for (int i = 0; i < numFaces; ++i) {
+        auto desc = polytope_->getFaceMaterial(static_cast<uint32_t>(i));
+        gpuFaceData[static_cast<size_t>(i)] = {desc.textureId.index, desc.effectFlags,
+                                                desc.effectParam0, desc.effectParam1};
+      }
+      computeRenderer_->precomputeGeometry(
+          allocator, device, "polytope_obj",
+          static_cast<uint32_t>(numFaces) * 3,
+          static_cast<uint32_t>(numFaces), gpuFaceData);
+    }
+
+    window::PipelineConfig pConfig;
+    pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+    pConfig.cullMode = vk::CullModeFlagBits::eBack;
+    pConfig.frontFace = vk::FrontFace::eCounterClockwise;
+    pConfig.depthTestEnable = true;
+    pConfig.depthWriteEnable = true;
+    pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
+    pConfig.pushConstantStages =
+        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+
+    if (!polytope_->initialize(allocator, device, *material_,
+                               renderer.getRenderPass(),
+                               window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                               imageRegistry_->getDescriptorSetLayout())) {
+      std::println(stderr, "[{}] Failed to initialize polytope", getName());
+      return false;
+    }
+
+    setLoaded(true);
+    std::println("[{}] Polytope scene loaded ({} faces)", getName(), numFaces);
+    return true;
+  }
+
+  void unload() override {
+    if (polytope_) {
+      polytope_->release();
+      polytope_.reset();
+    }
+    if (material_) {
+      material_->release();
+      material_.reset();
+    }
+    setLoaded(false);
+    std::println("[{}] Polytope scene unloaded", getName());
+  }
+
+  void update(float deltaTime) override {
+    totalTime_ += deltaTime;
+    rotX_ += deltaTime * 0.7f;
+    rotY_ += deltaTime * 1.1f;
+    rotZ_ += deltaTime * 0.4f;
+  }
+
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override {
+    if (polytope_ && polytope_->isInitialized()) {
+      polytope_->setRotation({rotX_, rotY_, rotZ_});
+      polytope_->setTime(totalTime_);
+
+      glm::mat4 view =
+          glm::lookAt(glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                      glm::vec3(0.0f, 1.0f, 0.0f));
+      glm::mat4 proj =
+          glm::perspective(glm::radians(45.0f), 16.0f / 9.0f, 0.1f, 100.0f);
+      proj[1][1] *= -1.0f; // Flip Y for Vulkan
+
+      polytope_->updateUniforms(frameIndex, view, proj);
+      polytope_->draw(cmd, frameIndex);
+    }
+  }
+};
+
+// ============================================================================
 // Main Application
 // ============================================================================
 
@@ -605,6 +955,10 @@ int main(int argc, char *argv[]) {
   // Create Window 2
   wConf.title = "SapphireEngine - Window 2";
   window::Window *win2 = wMan.createWindow(wConf);
+
+  // Create Window 3 (polytope demo)
+  wConf.title = "SapphireEngine - Window 3";
+  window::Window *win3 = wMan.createWindow(wConf);
 
   // Update loop config to match window count
   {
@@ -699,12 +1053,17 @@ int main(int argc, char *argv[]) {
   // TextureRecord/TextureLayer SSBOs and descriptor bindings stay consistent
   auto sharedTextureTable = std::make_shared<device::TextureTableManager>();
 
+  // Create a shared compute renderer for pre-computed geometry
+  auto sharedComputeRenderer = std::make_shared<device::ComputeRenderer>();
+  sharedComputeRenderer->initialize(dMan.getPrimaryDevice(), sMan,
+                                    secondaryGPUs);
+
   // Create scenes using the tag system and add them to windows
   // Window 1: 3D cube scene with bindless textures (Object<3>)
   if (win1 && win1->hasRenderer()) {
     auto sceneCube = std::make_unique<CubeScene3D>(
         SCENE_CUBE_TAG, checkerboardTex, layerAtlasTex, sharedImageRegistry,
-        sharedTextureTable);
+        sharedTextureTable, sharedComputeRenderer);
     win1->addScene(&SCENE_CUBE_TAG, std::move(sceneCube));
     win1->presentScene(&SCENE_CUBE_TAG);
   }
@@ -716,6 +1075,30 @@ int main(int argc, char *argv[]) {
         SCENE_2D_TAG, checkerboardTex, sharedImageRegistry, sharedTextureTable);
     win2->addScene(&SCENE_2D_TAG, std::move(scene2d));
     win2->presentScene(&SCENE_2D_TAG);
+  }
+
+  // Window 3: Random polytope demo scene (Object<3>)
+  if (win3) {
+    win3->setEventCallback(
+        [](const window::WindowEvent &) {
+          std::print("[Main] Window 3 close requested\n");
+        },
+        window::WindowEventType::Close);
+
+    win3->setEventCallback(
+        [](const window::WindowEvent &event) {
+          std::print("[Main] Window 3 resized to {}x{}\n", event.width,
+                     event.height);
+        },
+        window::WindowEventType::Resize);
+
+    if (win3->hasRenderer()) {
+      auto scenePolytope = std::make_unique<PolytopeDemoScene>(
+          SCENE_POLYTOPE_TAG, checkerboardTex, layerAtlasTex,
+          sharedImageRegistry, sharedTextureTable, sharedComputeRenderer);
+      win3->addScene(&SCENE_POLYTOPE_TAG, std::move(scenePolytope));
+      win3->presentScene(&SCENE_POLYTOPE_TAG);
+    }
   }
 
   // TODO improve frame cap
