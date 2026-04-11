@@ -165,7 +165,7 @@ struct DEVICE_API FaceEffect {
     if (faceEffectParamCount(t) != 2) {
       std::println(stderr,
                    "[FaceEffect] Warning: effect type {} expects {} params, "
-                   "but 2 were provided — extras will be ignored",
+                   "but 2 were provided — GPU may ignore extras",
                    static_cast<uint32_t>(t), faceEffectParamCount(t));
     }
   }
