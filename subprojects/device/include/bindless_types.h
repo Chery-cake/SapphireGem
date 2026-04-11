@@ -3,8 +3,10 @@
 
 #include "device_export.h"
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace device {
 
@@ -114,18 +116,66 @@ enum class EffectType : uint32_t {
 };
 
 /**
- * @brief A single effect entry with type and parameters
+ * @brief Number of parameters required by each effect type.
  *
- * Designed for composability: faces store an array of FaceEffect
- * entries, each independently parameterised. The shader dispatches
- * each active effect and blends the results.
+ * Used to validate FaceEffect construction and interpret the params array.
+ */
+[[nodiscard]] constexpr uint32_t
+faceEffectParamCount(EffectType type) noexcept {
+  switch (type) {
+  case EffectType::eNone:
+    return 0;
+  case EffectType::eGradient:
+    return 2; // param[0]=range, param[1]=angle
+  case EffectType::eWave:
+    return 2; // param[0]=amplitude, param[1]=frequency
+  case EffectType::eDrawing:
+    return 0; // no params
+  default:
+    return 0;
+  }
+}
+
+/**
+ * @brief A single effect entry with type and a per-effect parameter array.
+ *
+ * The parameter array length is determined by the effect type via
+ * faceEffectParamCount(). Constructing with the wrong number of params
+ * is a programmer error caught by assertion.
  */
 struct DEVICE_API FaceEffect {
   EffectType type = EffectType::eNone;
-  float param0 = 0.0f; ///< e.g. wave amplitude, gradient range
-  float param1 = 0.0f; ///< e.g. wave frequency
+  std::vector<float> params; ///< Length == faceEffectParamCount(type)
+
+  FaceEffect() = default;
+
+  /**
+   * @brief Construct a FaceEffect with explicit params.
+   *
+   * @param t Effect type
+   * @param p Parameter values — must have exactly faceEffectParamCount(t)
+   * entries
+   */
+  explicit FaceEffect(EffectType t, std::vector<float> p = {})
+      : type(t), params(std::move(p)) {
+    assert(params.size() == faceEffectParamCount(type) &&
+           "FaceEffect: wrong number of params for effect type");
+  }
+
+  /**
+   * @brief Convenience constructor for effects with exactly 2 params.
+   */
+  FaceEffect(EffectType t, float p0, float p1) : type(t), params{p0, p1} {
+    assert(faceEffectParamCount(t) == 2 &&
+           "FaceEffect: effect type does not take 2 params");
+  }
 
   [[nodiscard]] bool isActive() const { return type != EffectType::eNone; }
+
+  /** @brief Safe parameter access — returns 0.0f for out-of-range indices. */
+  [[nodiscard]] float param(uint32_t i) const {
+    return i < params.size() ? params[i] : 0.0f;
+  }
 };
 
 /// Maximum number of simultaneous effects per face
@@ -152,7 +202,7 @@ struct DEVICE_API FaceMaterial {
   [[nodiscard]] bool addEffect(FaceEffect fx) {
     for (auto &slot : effects) {
       if (!slot.isActive()) {
-        slot = fx;
+        slot = std::move(fx);
         return true;
       }
     }
@@ -240,8 +290,8 @@ struct DEVICE_API GPUFaceData {
       }
 
       if (!firstParamsSet) {
-        p0 = fx.param0;
-        p1 = fx.param1;
+        p0 = fx.param(0);
+        p1 = fx.param(1);
         firstParamsSet = true;
       }
     }

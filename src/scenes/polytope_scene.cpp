@@ -153,7 +153,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     case 0: // Solid colour — no texture, no effect
       break;
     case 1: // Gradient
-      fm.addEffect({device::EffectType::eGradient});
+      fm.addEffect(device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
       break;
     case 2: { // Single image file (checkerboard)
       device::TextureId texId = textureTable_->addRecord(1);
@@ -181,10 +181,10 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       break;
     }
     case 4: // Wave effect
-      fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
+      fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
       break;
     case 5: // Drawing effect
-      fm.addEffect({device::EffectType::eDrawing});
+      fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
       break;
     }
 

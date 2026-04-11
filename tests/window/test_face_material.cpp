@@ -44,8 +44,8 @@ void test_face_material_values() {
 
   device::FaceMaterial fm;
   fm.textureId = 5;
-  fm.addEffect({device::EffectType::eWave, 0.1f, 8.0f});
-  fm.addEffect({device::EffectType::eDrawing});
+  fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.1f, 8.0f});
+  fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
 
   assert(fm.textureId == 5);
 
@@ -91,7 +91,7 @@ void test_object3d_face_material() {
   // Set face material on face 0
   device::FaceMaterial mat;
   mat.textureId = 42;
-  mat.addEffect({device::EffectType::eGradient, 0.5f});
+  mat.addEffect(device::FaceEffect{device::EffectType::eGradient, 0.5f, 0.0f});
   obj.setFaceMaterial(0, mat);
 
   auto retrieved = obj.getFaceMaterial(0);
@@ -124,7 +124,7 @@ void test_object2d_face_material() {
   window::Object<2> obj(TEST_OBJ_TAG, std::move(vertices), std::move(indices));
 
   device::FaceMaterial mat;
-  mat.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
+  mat.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
   obj.setFaceMaterial(1, mat);
 
   auto retrieved = obj.getFaceMaterial(1);
@@ -154,7 +154,7 @@ void test_face_material_index_validation() {
   // Object has 1 face (indices 0,1,2). Setting face 10 should be rejected
   // (logged as error and ignored since faces_ is non-empty and 10 >= 1).
   device::FaceMaterial mat;
-  mat.addEffect({device::EffectType::eDrawing});
+  mat.addEffect(device::FaceEffect{device::EffectType::eDrawing});
   obj.setFaceMaterial(10, mat);
 
   // Out-of-range read returns default
