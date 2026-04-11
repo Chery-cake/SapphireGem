@@ -38,8 +38,7 @@ struct UniformBuffer {
 // ---------------------------------------------------------------------------
 struct PushData {
     float time;
-    uint  textureId;       // Base textureId (fallback)
-    uint  atlasTextureId;  // Atlas textureId (legacy compat)
+    uint  objectId;        // Object identifier
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 

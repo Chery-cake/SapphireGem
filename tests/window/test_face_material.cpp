@@ -26,10 +26,12 @@ void test_face_material_defaults() {
   TEST(face_material_defaults);
 
   device::FaceMaterial fm{};
-  assert(fm.effectFlags == 0);
-  assert(fm.effectParam0 == 0.0f);
-  assert(fm.effectParam1 == 0.0f);
   assert(!fm.hasEffects());
+
+  auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == 0);
+  assert(gpu.effectParam0 == 0.0f);
+  assert(gpu.effectParam1 == 0.0f);
 
   PASS();
 }
@@ -46,9 +48,11 @@ void test_face_material_values() {
   fm.addEffect({device::EffectType::eDrawing});
 
   assert(fm.textureId == 5);
-  assert(fm.effectFlags == (device::EFFECT_WAVE | device::EFFECT_DRAWING));
-  assert(fm.effectParam0 == 0.1f);
-  assert(fm.effectParam1 == 8.0f);
+
+  auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == (0x02u | 0x04u)); // WAVE | DRAWING
+  assert(gpu.effectParam0 == 0.1f);
+  assert(gpu.effectParam1 == 8.0f);
 
   PASS();
 }
@@ -81,7 +85,8 @@ void test_object3d_face_material() {
 
   // Default face materials
   auto fm0 = obj.getFaceMaterial(0);
-  assert(fm0.effectFlags == 0);
+  auto gpu0 = device::GPUFaceData::fromFaceMaterial(fm0);
+  assert(gpu0.effectFlags == 0);
 
   // Set face material on face 0
   device::FaceMaterial mat;
@@ -91,12 +96,14 @@ void test_object3d_face_material() {
 
   auto retrieved = obj.getFaceMaterial(0);
   assert(retrieved.textureId == 42);
-  assert(retrieved.effectFlags == device::EFFECT_GRADIENT);
-  assert(retrieved.effectParam0 == 0.5f);
+  auto gpuR = device::GPUFaceData::fromFaceMaterial(retrieved);
+  assert(gpuR.effectFlags == 0x01u); // GRADIENT
+  assert(gpuR.effectParam0 == 0.5f);
 
   // Face 1 should be unchanged
   auto fm1 = obj.getFaceMaterial(1);
-  assert(fm1.effectFlags == 0);
+  auto gpu1 = device::GPUFaceData::fromFaceMaterial(fm1);
+  assert(gpu1.effectFlags == 0);
 
   PASS();
 }
@@ -121,9 +128,10 @@ void test_object2d_face_material() {
   obj.setFaceMaterial(1, mat);
 
   auto retrieved = obj.getFaceMaterial(1);
-  assert(retrieved.effectFlags == device::EFFECT_WAVE);
-  assert(retrieved.effectParam0 == 0.05f);
-  assert(retrieved.effectParam1 == 4.0f);
+  auto gpuR = device::GPUFaceData::fromFaceMaterial(retrieved);
+  assert(gpuR.effectFlags == 0x02u); // WAVE
+  assert(gpuR.effectParam0 == 0.05f);
+  assert(gpuR.effectParam1 == 4.0f);
 
   PASS();
 }
@@ -151,11 +159,13 @@ void test_face_material_index_validation() {
 
   // Out-of-range read returns default
   auto outOfRange = obj.getFaceMaterial(10);
-  assert(outOfRange.effectFlags == 0);
+  auto gpuOOR = device::GPUFaceData::fromFaceMaterial(outOfRange);
+  assert(gpuOOR.effectFlags == 0);
 
   // Valid face 0 read returns default (was never set)
   auto valid = obj.getFaceMaterial(0);
-  assert(valid.effectFlags == 0);
+  auto gpuV = device::GPUFaceData::fromFaceMaterial(valid);
+  assert(gpuV.effectFlags == 0);
 
   PASS();
 }

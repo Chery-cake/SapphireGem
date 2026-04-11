@@ -1,7 +1,7 @@
 // face_effects.slang
 // Per-face rendering effect implementations dispatched via effectFlags bitmask.
 //
-// Effect flag bits (must match device::EFFECT_* constants in bindless_types.h):
+// Effect flag bits (GPU-side constants, derived from FaceMaterial effects array):
 //   bit 0 (0x01): EFFECT_GRADIENT  – vertical gradient colour
 //   bit 1 (0x02): EFFECT_WAVE      – wave UV displacement / colour
 //   bit 2 (0x04): EFFECT_DRAWING   – procedural drawing pattern

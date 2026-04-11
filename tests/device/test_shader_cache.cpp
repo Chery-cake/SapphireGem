@@ -87,14 +87,14 @@ void test_gpu_face_data_layout() {
   static_assert(sizeof(device::GPUFaceData) == 16,
                 "GPUFaceData must be 16 bytes");
 
-  device::GPUFaceData data{};
-  data.textureId = 42;
-  data.effectFlags = device::EFFECT_WAVE | device::EFFECT_GRADIENT;
-  data.effectParam0 = 0.05f;
-  data.effectParam1 = 4.0f;
+  // Build a FaceMaterial with wave + gradient, then convert
+  device::FaceMaterial fm{};
+  fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f});
+  fm.addEffect({device::EffectType::eGradient});
+  device::GPUFaceData data = device::GPUFaceData::fromFaceMaterial(fm);
 
-  assert(data.textureId == 42);
-  assert(data.effectFlags == (device::EFFECT_WAVE | device::EFFECT_GRADIENT));
+  assert(data.textureId == device::TextureId::INVALID);
+  assert(data.effectFlags == (0x02u | 0x01u)); // WAVE | GRADIENT
   assert(data.effectParam0 == 0.05f);
   assert(data.effectParam1 == 4.0f);
 
@@ -102,26 +102,49 @@ void test_gpu_face_data_layout() {
 }
 
 // ---------------------------------------------------------------------------
-// Test: Effect flag constants
+// Test: Effect flag constants (GPU-side bitmask values)
 // ---------------------------------------------------------------------------
 void test_effect_flag_constants() {
   TEST(effect_flag_constants);
 
-  assert(device::EFFECT_NONE == 0);
-  assert(device::EFFECT_GRADIENT == (1u << 0));
-  assert(device::EFFECT_WAVE == (1u << 1));
-  assert(device::EFFECT_DRAWING == (1u << 2));
+  // The GPU-side bitmask values are derived from EffectType enum:
+  //   eGradient -> 0x01, eWave -> 0x02, eDrawing -> 0x04
+  // Verify via GPUFaceData::fromFaceMaterial
+
+  {
+    device::FaceMaterial fm;
+    fm.addEffect({device::EffectType::eGradient});
+    auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+    assert(gpu.effectFlags == 0x01u);
+  }
+  {
+    device::FaceMaterial fm;
+    fm.addEffect({device::EffectType::eWave});
+    auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+    assert(gpu.effectFlags == 0x02u);
+  }
+  {
+    device::FaceMaterial fm;
+    fm.addEffect({device::EffectType::eDrawing});
+    auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+    assert(gpu.effectFlags == 0x04u);
+  }
 
   // No overlap
-  assert((device::EFFECT_GRADIENT & device::EFFECT_WAVE) == 0);
-  assert((device::EFFECT_GRADIENT & device::EFFECT_DRAWING) == 0);
-  assert((device::EFFECT_WAVE & device::EFFECT_DRAWING) == 0);
+  assert((0x01u & 0x02u) == 0);
+  assert((0x01u & 0x04u) == 0);
+  assert((0x02u & 0x04u) == 0);
 
   // Combining
-  uint32_t combined = device::EFFECT_GRADIENT | device::EFFECT_WAVE;
-  assert((combined & device::EFFECT_GRADIENT) != 0);
-  assert((combined & device::EFFECT_WAVE) != 0);
-  assert((combined & device::EFFECT_DRAWING) == 0);
+  {
+    device::FaceMaterial fm;
+    fm.addEffect({device::EffectType::eGradient});
+    fm.addEffect({device::EffectType::eWave});
+    auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+    assert((gpu.effectFlags & 0x01u) != 0); // gradient set
+    assert((gpu.effectFlags & 0x02u) != 0); // wave set
+    assert((gpu.effectFlags & 0x04u) == 0); // drawing not set
+  }
 
   PASS();
 }
@@ -133,10 +156,13 @@ void test_face_material_defaults() {
   TEST(face_material_defaults);
 
   device::FaceMaterial fm{};
-  assert(fm.effectFlags == 0);
-  assert(fm.effectParam0 == 0.0f);
-  assert(fm.effectParam1 == 0.0f);
   assert(!fm.hasEffects());
+
+  // Convert to GPU data and verify
+  auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == 0);
+  assert(gpu.effectParam0 == 0.0f);
+  assert(gpu.effectParam1 == 0.0f);
 
   PASS();
 }
@@ -152,28 +178,33 @@ void test_face_material_effects_array() {
   // Add a gradient effect
   assert(fm.addEffect({device::EffectType::eGradient, 0.5f, 1.0f}));
   assert(fm.hasEffects());
-  assert(fm.effectFlags == device::EFFECT_GRADIENT);
-  assert(fm.effectParam0 == 0.5f);
-  assert(fm.effectParam1 == 1.0f);
+
+  auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == 0x01u); // GRADIENT
+  assert(gpu.effectParam0 == 0.5f);
+  assert(gpu.effectParam1 == 1.0f);
 
   // Add a wave effect
   assert(fm.addEffect({device::EffectType::eWave, 0.05f, 4.0f}));
-  assert(fm.effectFlags == (device::EFFECT_GRADIENT | device::EFFECT_WAVE));
+  gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == (0x01u | 0x02u)); // GRADIENT | WAVE
   // First effect's params are kept
-  assert(fm.effectParam0 == 0.5f);
-  assert(fm.effectParam1 == 1.0f);
+  assert(gpu.effectParam0 == 0.5f);
+  assert(gpu.effectParam1 == 1.0f);
 
   // Remove gradient
   assert(fm.removeEffect(device::EffectType::eGradient));
-  assert(fm.effectFlags == device::EFFECT_WAVE);
+  gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == 0x02u); // WAVE only
   // Now wave is the first active effect
-  assert(fm.effectParam0 == 0.05f);
-  assert(fm.effectParam1 == 4.0f);
+  assert(gpu.effectParam0 == 0.05f);
+  assert(gpu.effectParam1 == 4.0f);
 
   // Clear all
   fm.clearEffects();
   assert(!fm.hasEffects());
-  assert(fm.effectFlags == 0);
+  gpu = device::GPUFaceData::fromFaceMaterial(fm);
+  assert(gpu.effectFlags == 0);
 
   PASS();
 }
@@ -210,7 +241,7 @@ void test_gpu_face_data_from_face_material() {
 
   device::GPUFaceData gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.textureId == 42);
-  assert(gpu.effectFlags == (device::EFFECT_WAVE | device::EFFECT_DRAWING));
+  assert(gpu.effectFlags == (0x02u | 0x04u)); // WAVE | DRAWING
   assert(gpu.effectParam0 == 0.1f);
   assert(gpu.effectParam1 == 8.0f);
 
@@ -225,8 +256,7 @@ void test_bindless_push_constants() {
 
   device::BindlessPushConstants pc{};
   assert(pc.time == 0.0f);
-  assert(pc.textureId == device::TextureId::INVALID);
-  assert(pc.atlasTextureId == device::TextureId::INVALID);
+  assert(pc.objectId == 0);
 
   PASS();
 }

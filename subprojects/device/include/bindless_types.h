@@ -91,8 +91,7 @@ enum class ProcessingType : uint32_t {
  */
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
-  uint32_t textureId = TextureId::INVALID;
-  uint32_t atlasTextureId = TextureId::INVALID;
+  uint32_t objectId = 0;
 };
 
 // ============================================================================
@@ -133,78 +132,18 @@ struct DEVICE_API FaceEffect {
 inline constexpr uint32_t MAX_FACE_EFFECTS = 4;
 
 /**
- * @brief Effect flag constants for per-face GPU data
- *
- * These bitmask values control per-face rendering effects in shaders.
- * A face can combine multiple effects via bitwise OR.
- * Kept for backward compatibility with shaders and GPU-side data.
- */
-inline constexpr uint32_t EFFECT_NONE = 0;
-inline constexpr uint32_t EFFECT_GRADIENT = 1u << 0;
-inline constexpr uint32_t EFFECT_WAVE = 1u << 1;
-inline constexpr uint32_t EFFECT_DRAWING = 1u << 2;
-
-/**
  * @brief Unified per-face material description
  *
- * Used both on the CPU side (Object face material storage) and
- * for uploading to the GPU via an SSBO. The first 16 bytes
- * (textureId, effectFlags, effectParam0, effectParam1) match the
- * FaceData struct in shaders (std430 layout).
- *
- * The effects array provides a structured way to manage effects
- * on the CPU side. The effectFlags bitmask and effectParam0/1 fields
- * are the GPU-side representation, derived from the effects array
- * via buildEffectFlags().
+ * Used on the CPU side (Object face material storage). The effects
+ * array provides a structured way to manage effects. For GPU upload,
+ * convert to GPUFaceData via GPUFaceData::fromFaceMaterial().
  */
 struct DEVICE_API FaceMaterial {
-  // --- GPU-uploaded fields (first 16 bytes, std430 layout) ---
+  // --- GPU-relevant fields ---
   uint32_t textureId = TextureId::INVALID; ///< TextureRecord index
-  uint32_t effectFlags = 0;    ///< Bitmask: EFFECT_GRADIENT, EFFECT_WAVE, etc.
-  float effectParam0 = 0.0f;  ///< Primary effect parameter (e.g. wave amplitude)
-  float effectParam1 = 0.0f;  ///< Secondary effect parameter (e.g. wave frequency)
 
   // --- CPU-side structured effects ---
   std::array<FaceEffect, MAX_FACE_EFFECTS> effects{};
-
-  /**
-   * @brief Rebuild effectFlags and effectParam0/1 from the effects array
-   *
-   * Call this after modifying the effects array to keep the GPU-side
-   * bitmask in sync. The first active effect's parameters are promoted
-   * to effectParam0/effectParam1.
-   */
-  void buildEffectFlags() {
-    effectFlags = EFFECT_NONE;
-    effectParam0 = 0.0f;
-    effectParam1 = 0.0f;
-    bool firstParamsSet = false;
-
-    for (const auto &fx : effects) {
-      if (!fx.isActive())
-        continue;
-
-      switch (fx.type) {
-      case EffectType::eGradient:
-        effectFlags |= EFFECT_GRADIENT;
-        break;
-      case EffectType::eWave:
-        effectFlags |= EFFECT_WAVE;
-        break;
-      case EffectType::eDrawing:
-        effectFlags |= EFFECT_DRAWING;
-        break;
-      default:
-        break;
-      }
-
-      if (!firstParamsSet) {
-        effectParam0 = fx.param0;
-        effectParam1 = fx.param1;
-        firstParamsSet = true;
-      }
-    }
-  }
 
   /**
    * @brief Add an effect to the first available slot
@@ -214,7 +153,6 @@ struct DEVICE_API FaceMaterial {
     for (auto &slot : effects) {
       if (!slot.isActive()) {
         slot = fx;
-        buildEffectFlags();
         return true;
       }
     }
@@ -229,7 +167,6 @@ struct DEVICE_API FaceMaterial {
     for (auto &slot : effects) {
       if (slot.type == type) {
         slot = {};
-        buildEffectFlags();
         return true;
       }
     }
@@ -241,45 +178,75 @@ struct DEVICE_API FaceMaterial {
    */
   void clearEffects() {
     effects = {};
-    effectFlags = EFFECT_NONE;
-    effectParam0 = 0.0f;
-    effectParam1 = 0.0f;
   }
 
   /**
    * @brief Check if any effect is active
    */
-  [[nodiscard]] bool hasEffects() const { return effectFlags != EFFECT_NONE; }
+  [[nodiscard]] bool hasEffects() const {
+    for (const auto &fx : effects) {
+      if (fx.isActive())
+        return true;
+    }
+    return false;
+  }
 };
-
-// The first 16 bytes of FaceMaterial match the GPU SSBO layout.
-// Use offsetof to verify the GPU-relevant fields are at the expected offsets.
-static_assert(offsetof(FaceMaterial, textureId) == 0,
-              "FaceMaterial::textureId must be at offset 0");
-static_assert(offsetof(FaceMaterial, effectFlags) == 4,
-              "FaceMaterial::effectFlags must be at offset 4");
-static_assert(offsetof(FaceMaterial, effectParam0) == 8,
-              "FaceMaterial::effectParam0 must be at offset 8");
-static_assert(offsetof(FaceMaterial, effectParam1) == 12,
-              "FaceMaterial::effectParam1 must be at offset 12");
 
 /**
  * @brief GPU-side per-face data (16 bytes, std430)
  *
  * This is the plain-old-data struct that is uploaded to the GPU SSBO.
  * Extracted from FaceMaterial for GPU upload.
+ *
+ * The effectFlags bitmask is built from the FaceMaterial effects array:
+ *   bit 0 (0x01): gradient
+ *   bit 1 (0x02): wave
+ *   bit 2 (0x04): drawing
  */
 struct DEVICE_API GPUFaceData {
   uint32_t textureId;   ///< Index into TextureRecord[]
-  uint32_t effectFlags; ///< Bitmask
+  uint32_t effectFlags; ///< Bitmask derived from effects array
   float effectParam0;
   float effectParam1;
 
   /**
    * @brief Construct from a FaceMaterial
+   *
+   * Builds the effectFlags bitmask from the effects array and
+   * promotes the first active effect's parameters to effectParam0/1.
    */
   static GPUFaceData fromFaceMaterial(const FaceMaterial &fm) {
-    return {fm.textureId, fm.effectFlags, fm.effectParam0, fm.effectParam1};
+    uint32_t flags = 0;
+    float p0 = 0.0f;
+    float p1 = 0.0f;
+    bool firstParamsSet = false;
+
+    for (const auto &fx : fm.effects) {
+      if (!fx.isActive())
+        continue;
+
+      switch (fx.type) {
+      case EffectType::eGradient:
+        flags |= 0x01u;
+        break;
+      case EffectType::eWave:
+        flags |= 0x02u;
+        break;
+      case EffectType::eDrawing:
+        flags |= 0x04u;
+        break;
+      default:
+        break;
+      }
+
+      if (!firstParamsSet) {
+        p0 = fx.param0;
+        p1 = fx.param1;
+        firstParamsSet = true;
+      }
+    }
+
+    return {fm.textureId, flags, p0, p1};
   }
 };
 static_assert(sizeof(GPUFaceData) == 16,

@@ -47,9 +47,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
-  submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
   faceMaterials_ = std::move(other.faceMaterials_);
-  atlasTextureId_ = other.atlasTextureId_;
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -77,9 +75,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
-    submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
     faceMaterials_ = std::move(other.faceMaterials_);
-    atlasTextureId_ = other.atlasTextureId_;
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -312,33 +308,6 @@ template <uint32_t Dim> void Object<Dim>::setTextureId(device::TextureId id) {
   baseTextureId_ = id;
 }
 
-template <uint32_t Dim>
-void Object<Dim>::setAtlasTextureId(device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  atlasTextureId_ = id;
-}
-
-template <uint32_t Dim>
-void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
-                                            device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  if (id.isValid()) {
-    submeshTextureOverrides_[faceIndex] = id;
-  } else {
-    submeshTextureOverrides_.erase(faceIndex);
-  }
-}
-
-template <uint32_t Dim>
-device::TextureId Object<Dim>::getEffectiveTextureId(uint32_t faceIndex) const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  auto it = submeshTextureOverrides_.find(faceIndex);
-  if (it != submeshTextureOverrides_.end()) {
-    return it->second;
-  }
-  return baseTextureId_;
-}
-
 template <uint32_t Dim> device::TextureId Object<Dim>::getTextureId() const {
   std::lock_guard<std::mutex> lock(objectMutex_);
   return baseTextureId_;
@@ -513,11 +482,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + textureId + atlasTextureId (bindless)
+  // Push constants: time + objectId (bindless)
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
-                                           atlasTextureId_.index};
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
