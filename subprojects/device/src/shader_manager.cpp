@@ -38,12 +38,7 @@ vk::ShaderStageFlagBits CompiledShader::getVkStage() const {
 }
 
 vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
-  return vk::PipelineShaderStageCreateInfo{
-      {},
-      getVkStage(),
-      module,
-      //"main"}; // TODO find a better way to deal with this naming problem
-      entryPoint.c_str()};
+  return vk::PipelineShaderStageCreateInfo{{}, getVkStage(), module, "main"};
 }
 
 // ============================================================================
