@@ -183,10 +183,10 @@ bool CubeScene3D::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  // Create cube geometry (36 vertices for 12 triangles)
-  // Expand the 8 shared cube positions into 36 individual vertices using
-  // the standard cube index mapping, so the GPU reads per-vertex positions
-  // from the position SSBO.
+  // Create cube geometry: 8 unique vertices + 36 indices (12 triangles)
+  // Using indexed drawing eliminates duplicate vertex positions, allowing
+  // the compute shader to correctly propagate wave displacement to all
+  // faces sharing a vertex.
   static constexpr std::array<std::array<float, 3>, 8> cubePos = {{
       {-0.5f, -0.5f, 0.5f},
       {0.5f, -0.5f, 0.5f},
@@ -197,7 +197,14 @@ bool CubeScene3D::load(device::GPUDevice &device,
       {0.5f, 0.5f, -0.5f},
       {-0.5f, 0.5f, -0.5f},
   }};
-  static constexpr std::array<uint32_t, 36> cubeIdx = {
+
+  std::vector<window::Vertex<3>> vertices(8);
+  for (size_t i = 0; i < 8; ++i) {
+    vertices[i].position = {cubePos[i][0], cubePos[i][1], cubePos[i][2]};
+    vertices[i].color = {1.0f, 1.0f, 1.0f};
+  }
+
+  std::vector<uint32_t> indices = {
       0, 1, 2, 0, 2, 3, // Front  (+Z)
       5, 4, 7, 5, 7, 6, // Back   (-Z)
       4, 0, 3, 4, 3, 7, // Left   (-X)
@@ -205,19 +212,6 @@ bool CubeScene3D::load(device::GPUDevice &device,
       3, 2, 6, 3, 6, 7, // Top    (+Y)
       4, 5, 1, 4, 1, 0, // Bottom (-Y)
   };
-
-  std::vector<window::Vertex<3>> vertices(36);
-  for (size_t i = 0; i < 36; ++i) {
-    auto &cp = cubePos[cubeIdx[i]];
-    vertices[i].position = {cp[0], cp[1], cp[2]};
-    vertices[i].color = {1.0f, 1.0f, 1.0f};
-  }
-
-  std::vector<uint32_t> indices;
-  indices.reserve(36);
-  for (uint32_t i = 0; i < 36; ++i) {
-    indices.push_back(i);
-  }
 
   cube_ = std::make_unique<window::Object<3>>(CUBE_OBJ_TAG, std::move(vertices),
                                               std::move(indices));
@@ -278,7 +272,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
   pConfig.depthWriteEnable = true;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
   pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+      vk::ShaderStageFlagBits::eCompute;
 
   if (!cube_->initialize(allocator, device, *material_,
                          renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,

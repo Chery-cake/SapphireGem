@@ -80,9 +80,8 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     }
   }
 
-  // Generate a convex polytope from a full icosahedron
-  // All 20 faces are rendered so there are no holes in the geometry.
-  std::uniform_int_distribution<int> faceDist(6, 12);
+  // Generate icosahedron: 12 unique vertices + 60 indices (20 triangles)
+  // Using indexed drawing so shared vertices get consistent displacement.
 
   // Golden ratio icosahedron vertices
   const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
@@ -107,45 +106,59 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 
   int numFaces = static_cast<int>(icoFaces.size());
 
-  // Random colours (fixed seed for reproducibility)
+  // Random colours per face (fixed seed for reproducibility)
   std::mt19937 rng(42);
   std::uniform_real_distribution<float> colorDist(0.2f, 1.0f);
 
-  std::vector<window::Vertex<3>> vertices;
+  // Build 12 unique vertices with average colour from adjacent faces
+  std::vector<window::Vertex<3>> vertices(12);
+  // Track per-vertex colour accumulation
+  std::vector<glm::vec3> colorAccum(12, glm::vec3(0.0f));
+  std::vector<int> colorCount(12, 0);
+
+  // First pass: determine per-face colours and accumulate onto vertices
+  std::vector<glm::vec3> faceColors(static_cast<size_t>(numFaces));
+  for (int fi = 0; fi < numFaces; ++fi) {
+    faceColors[static_cast<size_t>(fi)] = {colorDist(rng), colorDist(rng),
+                                           colorDist(rng)};
+    for (int k = 0; k < 3; ++k) {
+      int vi = icoFaces[static_cast<size_t>(fi)][static_cast<size_t>(k)];
+      colorAccum[static_cast<size_t>(vi)] +=
+          faceColors[static_cast<size_t>(fi)];
+      colorCount[static_cast<size_t>(vi)]++;
+    }
+  }
+
+  // Set vertex positions and averaged colours
+  for (size_t i = 0; i < 12; ++i) {
+    vertices[i].position = {icoVerts[i].x, icoVerts[i].y, icoVerts[i].z};
+    glm::vec3 avgColor = colorCount[i] > 0
+                             ? colorAccum[i] / static_cast<float>(colorCount[i])
+                             : glm::vec3(1.0f);
+    vertices[i].color = {avgColor.r, avgColor.g, avgColor.b};
+  }
+
+  // Build index buffer with correct outward-facing winding
   std::vector<uint32_t> indices;
+  indices.reserve(60);
 
   for (int fi = 0; fi < numFaces; ++fi) {
     auto &face = icoFaces[static_cast<size_t>(fi)];
-    float r = colorDist(rng), g = colorDist(rng), b = colorDist(rng);
-
-    // Get the 3 vertex positions
-    glm::vec3 p0 = icoVerts[static_cast<size_t>(face[0])];
-    glm::vec3 p1 = icoVerts[static_cast<size_t>(face[1])];
-    glm::vec3 p2 = icoVerts[static_cast<size_t>(face[2])];
+    int i0 = face[0], i1 = face[1], i2 = face[2];
 
     // Ensure outward-facing winding (CCW when viewed from outside).
-    // The icosahedron is centered at origin, so the face centroid points
-    // outward.  If the cross-product normal points inward (negative dot
-    // with centroid), swap two vertices to flip the winding.
+    glm::vec3 p0 = icoVerts[static_cast<size_t>(i0)];
+    glm::vec3 p1 = icoVerts[static_cast<size_t>(i1)];
+    glm::vec3 p2 = icoVerts[static_cast<size_t>(i2)];
     glm::vec3 centroid = (p0 + p1 + p2) / 3.0f;
     glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
     if (glm::dot(normal, centroid) < 0.0f) {
-      std::swap(p1, p2);
+      std::swap(i1, i2);
     }
 
-    uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
-    auto pushVert = [&](const glm::vec3 &p) {
-      window::Vertex<3> vert;
-      vert.position = {p.x, p.y, p.z};
-      vert.color = {r, g, b};
-      vertices.push_back(vert);
-    };
-    pushVert(p0);
-    pushVert(p1);
-    pushVert(p2);
-    indices.push_back(baseIdx);
-    indices.push_back(baseIdx + 1);
-    indices.push_back(baseIdx + 2);
+    indices.push_back(static_cast<uint32_t>(i0));
+    indices.push_back(static_cast<uint32_t>(i1));
+    indices.push_back(static_cast<uint32_t>(i2));
   }
 
   polytope_ = std::make_unique<window::Object<3>>(
@@ -222,7 +235,8 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   pConfig.depthWriteEnable = true;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
   pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+      vk::ShaderStageFlagBits::eCompute;
 
   if (!polytope_->initialize(allocator, device, *material_,
                              renderer.getRenderPass(),

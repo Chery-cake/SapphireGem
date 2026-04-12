@@ -107,6 +107,8 @@ struct DEVICE_API BindlessPushConstants {
   uint32_t vertexCount = 0;
   uint32_t indexCount = 0;
 };
+static_assert(sizeof(BindlessPushConstants) == 16,
+              "BindlessPushConstants must be 16 bytes");
 
 // ============================================================================
 // Effect system: array-based effects with type + parameters
