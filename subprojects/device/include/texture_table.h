@@ -1,6 +1,7 @@
 #ifndef TEXTURE_TABLE_H_
 #define TEXTURE_TABLE_H_
 
+#include "bindless_types.h"
 #include "device_export.h"
 #include "vma_allocator.h"
 #include <cstdint>
@@ -8,9 +9,6 @@
 #include <vector>
 
 namespace device {
-
-// Forward declaration
-struct TextureId;
 
 // ============================================================================
 // GPU-facing structs – must match the SSBO layouts in bindless_common.slang
