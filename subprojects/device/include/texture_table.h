@@ -120,6 +120,17 @@ public:
   void setLayers(TextureId id, const std::vector<GPUTextureLayer> &layers);
 
   /**
+   * @brief Reserve a new FaceEffectRecord and return its FaceEffectId
+   *
+   * Appends a GPUFaceEffectRecord and its GPUFaceEffectParam entries
+   * into the flat params array. Follows the same pattern as addRecord().
+   *
+   * @param effect  CPU-side effect description with variable-length params
+   * @return FaceEffectId  Stable index into the effect record table
+   */
+  FaceEffectId addEffect(const FaceEffectEntry &effect);
+
+  /**
    * @brief Upload the current CPU tables into device-local SSBOs
    *
    * Uses a staging buffer for the transfer.  The caller must ensure
@@ -140,8 +151,19 @@ public:
     return layerBuffer_;
   }
 
+  /// @brief Get the GPU SSBO for face effect records (valid after uploadToGPU)
+  [[nodiscard]] const AllocatedBuffer &getEffectRecordBuffer() const {
+    return effectRecordBuffer_;
+  }
+  /// @brief Get the GPU SSBO for face effect params (valid after uploadToGPU)
+  [[nodiscard]] const AllocatedBuffer &getEffectParamBuffer() const {
+    return effectParamBuffer_;
+  }
+
   [[nodiscard]] uint32_t getRecordCount() const;
   [[nodiscard]] uint32_t getLayerCount() const;
+  [[nodiscard]] uint32_t getEffectRecordCount() const;
+  [[nodiscard]] uint32_t getEffectParamCount() const;
 
   [[nodiscard]] bool isUploaded() const { return uploaded_; }
 
@@ -150,9 +172,13 @@ public:
 private:
   std::vector<GPUTextureRecord> records_;
   std::vector<GPUTextureLayer> layers_;
+  std::vector<GPUFaceEffectRecord> effectRecords_;
+  std::vector<GPUFaceEffectParam> effectParams_;
 
   AllocatedBuffer recordBuffer_;
   AllocatedBuffer layerBuffer_;
+  AllocatedBuffer effectRecordBuffer_;
+  AllocatedBuffer effectParamBuffer_;
 
   bool uploaded_ = false;
   mutable std::mutex tableMutex_;

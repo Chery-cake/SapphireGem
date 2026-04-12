@@ -78,15 +78,124 @@ enum class BlendMode : uint32_t {
 /**
  * @brief Processing type for procedural effects on a texture layer
  *
- * Designed so that compute-based pre-processing can later replace
- * the procedural path: the layer simply switches to referencing a
- * pre-computed image handle instead.
+ * @deprecated Use FaceEffectType and the FaceEffect SSBO system instead.
+ * Kept for backward compatibility with existing TextureLayer fields
+ * (processingType, procAmplitude, etc.).
  */
 enum class ProcessingType : uint32_t {
   eNone = 0, ///< No processing – sample image directly
   eWave = 1, ///< Sine-wave UV displacement
   eCount
 };
+
+// ============================================================================
+// FaceEffect SSBO system: variable-length per-effect parameters
+// backed by bindless GPU storage buffers
+// ============================================================================
+
+/**
+ * @brief Effect type enumeration for the FaceEffect SSBO system
+ *
+ * Replaces ProcessingType for new effect work. Each value represents
+ * a distinct texture-layer processing effect. Shader logic dispatches
+ * on this enum via FaceEffectRecord.effectType.
+ */
+enum class FaceEffectType : uint32_t {
+  eNone = 0,   ///< No effect
+  eWave = 1,   ///< Sine-wave UV displacement (params: amplitude, frequency, phase, speed)
+  eRipple = 2, ///< Radial ripple displacement (params: amplitude, frequency, phase, speed, centerX, centerY)
+  eCount       ///< Sentinel – number of effect types
+};
+
+/**
+ * @brief Handle identifying a face effect record in the GPU SSBO
+ *
+ * The shader uses this index to fetch the GPUFaceEffectRecord from
+ * the structured buffer, then reads parameters via firstParam offset.
+ * Follows the same pattern as TextureId.
+ */
+struct DEVICE_API FaceEffectId {
+  uint32_t index = INVALID;
+  static constexpr uint32_t INVALID = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] bool isValid() const { return index != INVALID; }
+
+  bool operator==(const FaceEffectId &other) const {
+    return index == other.index;
+  }
+  bool operator!=(const FaceEffectId &other) const {
+    return index != other.index;
+  }
+};
+
+/**
+ * @brief CPU-side face effect description with variable-length parameters
+ *
+ * Each instance carries a FaceEffectType and its associated float
+ * parameters. The parameter count varies by effect type (e.g., wave
+ * uses 4 params, ripple uses 6). For GPU upload, convert to
+ * GPUFaceEffectRecord + GPUFaceEffectParam[] via TextureTableManager.
+ *
+ * @note Named FaceEffectEntry (not FaceEffect) to avoid collision
+ * with the existing per-face FaceEffect struct used by FaceMaterial.
+ */
+struct DEVICE_API FaceEffectEntry {
+  FaceEffectType effect = FaceEffectType::eNone;
+  uint32_t paramCount = 0;
+  std::vector<float> params;
+
+  FaceEffectEntry() = default;
+
+  /**
+   * @brief Construct with effect type and parameter count
+   *
+   * Allocates paramCount floats, zero-initialized.
+   */
+  FaceEffectEntry(FaceEffectType t, uint32_t p)
+      : effect(t), paramCount(p), params(p, 0.0f) {}
+
+  /**
+   * @brief Construct with effect type and explicit parameter values
+   */
+  FaceEffectEntry(FaceEffectType t, std::vector<float> p)
+      : effect(t), paramCount(static_cast<uint32_t>(p.size())),
+        params(std::move(p)) {}
+
+  [[nodiscard]] bool isActive() const {
+    return effect != FaceEffectType::eNone;
+  }
+};
+
+/**
+ * @brief GPU-side face effect record (16 bytes, std430)
+ *
+ * Stored in a StructuredBuffer<FaceEffectRecord> SSBO.
+ * Points into a flat GPUFaceEffectParam[] buffer for its parameters.
+ * Mirrors the TextureRecord → TextureLayer[] indirection pattern.
+ */
+struct DEVICE_API GPUFaceEffectRecord {
+  uint32_t effectType = 0; ///< FaceEffectType cast to uint
+  uint32_t paramCount = 0; ///< Number of params for this effect
+  uint32_t firstParam = 0; ///< Index into GPUFaceEffectParam[]
+  uint32_t _pad0 = 0;      ///< Padding to 16-byte alignment
+};
+static_assert(sizeof(GPUFaceEffectRecord) == 16,
+              "GPUFaceEffectRecord must be 16 bytes (std430)");
+
+/**
+ * @brief GPU-side face effect parameter (16 bytes, std430)
+ *
+ * Each parameter occupies one vec4 slot for simple GPU indexing.
+ * The .value field holds the parameter; padding ensures 16-byte stride.
+ */
+struct DEVICE_API GPUFaceEffectParam {
+  float value = 0.0f;  ///< The actual parameter value
+  float _pad0 = 0.0f;  ///< Padding
+  float _pad1 = 0.0f;  ///< Padding
+  float _pad2 = 0.0f;  ///< Padding
+};
+static_assert(sizeof(GPUFaceEffectParam) == 16,
+              "GPUFaceEffectParam must be 16 bytes (std430)");
 
 /**
  * @brief Push constant data for bindless shaders
