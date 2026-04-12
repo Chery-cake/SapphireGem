@@ -71,6 +71,72 @@ struct DEVICE_API GPUTextureLayer {
 static_assert(sizeof(GPUTextureLayer) == 80,
               "GPUTextureLayer must be 80 bytes (5 × vec4, std430)");
 
+/**
+ * @brief Per-effect record stored in the FaceEffectRecord SSBO
+ *
+ * One entry per effect — indexes into the flat GPUFaceEffectParam[]
+ * array to locate the variable-length parameter list.
+ */
+struct DEVICE_API GPUFaceEffectRecord {
+  uint32_t effectType = 0; ///< FaceEffectType enum value
+  uint32_t firstParam = 0; ///< First index into GPUFaceEffectParam[]
+  uint32_t paramCount = 0; ///< Number of params for this effect
+  uint32_t _pad0 = 0;      ///< Padding to 16-byte alignment
+};
+static_assert(sizeof(GPUFaceEffectRecord) == 16,
+              "GPUFaceEffectRecord must be 16 bytes (std430)");
+static_assert(alignof(GPUFaceEffectRecord) == 4,
+              "GPUFaceEffectRecord alignment must be 4");
+
+/**
+ * @brief Single float parameter stored in the FaceEffectParam SSBO
+ *
+ * Padded to 16 bytes for std430 vec4 alignment so that the buffer can
+ * be indexed directly as a StructuredBuffer on the GPU side.
+ */
+struct DEVICE_API GPUFaceEffectParam {
+  float value = 0.0f;
+  float _pad0 = 0.0f;
+  float _pad1 = 0.0f;
+  float _pad2 = 0.0f;
+};
+static_assert(sizeof(GPUFaceEffectParam) == 16,
+              "GPUFaceEffectParam must be 16 bytes (std430)");
+static_assert(alignof(GPUFaceEffectParam) == 4,
+              "GPUFaceEffectParam alignment must be 4");
+
+/**
+ * @brief CPU-side builder struct for adding effects via addEffect()
+ *
+ * Callers populate this and pass it to TextureTableManager::addEffect().
+ * The manager converts it into a GPUFaceEffectRecord + GPUFaceEffectParam
+ * entries for GPU upload.
+ */
+struct DEVICE_API FaceEffectEntry {
+  FaceEffectType effect = FaceEffectType::eNone;
+  uint32_t paramCount = 0;
+  std::vector<float> params;
+
+  FaceEffectEntry() = default;
+
+  /**
+   * @brief Construct with a type and a number of zero-initialized params.
+   */
+  FaceEffectEntry(FaceEffectType type, uint32_t count)
+      : effect(type), paramCount(count), params(count, 0.0f) {}
+
+  /**
+   * @brief Construct with a type and explicit parameter values.
+   */
+  FaceEffectEntry(FaceEffectType type, std::initializer_list<float> p)
+      : effect(type), paramCount(static_cast<uint32_t>(p.size())), params(p) {}
+
+  /** @brief True when the effect type is not eNone */
+  [[nodiscard]] bool isActive() const {
+    return effect != FaceEffectType::eNone;
+  }
+};
+
 // ============================================================================
 // CPU-side builder / manager
 // ============================================================================

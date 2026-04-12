@@ -237,7 +237,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       sizeof(device::GPUFaceData);
   faceDataBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto ssbo = allocator.createStorageBuffer(
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
         faceDataSize, std::string(name_) + "_facedata_" + std::to_string(i));
     if (!ssbo.isValid()) {
       std::println(stderr,
@@ -499,7 +499,8 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
 // Face data SSBO upload
 // ============================================================================
 
-template <uint32_t Dim> void Object<Dim>::uploadFaceData(uint32_t frameIndex) {
+template <uint32_t Dim>
+void Object<Dim>::uploadFaceData(uint32_t frameIndex) const {
   if (!initialized_ || faceDataBuffers_.empty()) {
     return;
   }
