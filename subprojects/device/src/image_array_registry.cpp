@@ -60,8 +60,8 @@ bool ImageArrayRegistry::initialize(GPUDevice &device) {
       {vk::DescriptorType::eSampledImage, kKindCount * maxImagesPerKind},
       // 1 sampler
       {vk::DescriptorType::eSampler, 1},
-      // 2 SSBOs (records + layers)
-      {vk::DescriptorType::eStorageBuffer, 2},
+      // 4 SSBOs (records + layers + effect records + effect params)
+      {vk::DescriptorType::eStorageBuffer, 4},
   };
 
   vk::DescriptorPoolCreateInfo poolInfo{
@@ -214,10 +214,11 @@ void ImageArrayRegistry::removeImage(ImageKind kind, ImageHandle handle) {
 // Descriptor commit
 // ============================================================================
 
-void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
-                                           vk::Sampler sampler,
-                                           const AllocatedBuffer *recordBuffer,
-                                           const AllocatedBuffer *layerBuffer) {
+void ImageArrayRegistry::commitDescriptors(
+    GPUDevice &device, vk::Sampler sampler, const AllocatedBuffer *recordBuffer,
+    const AllocatedBuffer *layerBuffer,
+    const AllocatedBuffer *effectRecordBuffer,
+    const AllocatedBuffer *effectParamBuffer) {
   std::lock_guard<std::mutex> lock(registryMutex_);
 
   if (!initialized_ || descriptorSets_.empty()) {
@@ -316,6 +317,40 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
     w.descriptorCount = 1;
     w.descriptorType = vk::DescriptorType::eStorageBuffer;
     w.pBufferInfo = &layBufInfo;
+    writes.push_back(w);
+  }
+
+  // --- FaceEffectRecord SSBO binding ---
+  vk::DescriptorBufferInfo fxRecBufInfo{};
+  if (effectRecordBuffer && effectRecordBuffer->isValid()) {
+    fxRecBufInfo.buffer = effectRecordBuffer->getBuffer();
+    fxRecBufInfo.offset = 0;
+    fxRecBufInfo.range = VK_WHOLE_SIZE;
+
+    vk::WriteDescriptorSet w{};
+    w.dstSet = *descriptorSets_[0];
+    w.dstBinding = kBindingFaceEffectRecords;
+    w.dstArrayElement = 0;
+    w.descriptorCount = 1;
+    w.descriptorType = vk::DescriptorType::eStorageBuffer;
+    w.pBufferInfo = &fxRecBufInfo;
+    writes.push_back(w);
+  }
+
+  // --- FaceEffectParam SSBO binding ---
+  vk::DescriptorBufferInfo fxParBufInfo{};
+  if (effectParamBuffer && effectParamBuffer->isValid()) {
+    fxParBufInfo.buffer = effectParamBuffer->getBuffer();
+    fxParBufInfo.offset = 0;
+    fxParBufInfo.range = VK_WHOLE_SIZE;
+
+    vk::WriteDescriptorSet w{};
+    w.dstSet = *descriptorSets_[0];
+    w.dstBinding = kBindingFaceEffectParams;
+    w.dstArrayElement = 0;
+    w.descriptorCount = 1;
+    w.descriptorType = vk::DescriptorType::eStorageBuffer;
+    w.pBufferInfo = &fxParBufInfo;
     writes.push_back(w);
   }
 
@@ -419,7 +454,23 @@ ImageArrayRegistry::createBindlessSetLayout(GPUDevice &device,
        vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute});
   bindingFlags.push_back(imageFlags);
 
-  // Binding 5: maps[] – last image array, highest binding number.
+  // Binding 5: FaceEffectRecord SSBO
+  bindings.push_back(
+      {kBindingFaceEffectRecords, vk::DescriptorType::eStorageBuffer, 1,
+       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+           vk::ShaderStageFlagBits::eFragment |
+           vk::ShaderStageFlagBits::eCompute});
+  bindingFlags.push_back(noFlags);
+
+  // Binding 6: FaceEffectParam SSBO
+  bindings.push_back(
+      {kBindingFaceEffectParams, vk::DescriptorType::eStorageBuffer, 1,
+       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+           vk::ShaderStageFlagBits::eFragment |
+           vk::ShaderStageFlagBits::eCompute});
+  bindingFlags.push_back(noFlags);
+
+  // Binding 7: maps[] – last image array, highest binding number.
   // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT must only be
   // set on the binding with the highest binding number in the layout
   // (VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004).

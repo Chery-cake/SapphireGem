@@ -268,8 +268,7 @@ struct DEVICE_API FaceMaterial {
 struct DEVICE_API GPUFaceData {
   uint32_t textureId;   ///< Index into TextureRecord[]
   uint32_t effectFlags; ///< Bitmask derived from effects array
-  float effectParam0;
-  float effectParam1;
+  float params[2];
 
   /**
    * @brief Construct from a FaceMaterial
@@ -308,7 +307,7 @@ struct DEVICE_API GPUFaceData {
       }
     }
 
-    return {fm.textureId, flags, slots[0], slots[1]};
+    return {fm.textureId, flags, {slots[0], slots[1]}};
   }
 };
 static_assert(sizeof(GPUFaceData) == 16,

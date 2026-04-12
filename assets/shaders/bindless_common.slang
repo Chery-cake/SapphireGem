@@ -53,25 +53,49 @@ struct TextureLayer {
 };
 
 // ---------------------------------------------------------------------------
+// GPU face effect record – indexes into FaceEffectParam[]
+// ---------------------------------------------------------------------------
+struct FaceEffectRecord {
+    uint effectType;   // FaceEffectType enum value
+    uint paramCount;
+    uint firstParam;   // index into FaceEffectParam[]
+    uint _pad0;
+};
+
+// ---------------------------------------------------------------------------
+// GPU face effect parameter – one float per vec4 slot for simple indexing
+// ---------------------------------------------------------------------------
+struct FaceEffectParam {
+    float value;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+};
+
+// ---------------------------------------------------------------------------
 // Bindless descriptor set  (set 1)
 // ---------------------------------------------------------------------------
 // Image arrays are placed at the highest binding numbers so that
 // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT (required to be
-// on the highest binding) lands on the last image array (maps, binding 5).
+// on the highest binding) lands on the last image array (maps, binding 7).
 //
 // Binding 0: shared sampler
 // Binding 1: TextureRecord SSBO
 // Binding 2: TextureLayer SSBO
 // Binding 3: sampled images – images2D[]
 // Binding 4: sampled images – atlases[]
-// Binding 5: sampled images – maps[]
+// Binding 5: FaceEffectRecord SSBO
+// Binding 6: FaceEffectParam SSBO
+// Binding 7: sampled images – maps[]  (variable count, highest binding)
 
 [[vk::binding(0, 1)]] SamplerState     bindless_sampler;
 [[vk::binding(1, 1)]] StructuredBuffer<TextureRecord> textureRecords;
 [[vk::binding(2, 1)]] StructuredBuffer<TextureLayer>  textureLayers;
 [[vk::binding(3, 1)]] Texture2D        bindless_images2D[];
 [[vk::binding(4, 1)]] Texture2D        bindless_atlases[];
-[[vk::binding(5, 1)]] Texture2D        bindless_maps[];
+[[vk::binding(5, 1)]] StructuredBuffer<FaceEffectRecord> faceEffectRecords;
+[[vk::binding(6, 1)]] StructuredBuffer<FaceEffectParam>  faceEffectParams;
+[[vk::binding(7, 1)]] Texture2D        bindless_maps[];
 
 // ---------------------------------------------------------------------------
 // Maximum layer loop count – bounded for performance
@@ -122,6 +146,15 @@ float4 blendLayer(float4 base, float4 layer, uint mode) {
         default: // 0 = alpha blend
             return lerp(base, layer, layer.a);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: fetch a face effect parameter from the SSBO
+// ---------------------------------------------------------------------------
+float getFaceEffectParam(uint effectId, uint paramIndex) {
+    FaceEffectRecord rec = faceEffectRecords[effectId];
+    if (paramIndex >= rec.paramCount) return 0.0;
+    return faceEffectParams[rec.firstParam + paramIndex].value;
 }
 
 // ---------------------------------------------------------------------------

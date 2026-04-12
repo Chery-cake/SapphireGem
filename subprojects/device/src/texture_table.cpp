@@ -47,6 +47,30 @@ void TextureTableManager::setLayers(
   uploaded_ = false;
 }
 
+FaceEffectId TextureTableManager::addEffect(const FaceEffectEntry &effect) {
+  std::lock_guard<std::mutex> lock(tableMutex_);
+
+  FaceEffectId id;
+  id.index = static_cast<uint32_t>(effectRecords_.size());
+
+  GPUFaceEffectRecord rec{};
+  rec.effectType = static_cast<uint32_t>(effect.effect);
+  rec.paramCount = effect.paramCount;
+  rec.firstParam = static_cast<uint32_t>(effectParams_.size());
+  rec._pad0 = 0;
+  effectRecords_.push_back(rec);
+
+  // Append each param as a GPUFaceEffectParam (16-byte padded slot)
+  for (uint32_t i = 0; i < effect.paramCount; ++i) {
+    GPUFaceEffectParam param{};
+    param.value = (i < effect.params.size()) ? effect.params[i] : 0.0f;
+    effectParams_.push_back(param);
+  }
+
+  uploaded_ = false;
+  return id;
+}
+
 bool TextureTableManager::uploadToGPU(VMAAllocator &allocator,
                                       GPUDevice &device) {
   std::lock_guard<std::mutex> lock(tableMutex_);
@@ -138,9 +162,66 @@ bool TextureTableManager::uploadToGPU(VMAAllocator &allocator,
     }
   }
 
+  // --- Effect Record SSBO ---
+  if (!effectRecords_.empty()) {
+    vk::DeviceSize size = effectRecords_.size() * sizeof(GPUFaceEffectRecord);
+    auto staging = allocator.createStagingBuffer(size, "fx_record_staging");
+    if (!staging.isValid()) {
+      std::println(stderr,
+                   "[TextureTable] Failed to create effect record staging");
+      return false;
+    }
+
+    void *mapped = staging.map();
+    if (mapped) {
+      std::memcpy(mapped, effectRecords_.data(), static_cast<size_t>(size));
+      staging.unmap();
+    }
+
+    effectRecordBuffer_ = allocator.createStorageBuffer(size, "fx_record_ssbo");
+    if (!effectRecordBuffer_.isValid()) {
+      std::println(stderr,
+                   "[TextureTable] Failed to create effect record SSBO");
+      return false;
+    }
+
+    if (!copyBuffer(staging, effectRecordBuffer_, size)) {
+      return false;
+    }
+  }
+
+  // --- Effect Param SSBO ---
+  if (!effectParams_.empty()) {
+    vk::DeviceSize size = effectParams_.size() * sizeof(GPUFaceEffectParam);
+    auto staging = allocator.createStagingBuffer(size, "fx_param_staging");
+    if (!staging.isValid()) {
+      std::println(stderr,
+                   "[TextureTable] Failed to create effect param staging");
+      return false;
+    }
+
+    void *mapped = staging.map();
+    if (mapped) {
+      std::memcpy(mapped, effectParams_.data(), static_cast<size_t>(size));
+      staging.unmap();
+    }
+
+    effectParamBuffer_ = allocator.createStorageBuffer(size, "fx_param_ssbo");
+    if (!effectParamBuffer_.isValid()) {
+      std::println(stderr, "[TextureTable] Failed to create effect param SSBO");
+      return false;
+    }
+
+    if (!copyBuffer(staging, effectParamBuffer_, size)) {
+      return false;
+    }
+  }
+
   uploaded_ = true;
-  std::println("[TextureTable] Uploaded {} records, {} layers", records_.size(),
-               layers_.size());
+  std::println("[TextureTable] Uploaded {} records, {} layers, "
+               "{} effect records, {} effect params",
+               records_.size(), layers_.size(), effectRecords_.size(),
+               effectParams_.size());
   return true;
 }
 
@@ -154,12 +235,26 @@ uint32_t TextureTableManager::getLayerCount() const {
   return static_cast<uint32_t>(layers_.size());
 }
 
+uint32_t TextureTableManager::getEffectRecordCount() const {
+  std::lock_guard<std::mutex> lock(tableMutex_);
+  return static_cast<uint32_t>(effectRecords_.size());
+}
+
+uint32_t TextureTableManager::getEffectParamCount() const {
+  std::lock_guard<std::mutex> lock(tableMutex_);
+  return static_cast<uint32_t>(effectParams_.size());
+}
+
 void TextureTableManager::clear() {
   std::lock_guard<std::mutex> lock(tableMutex_);
   records_.clear();
   layers_.clear();
+  effectRecords_.clear();
+  effectParams_.clear();
   recordBuffer_ = {};
   layerBuffer_ = {};
+  effectRecordBuffer_ = {};
+  effectParamBuffer_ = {};
   uploaded_ = false;
 }
 

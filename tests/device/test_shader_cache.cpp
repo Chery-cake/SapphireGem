@@ -286,6 +286,117 @@ void test_effect_type_enum() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: FaceEffectType enum values
+// ---------------------------------------------------------------------------
+void test_face_effect_type_enum() {
+  TEST(face_effect_type_enum);
+
+  assert(static_cast<uint32_t>(device::FaceEffectType::eNone) == 0);
+  assert(static_cast<uint32_t>(device::FaceEffectType::eWave) == 1);
+  assert(static_cast<uint32_t>(device::FaceEffectType::eRipple) == 2);
+  assert(static_cast<uint32_t>(device::FaceEffectType::eCount) == 3);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: FaceEffectId handle
+// ---------------------------------------------------------------------------
+void test_face_effect_id() {
+  TEST(face_effect_id);
+
+  device::FaceEffectId defaultId;
+  assert(!defaultId.isValid());
+  assert(defaultId.index == device::FaceEffectId::INVALID);
+
+  device::FaceEffectId validId;
+  validId.index = 42;
+  assert(validId.isValid());
+  assert(validId != defaultId);
+
+  device::FaceEffectId sameId;
+  sameId.index = 42;
+  assert(validId == sameId);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: FaceEffectEntry construction
+// ---------------------------------------------------------------------------
+void test_face_effect_entry() {
+  TEST(face_effect_entry);
+
+  // Default construction
+  device::FaceEffectEntry defaultFx;
+  assert(!defaultFx.isActive());
+  assert(defaultFx.effect == device::FaceEffectType::eNone);
+  assert(defaultFx.paramCount == 0);
+  assert(defaultFx.params.empty());
+
+  // Construct with type and count
+  device::FaceEffectEntry waveFx(device::FaceEffectType::eWave, 4);
+  assert(waveFx.isActive());
+  assert(waveFx.effect == device::FaceEffectType::eWave);
+  assert(waveFx.paramCount == 4);
+  assert(waveFx.params.size() == 4);
+  assert(waveFx.params[0] == 0.0f);
+
+  // Construct with explicit params
+  device::FaceEffectEntry rippleFx(device::FaceEffectType::eRipple,
+                                   {0.1f, 2.0f, 0.0f, 1.0f, 0.5f, 0.5f});
+  assert(rippleFx.isActive());
+  assert(rippleFx.paramCount == 6);
+  assert(rippleFx.params.size() == 6);
+  assert(rippleFx.params[0] == 0.1f);
+  assert(rippleFx.params[4] == 0.5f);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: GPUFaceEffectRecord layout
+// ---------------------------------------------------------------------------
+void test_gpu_face_effect_record_layout() {
+  TEST(gpu_face_effect_record_layout);
+
+  static_assert(sizeof(device::GPUFaceEffectRecord) == 16,
+                "GPUFaceEffectRecord must be 16 bytes");
+
+  device::GPUFaceEffectRecord rec{};
+  assert(rec.effectType == 0);
+  assert(rec.paramCount == 0);
+  assert(rec.firstParam == 0);
+
+  rec.effectType = static_cast<uint32_t>(device::FaceEffectType::eWave);
+  rec.paramCount = 4;
+  rec.firstParam = 10;
+  assert(rec.effectType == 1);
+  assert(rec.paramCount == 4);
+  assert(rec.firstParam == 10);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// Test: GPUFaceEffectParam layout
+// ---------------------------------------------------------------------------
+void test_gpu_face_effect_param_layout() {
+  TEST(gpu_face_effect_param_layout);
+
+  static_assert(sizeof(device::GPUFaceEffectParam) == 16,
+                "GPUFaceEffectParam must be 16 bytes");
+
+  device::GPUFaceEffectParam p{};
+  assert(p.value == 0.0f);
+
+  p.value = 3.14f;
+  assert(p.value == 3.14f);
+
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
 int main() {
   std::printf("=== Shader Cache & GPU Data Tests ===\n");
 
@@ -301,6 +412,11 @@ int main() {
   test_gpu_face_data_from_face_material();
   test_bindless_push_constants();
   test_effect_type_enum();
+  test_face_effect_type_enum();
+  test_face_effect_id();
+  test_face_effect_entry();
+  test_gpu_face_effect_record_layout();
+  test_gpu_face_effect_param_layout();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
   return (tests_passed == tests_run) ? 0 : 1;

@@ -30,7 +30,9 @@ struct AllocatedBuffer;
  *   binding 2  –  SSBO   TextureLayer[]
  *   binding 3  –  sampled images (images2D), partially bound
  *   binding 4  –  sampled images (atlases), partially bound
- *   binding 5  –  sampled images (maps), variable count (highest binding)
+ *   binding 5  –  SSBO   FaceEffectRecord[]
+ *   binding 6  –  SSBO   FaceEffectParam[]
+ *   binding 7  –  sampled images (maps), variable count (highest binding)
  *
  * Multi-GPU:  each GPUDevice creates its own ImageArrayRegistry.
  * The same logical ImageHandle (returned from the CPU side) can be
@@ -58,7 +60,9 @@ public:
   static constexpr uint32_t kBindingTextureLayers = 2;
   static constexpr uint32_t kBindingImages2D = 3;
   static constexpr uint32_t kBindingAtlases = 4;
-  static constexpr uint32_t kBindingMaps = 5;
+  static constexpr uint32_t kBindingFaceEffectRecords = 5;
+  static constexpr uint32_t kBindingFaceEffectParams = 6;
+  static constexpr uint32_t kBindingMaps = 7;
 
   /// Upper bound for the variable-count descriptor arrays.
   /// The descriptor pool is sized for this many images per kind.
@@ -143,17 +147,21 @@ public:
    * @brief Write all pending image registrations into the Vulkan
    *        descriptor set.
    *
-   * Also binds the SSBO buffers for TextureRecord[] and TextureLayer[]
-   * if provided.
+   * Also binds the SSBO buffers for TextureRecord[], TextureLayer[],
+   * FaceEffectRecord[], and FaceEffectParam[] if provided.
    *
-   * @param device        GPU device
-   * @param sampler       The shared sampler to write into binding 3
-   * @param recordBuffer  (optional) SSBO for TextureRecord table
-   * @param layerBuffer   (optional) SSBO for TextureLayer table
+   * @param device              GPU device
+   * @param sampler             The shared sampler to write into binding 0
+   * @param recordBuffer        (optional) SSBO for TextureRecord table
+   * @param layerBuffer         (optional) SSBO for TextureLayer table
+   * @param effectRecordBuffer  (optional) SSBO for FaceEffectRecord table
+   * @param effectParamBuffer   (optional) SSBO for FaceEffectParam table
    */
   void commitDescriptors(GPUDevice &device, vk::Sampler sampler,
                          const AllocatedBuffer *recordBuffer = nullptr,
-                         const AllocatedBuffer *layerBuffer = nullptr);
+                         const AllocatedBuffer *layerBuffer = nullptr,
+                         const AllocatedBuffer *effectRecordBuffer = nullptr,
+                         const AllocatedBuffer *effectParamBuffer = nullptr);
 
   // ------------------------------------------------------------------
   // Accessors
