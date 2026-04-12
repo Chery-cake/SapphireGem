@@ -119,6 +119,39 @@ enum class EffectType : uint32_t {
 };
 
 /**
+ * @brief Effect type enumeration for the GPU face-effect SSBO system
+ *
+ * Distinct from EffectType (which drives the per-face bitmask path).
+ * Each value maps to a shader branch in the FaceEffectRecord dispatch.
+ */
+enum class FaceEffectType : uint32_t {
+  eNone = 0,
+  eWave = 1,
+  eRipple = 2,
+  eCount
+};
+
+/**
+ * @brief Handle identifying a face-effect record in the GPU effect table
+ *
+ * Analogous to TextureId: the value is a direct index into the
+ * GPUFaceEffectRecord[] storage buffer.
+ */
+struct DEVICE_API FaceEffectId {
+  uint32_t index = INVALID;
+  static constexpr uint32_t INVALID = std::numeric_limits<uint32_t>::max();
+
+  [[nodiscard]] bool isValid() const { return index != INVALID; }
+
+  bool operator==(const FaceEffectId &other) const {
+    return index == other.index;
+  }
+  bool operator!=(const FaceEffectId &other) const {
+    return index != other.index;
+  }
+};
+
+/**
  * @brief Number of parameters required by each effect type.
  *
  * Used to validate FaceEffect construction and interpret the params array.
@@ -139,26 +172,23 @@ faceEffectParamCount(EffectType type) noexcept {
   }
 }
 
-// Maximum number of float params any single EffectType requires (GPU
-// constraint)
-inline constexpr uint32_t MAX_EFFECT_PARAMS = 2;
-
 /**
- * @brief A single effect entry with type and a fixed-size parameter array.
+ * @brief A single effect entry with type and a variable-length parameter list.
  *
- * The parameter array always has MAX_EFFECT_PARAMS slots, zero-initialized.
- * The number of meaningful slots is determined by faceEffectParamCount(type).
+ * The number of meaningful parameters is determined by
+ * faceEffectParamCount(type).  The vector may hold more values than
+ * the effect strictly requires — the GPU will only read what it needs.
  */
 struct DEVICE_API FaceEffect {
   EffectType type = EffectType::eNone;
-  std::array<float, MAX_EFFECT_PARAMS> params{};
+  std::vector<float> params;
 
   FaceEffect() = default;
 
   /**
    * @brief Construct a FaceEffect with just a type (zero-param effects).
    */
-  explicit FaceEffect(EffectType t) : type(t), params({}) {}
+  explicit FaceEffect(EffectType t) : type(t) {}
 
   /**
    * @brief Convenience constructor for effects with exactly 2 params.
