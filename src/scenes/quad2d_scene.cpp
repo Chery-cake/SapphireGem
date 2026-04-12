@@ -75,60 +75,57 @@ bool Quad2DScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  // 2D quad: 24 vertices (4 quadrants x 2 triangles x 3 vertices)
-  // Each quadrant is a separate pair of triangles so they can have
-  // independent per-face materials.
+  // 2D quad: 9 shared vertices (3×3 grid) with indexed drawing.
+  // The 4 quadrants share boundary edges along x=0 and y=0. Using shared
+  // vertices ensures boundary positions are transformed identically for
+  // all adjacent faces, preventing seams between wave and non-wave quadrants.
+  //
+  // Vertex layout (3×3 grid):
+  //   6---7---8    y=0.8
+  //   |  0|  1|
+  //   3---4---5    y=0.0
+  //   |  2|  3|
+  //   0---1---2    y=-0.8
+  //       x=-0.8  0.0  0.8
   //
   // Quadrant layout (Vulkan NDC, Y-down):
-  //   Face 0 (top-left):     triangles 0-1
-  //   Face 1 (top-right):    triangles 2-3
-  //   Face 2 (bottom-left):  triangles 4-5
-  //   Face 3 (bottom-right): triangles 6-7
-  struct P2 {
-    float x, y;
-  };
-  static constexpr P2 quadPositions[24] = {
-      // Face 0 (top-left quadrant)
-      {-0.8f, 0.0f},
-      {0.0f, 0.0f},
-      {0.0f, 0.8f}, // tri 0
-      {-0.8f, 0.0f},
-      {0.0f, 0.8f},
-      {-0.8f, 0.8f}, // tri 1
-      // Face 1 (top-right quadrant)
-      {0.0f, 0.0f},
-      {0.8f, 0.0f},
-      {0.8f, 0.8f}, // tri 2
-      {0.0f, 0.0f},
-      {0.8f, 0.8f},
-      {0.0f, 0.8f}, // tri 3
-      // Face 2 (bottom-left quadrant)
-      {-0.8f, -0.8f},
-      {0.0f, -0.8f},
-      {0.0f, 0.0f}, // tri 4
-      {-0.8f, -0.8f},
-      {0.0f, 0.0f},
-      {-0.8f, 0.0f}, // tri 5
-      // Face 3 (bottom-right quadrant)
-      {0.0f, -0.8f},
-      {0.8f, -0.8f},
-      {0.8f, 0.0f}, // tri 6
-      {0.0f, -0.8f},
-      {0.8f, 0.0f},
-      {0.0f, 0.0f}, // tri 7
-  };
+  //   Quadrant 0 (top-left):     triangles 0-1
+  //   Quadrant 1 (top-right):    triangles 2-3
+  //   Quadrant 2 (bottom-left):  triangles 4-5
+  //   Quadrant 3 (bottom-right): triangles 6-7
 
-  std::vector<window::Vertex<2>> vertices(24);
-  for (size_t i = 0; i < 24; ++i) {
-    vertices[i].position = {quadPositions[i].x, quadPositions[i].y};
-    vertices[i].color = {1.0f, 1.0f, 1.0f};
+  // 9 unique vertex positions
+  static constexpr float xs[3] = {-0.8f, 0.0f, 0.8f};
+  static constexpr float ys[3] = {-0.8f, 0.0f, 0.8f};
+
+  std::vector<window::Vertex<2>> vertices(9);
+  for (int row = 0; row < 3; ++row) {
+    for (int col = 0; col < 3; ++col) {
+      size_t idx = static_cast<size_t>(row * 3 + col);
+      vertices[idx].position = {xs[col], ys[row]};
+      vertices[idx].color = {1.0f, 1.0f, 1.0f};
+    }
   }
 
-  std::vector<uint32_t> indices;
-  indices.reserve(24);
-  for (uint32_t i = 0; i < 24; ++i) {
-    indices.push_back(i);
-  }
+  // 24-element index buffer (8 triangles = 4 quadrants × 2 tris)
+  // Vertex indices reference the 3×3 grid:
+  //   0=(−0.8,−0.8) 1=(0,−0.8) 2=(0.8,−0.8)
+  //   3=(−0.8,0)    4=(0,0)    5=(0.8,0)
+  //   6=(−0.8,0.8)  7=(0,0.8)  8=(0.8,0.8)
+  std::vector<uint32_t> indices = {
+      // Quadrant 0 (top-left): vertices 3,4,7,6
+      3, 4, 7,   // tri 0
+      3, 7, 6,   // tri 1
+      // Quadrant 1 (top-right): vertices 4,5,8,7
+      4, 5, 8,   // tri 2
+      4, 8, 7,   // tri 3
+      // Quadrant 2 (bottom-left): vertices 0,1,4,3
+      0, 1, 4,   // tri 4
+      0, 4, 3,   // tri 5
+      // Quadrant 3 (bottom-right): vertices 1,2,5,4
+      1, 2, 5,   // tri 6
+      1, 5, 4,   // tri 7
+  };
 
   quad_ = std::make_unique<window::Object<2>>(
       QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
@@ -171,7 +168,8 @@ bool Quad2DScene::load(device::GPUDevice &device,
   pConfig.depthTestEnable = false;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
   pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+      vk::ShaderStageFlagBits::eFragment;
 
   if (!quad_->initialize(allocator, device, *material_,
                          renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,

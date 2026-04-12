@@ -183,10 +183,11 @@ bool CubeScene3D::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  // Create cube geometry (36 vertices for 12 triangles)
-  // Expand the 8 shared cube positions into 36 individual vertices using
-  // the standard cube index mapping, so the GPU reads per-vertex positions
-  // from the position SSBO.
+  // Create cube geometry with 8 shared vertices and indexed drawing.
+  // The 8 corner positions are stored once as unique vertices, and the
+  // 36-element index buffer references into them (12 triangles, 6 faces).
+  // This ensures shared corner vertices are transformed identically for
+  // all faces, eliminating seams between wave-effect and non-wave faces.
   static constexpr std::array<std::array<float, 3>, 8> cubePos = {{
       {-0.5f, -0.5f, 0.5f},
       {0.5f, -0.5f, 0.5f},
@@ -197,7 +198,16 @@ bool CubeScene3D::load(device::GPUDevice &device,
       {0.5f, 0.5f, -0.5f},
       {-0.5f, 0.5f, -0.5f},
   }};
-  static constexpr std::array<uint32_t, 36> cubeIdx = {
+
+  // 8 unique vertices (the cube corners)
+  std::vector<window::Vertex<3>> vertices(8);
+  for (size_t i = 0; i < 8; ++i) {
+    vertices[i].position = {cubePos[i][0], cubePos[i][1], cubePos[i][2]};
+    vertices[i].color = {1.0f, 1.0f, 1.0f};
+  }
+
+  // 36-element index buffer referencing the 8 shared vertices
+  std::vector<uint32_t> indices = {
       0, 1, 2, 0, 2, 3, // Front  (+Z)
       5, 4, 7, 5, 7, 6, // Back   (-Z)
       4, 0, 3, 4, 3, 7, // Left   (-X)
@@ -205,19 +215,6 @@ bool CubeScene3D::load(device::GPUDevice &device,
       3, 2, 6, 3, 6, 7, // Top    (+Y)
       4, 5, 1, 4, 1, 0, // Bottom (-Y)
   };
-
-  std::vector<window::Vertex<3>> vertices(36);
-  for (size_t i = 0; i < 36; ++i) {
-    auto &cp = cubePos[cubeIdx[i]];
-    vertices[i].position = {cp[0], cp[1], cp[2]};
-    vertices[i].color = {1.0f, 1.0f, 1.0f};
-  }
-
-  std::vector<uint32_t> indices;
-  indices.reserve(36);
-  for (uint32_t i = 0; i < 36; ++i) {
-    indices.push_back(i);
-  }
 
   cube_ = std::make_unique<window::Object<3>>(CUBE_OBJ_TAG, std::move(vertices),
                                               std::move(indices));
@@ -278,7 +275,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
   pConfig.depthWriteEnable = true;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
   pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+      vk::ShaderStageFlagBits::eFragment;
 
   if (!cube_->initialize(allocator, device, *material_,
                          renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,

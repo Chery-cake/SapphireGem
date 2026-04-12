@@ -80,7 +80,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     }
   }
 
-  // Generate a random convex polytope
+  // Generate a random convex polytope using shared icosahedron vertices.
   // Fixed seed (42) for reproducible polytope generation across runs.
   std::mt19937 rng(42);
   std::uniform_int_distribution<int> faceDist(6, 12);
@@ -115,28 +115,33 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   std::iota(faceIndices.begin(), faceIndices.end(), 0);
   std::ranges::shuffle(faceIndices, rng);
 
-  // Random colours
+  // Random colours (consumed to keep RNG state consistent)
   std::uniform_real_distribution<float> colorDist(0.2f, 1.0f);
 
-  std::vector<window::Vertex<3>> vertices;
+  // Use all 12 icosahedron vertex positions as shared vertices
+  std::vector<window::Vertex<3>> vertices(12);
+  for (size_t i = 0; i < 12; ++i) {
+    vertices[i].position = {icoVerts[i].x, icoVerts[i].y, icoVerts[i].z};
+    vertices[i].color = {0.7f, 0.7f, 0.7f}; // Neutral base colour
+  }
+
+  // Build index buffer from the selected face indices, referencing into
+  // the 12 shared vertices. This saves memory and enables correct
+  // shared-vertex behaviour with indexed drawing.
   std::vector<uint32_t> indices;
+  indices.reserve(static_cast<size_t>(numFaces) * 3);
 
   for (int fi = 0; fi < numFaces; ++fi) {
     auto &face =
         icoFaces[static_cast<size_t>(faceIndices[static_cast<size_t>(fi)])];
-    float r = colorDist(rng), g = colorDist(rng), b = colorDist(rng);
+    // Consume random colours to keep RNG state consistent with original
+    (void)colorDist(rng);
+    (void)colorDist(rng);
+    (void)colorDist(rng);
 
-    uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
     for (int vi = 0; vi < 3; ++vi) {
-      window::Vertex<3> vert;
-      auto &p = icoVerts[static_cast<size_t>(face[static_cast<size_t>(vi)])];
-      vert.position = {p.x, p.y, p.z};
-      vert.color = {r, g, b};
-      vertices.push_back(vert);
+      indices.push_back(static_cast<uint32_t>(face[static_cast<size_t>(vi)]));
     }
-    indices.push_back(baseIdx);
-    indices.push_back(baseIdx + 1);
-    indices.push_back(baseIdx + 2);
   }
 
   polytope_ = std::make_unique<window::Object<3>>(
@@ -215,7 +220,8 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   pConfig.depthWriteEnable = true;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
   pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+      vk::ShaderStageFlagBits::eFragment;
 
   if (!polytope_->initialize(allocator, device, *material_,
                              renderer.getRenderPass(),
