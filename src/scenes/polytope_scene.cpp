@@ -2,6 +2,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "glm/geometric.hpp"
 #include "renderer.h"
 #include <algorithm>
 #include <cmath>
@@ -126,14 +127,31 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
         icoFaces[static_cast<size_t>(faceIndices[static_cast<size_t>(fi)])];
     float r = colorDist(rng), g = colorDist(rng), b = colorDist(rng);
 
+    // Get the 3 vertex positions
+    glm::vec3 p0 = icoVerts[static_cast<size_t>(face[0])];
+    glm::vec3 p1 = icoVerts[static_cast<size_t>(face[1])];
+    glm::vec3 p2 = icoVerts[static_cast<size_t>(face[2])];
+
+    // Ensure outward-facing winding (CCW when viewed from outside).
+    // The icosahedron is centered at origin, so the face centroid points
+    // outward.  If the cross-product normal points inward (negative dot
+    // with centroid), swap two vertices to flip the winding.
+    glm::vec3 centroid = (p0 + p1 + p2) / 3.0f;
+    glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
+    if (glm::dot(normal, centroid) < 0.0f) {
+      std::swap(p1, p2);
+    }
+
     uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
-    for (int vi = 0; vi < 3; ++vi) {
+    auto pushVert = [&](const glm::vec3 &p) {
       window::Vertex<3> vert;
-      auto &p = icoVerts[static_cast<size_t>(face[static_cast<size_t>(vi)])];
       vert.position = {p.x, p.y, p.z};
       vert.color = {r, g, b};
       vertices.push_back(vert);
-    }
+    };
+    pushVert(p0);
+    pushVert(p1);
+    pushVert(p2);
     indices.push_back(baseIdx);
     indices.push_back(baseIdx + 1);
     indices.push_back(baseIdx + 2);

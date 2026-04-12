@@ -44,6 +44,8 @@ struct UniformBuffer2D {
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
+    float r, g, b;
+    uint flags;
 };
 [[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> vertexPositions;
 
@@ -53,6 +55,8 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;
+    float waveAmplitude;   // Per-object max wave amplitude
+    float waveFrequency;   // Per-object max wave frequency
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -112,10 +116,12 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.params[0] = face.params[0];
     output.params[1] = face.params[1];
 
-    // Apply 2D wave displacement unconditionally (same reasoning as 3D:
-    // shared boundary vertices must get identical displacement).
-    float2 disp = waveVertexDisplacement2D(pos, pc.time, face.params[0], face.params[1]);
-    pos += disp;
+    // Apply 2D wave displacement only to flagged vertices.
+    // Same per-vertex flag and push-constant param approach as 3D.
+    if (vp.flags & 0x01u) {
+        float2 disp = waveVertexDisplacement2D(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
+        pos += disp;
+    }
 
     // Transform through model → view → proj (all 3×3)
     float3 modelPos3 = mulMat3(ubo.model, float3(pos, 1.0));
@@ -128,7 +134,7 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint localIdx = vertexID % 6;
     output.uv = faceUVs[localIdx];
 
-    output.color = float3(0.8, 0.8, 0.8);
+    output.color = float3(vp.r, vp.g, vp.b);
 
     return output;
 }

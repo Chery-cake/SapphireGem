@@ -3,6 +3,7 @@
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
 #include "vulkan/vulkan.hpp"
+#include <cmath>
 #include <print>
 
 namespace window {
@@ -276,9 +277,11 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     positionBuffers_.push_back(std::move(ssbo));
   }
 
-  // Upload vertex positions to all position buffers
+  // Upload vertex positions, colours, and wave flags to all position buffers
   {
     std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
+
+    // Pass 1: copy positions and colours
     for (size_t vi = 0; vi < vertices_.size(); ++vi) {
       device::GPUVertexPosition gp;
       if constexpr (Dim >= 1)
@@ -288,8 +291,68 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       if constexpr (Dim >= 3)
         gp.z = vertices_[vi].position[2];
       gp.w = 1.0f;
+      gp.r = vertices_[vi].color[0];
+      gp.g = vertices_[vi].color[1];
+      gp.b = vertices_[vi].color[2];
+      gp.flags = 0;
       gpuPositions[vi] = gp;
     }
+
+    // Pass 2: compute per-vertex wave flags.
+    // A vertex should be displaced if and only if it shares its position
+    // with at least one vertex belonging to a wave-effect face.
+    {
+      // Collect indices of vertices belonging to wave faces
+      std::vector<bool> isWaveVertex(vertices_.size(), false);
+      for (size_t fi = 0; fi < faceMaterials_.size(); ++fi) {
+        bool hasWave = false;
+        for (const auto &fx : faceMaterials_[fi].effects) {
+          if (fx.type == device::EffectType::eWave && fx.isActive()) {
+            hasWave = true;
+            break;
+          }
+        }
+        if (hasWave) {
+          size_t base = fi * 3;
+          for (size_t k = 0; k < 3 && (base + k) < vertices_.size(); ++k) {
+            isWaveVertex[base + k] = true;
+          }
+        }
+      }
+
+      // Propagate: flag any vertex that shares a position with a wave vertex.
+      // First collect all wave-vertex positions.
+      std::vector<std::array<float, Dim>> wavePositions;
+      for (size_t vi = 0; vi < vertices_.size(); ++vi) {
+        if (isWaveVertex[vi]) {
+          wavePositions.push_back(vertices_[vi].position);
+        }
+      }
+
+      // For each vertex, check if its position matches any wave-vertex position
+      constexpr float eps = 1e-6f;
+      for (size_t vi = 0; vi < vertices_.size(); ++vi) {
+        if (isWaveVertex[vi]) {
+          gpuPositions[vi].flags |= 0x01u; // already a wave vertex
+          continue;
+        }
+        const auto &pos = vertices_[vi].position;
+        for (const auto &wp : wavePositions) {
+          bool match = true;
+          for (uint32_t d = 0; d < Dim; ++d) {
+            if (std::abs(pos[d] - wp[d]) > eps) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            gpuPositions[vi].flags |= 0x01u;
+            break;
+          }
+        }
+      }
+    }
+
     for (uint32_t i = 0; i < framesInFlight; ++i) {
       void *mapped = positionBuffers_[i].map();
       if (mapped) {
@@ -639,10 +702,25 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + objectId (bindless)
+  // Push constants: time + objectId + wave params (bindless)
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData(time_, baseTextureId_.index);
+    // Compute per-object max wave amplitude and frequency from face materials
+    float maxWaveAmp = 0.0f;
+    float maxWaveFreq = 0.0f;
+    for (const auto &fm : faceMaterials_) {
+      for (const auto &fx : fm.effects) {
+        if (fx.type == device::EffectType::eWave && fx.isActive()) {
+          if (fx.params.size() >= 2) {
+            maxWaveAmp = std::max(maxWaveAmp, fx.params[0]);
+            maxWaveFreq = std::max(maxWaveFreq, fx.params[1]);
+          }
+        }
+      }
+    }
+
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
+                                           maxWaveAmp, maxWaveFreq};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);

@@ -97,6 +97,8 @@ enum class ProcessingType : uint32_t {
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
   uint32_t objectId = 0;
+  float waveAmplitude = 0.0f;
+  float waveFrequency = 0.0f;
 };
 
 // ============================================================================
@@ -344,22 +346,35 @@ static_assert(sizeof(GPUFaceData) == 16,
               "GPUFaceData must be 16 bytes (std430)");
 
 /**
- * @brief GPU-side per-vertex position (16 bytes, std430)
+ * @brief GPU-side per-vertex data (32 bytes, std430)
  *
  * Uploaded by Object to a storage buffer (set 0, binding 2) so that
  * each object can supply its own geometry to the shader.
  *
  * For 3D objects: (x, y, z, 1.0)
  * For 2D objects: (x, y, 0.0, 1.0)
+ *
+ * The colour fields (r, g, b) carry per-vertex RGB colour from
+ * Vertex::color so the shader can use it instead of hardcoding.
+ *
+ * The flags field is a bitmask:
+ *   bit 0 (0x01): vertex should receive wave displacement
+ *
+ * A vertex is flagged for wave displacement when it shares its
+ * position with at least one vertex belonging to a wave-effect face.
  */
 struct DEVICE_API GPUVertexPosition {
   float x = 0.0f;
   float y = 0.0f;
   float z = 0.0f;
   float w = 1.0f;
+  float r = 1.0f;
+  float g = 1.0f;
+  float b = 1.0f;
+  uint32_t flags = 0;
 };
-static_assert(sizeof(GPUVertexPosition) == 16,
-              "GPUVertexPosition must be 16 bytes (std430)");
+static_assert(sizeof(GPUVertexPosition) == 32,
+              "GPUVertexPosition must be 32 bytes (std430)");
 
 } // namespace device
 

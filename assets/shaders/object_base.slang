@@ -41,6 +41,8 @@ struct UniformBuffer {
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
+    float r, g, b;
+    uint flags;
 };
 [[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> vertexPositions;
 
@@ -50,6 +52,8 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;        // Object identifier
+    float waveAmplitude;   // Per-object max wave amplitude
+    float waveFrequency;   // Per-object max wave frequency
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -106,15 +110,15 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.params[0] = face.params[0];
     output.params[1] = face.params[1];
 
-    // Apply wave displacement to ALL vertices unconditionally.
-    // Since geometry may use shared vertex positions (e.g. the cube has
-    // 8 corner positions shared across 36 invocations), adjacent faces
-    // sharing a position must receive the same displacement to avoid
-    // seams/holes.  The displacement depends only on model-space position
-    // and time, so all invocations for the same position produce the
-    // same result regardless of their face's effectFlags.
-    float3 disp = waveVertexDisplacement(pos, pc.time, face.params[0], face.params[1]);
-    pos += disp;
+    // Apply wave displacement only to vertices flagged for it.
+    // The flag is set on the CPU for any vertex that shares its position
+    // with at least one wave-effect face.  Using per-object push-constant
+    // amplitude/frequency ensures that all invocations at the same position
+    // produce identical displacement — no seams at shared boundaries.
+    if (vp.flags & 0x01u) {
+        float3 disp = waveVertexDisplacement(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
+        pos += disp;
+    }
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
     float4 viewPos  = mul(ubo.view, worldPos);
@@ -123,7 +127,7 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     uint localIdx = vertexID % 6;
     output.uv = faceUVs[localIdx];
 
-    output.color = float3(0.27, 0.51, 0.71);
+    output.color = float3(vp.r, vp.g, vp.b);
 
     return output;
 }
