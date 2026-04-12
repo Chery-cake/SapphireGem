@@ -981,8 +981,9 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
               static_cast<uint32_t>(vertices_.size()),
               static_cast<uint32_t>(indices_.size()));
           cmd.pushConstants(sharedLayout, pipelineConfig_.pushConstantStages,
-                            0, sizeof(device::BindlessPushConstants),
-                            &pushData);
+                            0u,
+                            vk::ArrayProxy<const device::BindlessPushConstants>(
+                                pushData));
 
           uint32_t groups =
               (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
