@@ -68,7 +68,10 @@ struct VSOutput {
 
 // ---------------------------------------------------------------------------
 // Box-map UV helper: projects world position onto the face with the
-// largest component of the normal
+// largest component of the normal.
+// Note: UVs use raw world-space coordinates which works well for
+// unit-scale objects (cube ±0.5, polytope ~±0.3). For larger objects,
+// the shader caller may want to fract() or scale these coordinates.
 // ---------------------------------------------------------------------------
 float2 boxMapUV(float3 worldPos, float3 normal) {
     float3 absN = abs(normal);

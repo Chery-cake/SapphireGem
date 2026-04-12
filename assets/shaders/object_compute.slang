@@ -53,6 +53,8 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     VertexPosition base = basePositions[vi];
     float3 normalAccum = float3(0.0, 0.0, 0.0);
 
+    // Triangle topology: every 3 indices form one face.
+    // The index buffer is always a multiple of 3 (enforced by calculateFaces).
     uint faceCount = pc.indexCount / 3u;
     for (uint fi = 0u; fi < faceCount; ++fi) {
         uint i0 = indices[fi * 3u + 0u];
@@ -77,7 +79,9 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
         normalAccum += faceNormal; // area-weighted accumulation
     }
 
-    // Normalize the accumulated normal
+    // Normalize the accumulated normal.
+    // Epsilon 0.001 avoids division by zero for degenerate geometry.
+    // Fallback (0,1,0) = up direction, matching the initial default in GPUVertexPosition.
     float len = length(normalAccum);
     float3 finalNormal = len > 0.001 ? normalAccum / len : float3(0.0, 1.0, 0.0);
 

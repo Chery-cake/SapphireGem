@@ -352,6 +352,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       gp.g = vertices_[vi].color[1];
       gp.b = vertices_[vi].color[2];
       gp.pad0 = 0.0f;
+      // Default normal (up). Overwritten by object_compute.slang at load time
+      // with area-weighted smooth normals from the actual mesh topology.
       gp.nx = 0.0f;
       gp.ny = 1.0f;
       gp.nz = 0.0f;

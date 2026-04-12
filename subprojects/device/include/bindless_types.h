@@ -107,6 +107,7 @@ struct DEVICE_API BindlessPushConstants {
   uint32_t vertexCount = 0;
   uint32_t indexCount = 0;
 };
+// 16 bytes = Vulkan push constant alignment; matches PushData in shaders
 static_assert(sizeof(BindlessPushConstants) == 16,
               "BindlessPushConstants must be 16 bytes");
 

@@ -54,6 +54,8 @@ void updateMain(uint3 tid : SV_DispatchThreadID) {
     float3 pos = float3(base.x, base.y, base.z);
     float3 totalDisp = float3(0.0, 0.0, 0.0);
 
+    // Triangle topology: every 3 indices form one face.
+    // The index buffer is always a multiple of 3 (enforced by calculateFaces).
     uint faceCount = pc.indexCount / 3u;
     for (uint fi = 0u; fi < faceCount; ++fi) {
         uint i0 = indices[fi * 3u + 0u];
