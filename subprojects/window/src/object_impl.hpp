@@ -237,7 +237,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       sizeof(device::GPUFaceData);
   faceDataBuffers_.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto ssbo = allocator.createStorageBuffer(
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
         faceDataSize, std::string(name_) + "_facedata_" + std::to_string(i));
     if (!ssbo.isValid()) {
       std::println(stderr,
