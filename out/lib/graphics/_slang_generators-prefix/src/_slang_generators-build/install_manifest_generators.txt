@@ -1,0 +1,8 @@
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-fiddle
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-embed
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-generate
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-lookup-generator
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-capability-generator
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-spirv-embed-generator
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/bin/slang-bootstrap
+/home/runner/work/SapphireGem/SapphireGem/out/_deps/slang-generators/lib/libslang-without-embedded-core-module.so
