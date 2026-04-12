@@ -661,8 +661,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
       }
     }
 
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
-                                           maxWaveAmp, maxWaveFreq};
+    device::BindlessPushConstants pushData{.time = time_,
+                                           .objectId = baseTextureId_.index,
+                                           .waveAmplitude = maxWaveAmp,
+                                           .waveFrequency = maxWaveFreq};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
