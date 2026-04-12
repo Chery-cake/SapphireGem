@@ -179,6 +179,18 @@ AllocatedBuffer VMAAllocator::createIndexBuffer(vk::DeviceSize size,
 }
 
 AllocatedBuffer
+VMAAllocator::createHostVisibleIndexBuffer(vk::DeviceSize size,
+                                           const std::string &debugName) {
+  BufferCreateInfo info{};
+  info.size = size;
+  info.usage = vk::BufferUsageFlagBits::eIndexBuffer;
+  info.memoryUsage = vma::MemoryUsage::eCpuToGpu;
+  info.flags = vma::AllocationCreateFlagBits::eMapped;
+  info.debugName = debugName.empty() ? "HostVisibleIndexBuffer" : debugName;
+  return createBuffer(info);
+}
+
+AllocatedBuffer
 VMAAllocator::createUniformBuffer(vk::DeviceSize size,
                                   const std::string &debugName) {
   BufferCreateInfo info{};

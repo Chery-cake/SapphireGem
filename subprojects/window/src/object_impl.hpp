@@ -54,6 +54,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   uniformBuffers_ = std::move(other.uniformBuffers_);
   faceDataBuffers_ = std::move(other.faceDataBuffers_);
   positionBuffers_ = std::move(other.positionBuffers_);
+  indexBuffer_ = std::move(other.indexBuffer_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
@@ -81,6 +82,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     baseTextureId_ = other.baseTextureId_;
     faceMaterials_ = std::move(other.faceMaterials_);
     positionBuffers_ = std::move(other.positionBuffers_);
+    indexBuffer_ = std::move(other.indexBuffer_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -300,6 +302,25 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     }
   }
 
+  // Create GPU index buffer and upload indices
+  if (!indices_.empty()) {
+    const vk::DeviceSize indexDataSize =
+        indices_.size() * sizeof(uint32_t);
+    indexBuffer_ = allocator.createHostVisibleIndexBuffer(
+        indexDataSize, std::string(name_) + "_indices");
+    if (!indexBuffer_.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create index buffer for '{}'", name_);
+      release();
+      return false;
+    }
+    void *mapped = indexBuffer_.map();
+    if (mapped) {
+      std::memcpy(mapped, indices_.data(), indexDataSize);
+      indexBuffer_.unmap();
+    }
+  }
+
   // Create descriptor pool with room for UBO + face data SSBO + position SSBO
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
@@ -401,6 +422,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   uniformBuffers_.clear();
   faceDataBuffers_.clear();
   positionBuffers_.clear();
+  indexBuffer_ = {};
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -639,41 +661,28 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + objectId + per-object wave displacement params
+
+  // Push constants: time + objectId
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    // Compute per-object max wave amplitude and frequency from face materials.
-    // All vertices on this object use the same displacement parameters,
-    // ensuring shared vertex positions are displaced identically across
-    // adjacent faces (preventing seams/holes).
-    float maxWaveAmp = 0.0f;
-    float maxWaveFreq = 0.0f;
-    for (const auto &fm : faceMaterials_) {
-      for (const auto &fx : fm.effects) {
-        if (fx.type == device::EffectType::eWave && !fx.params.empty()) {
-          if (fx.params.size() >= 1 && fx.params[0] > maxWaveAmp) {
-            maxWaveAmp = fx.params[0];
-          }
-          if (fx.params.size() >= 2 && fx.params[1] > maxWaveFreq) {
-            maxWaveFreq = fx.params[1];
-          }
-        }
-      }
-    }
-
     device::BindlessPushConstants pushData{.time = time_,
-                                           .objectId = baseTextureId_.index,
-                                           .waveAmplitude = maxWaveAmp,
-                                           .waveFrequency = maxWaveFreq};
+                                           .objectId = baseTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
   }
 
-  // Single draw call for all vertices
-  uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
-  if (totalVertices > 0) {
-    cmd.draw(totalVertices, 1, 0, 0);
+  // Indexed draw call: bind index buffer and issue drawIndexed
+  if (indexBuffer_.isValid() && !indices_.empty()) {
+    cmd.bindIndexBuffer(indexBuffer_.getBuffer(), 0, vk::IndexType::eUint32);
+    uint32_t indexCount = static_cast<uint32_t>(indices_.size());
+    cmd.drawIndexed(indexCount, 1, 0, 0, 0);
+  } else {
+    // Fallback: non-indexed draw for objects without indices
+    uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
+    if (totalVertices > 0) {
+      cmd.draw(totalVertices, 1, 0, 0);
+    }
   }
 }
 

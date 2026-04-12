@@ -182,6 +182,20 @@ public:
                                     const std::string &debugName = "");
 
   /**
+   * @brief Create a host-visible index buffer (CPU-writable, no staging needed)
+   *
+   * Uses CpuToGpu memory with persistent mapping for index data that is
+   * uploaded once from the CPU without a staging buffer.
+   *
+   * @param size Buffer size
+   * @param debugName Optional debug name
+   * @return Created index buffer
+   */
+  AllocatedBuffer
+  createHostVisibleIndexBuffer(vk::DeviceSize size,
+                               const std::string &debugName = "");
+
+  /**
    * @brief Create a uniform buffer
    * @param size Buffer size
    * @param debugName Optional debug name

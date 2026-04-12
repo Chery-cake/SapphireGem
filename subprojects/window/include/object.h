@@ -411,7 +411,8 @@ private:
   std::vector<device::AllocatedBuffer>
       faceDataBuffers_; ///< Per-frame face SSBO
   std::vector<device::AllocatedBuffer>
-      positionBuffers_; ///< Per-frame vertex position SSBO
+      positionBuffers_;              ///< Per-frame vertex position SSBO
+  device::AllocatedBuffer indexBuffer_; ///< GPU index buffer (shared across frames)
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
