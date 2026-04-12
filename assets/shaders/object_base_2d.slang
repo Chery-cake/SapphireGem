@@ -53,6 +53,8 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;
+    float waveAmplitude;   // Per-object global wave amplitude for displacement
+    float waveFrequency;   // Per-object global wave frequency for displacement
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -112,9 +114,10 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.params[0] = face.params[0];
     output.params[1] = face.params[1];
 
-    // Apply 2D wave displacement unconditionally (same reasoning as 3D:
-    // shared boundary vertices must get identical displacement).
-    float2 disp = waveVertexDisplacement2D(pos, pc.time, face.params[0], face.params[1]);
+    // Apply 2D wave displacement unconditionally using per-object global
+    // wave params from push constants (NOT per-face params) to ensure
+    // shared boundary vertices get identical displacement.
+    float2 disp = waveVertexDisplacement2D(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
     pos += disp;
 
     // Transform through model → view → proj (all 3×3)

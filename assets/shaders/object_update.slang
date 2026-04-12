@@ -45,9 +45,10 @@ void updateMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     // Only update vertices belonging to animated faces
     if (triIndex < params.faceCount) {
         FaceData face = faceData[triIndex];
-        // Apply wave displacement unconditionally for consistency
-        // with the vertex shader — shared vertices must get identical
-        // displacement to avoid seams
+        // Apply wave displacement using per-face params.
+        // TODO: Use global wave amplitude/frequency via UpdateParams
+        // instead of per-face params to match the rasterization path fix
+        // and ensure shared vertices get identical displacement.
         float3 disp = waveVertexDisplacement(
             vert.position.xyz, params.time,
             face.params[0], face.params[1]);

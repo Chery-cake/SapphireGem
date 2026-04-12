@@ -639,10 +639,30 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + objectId (bindless)
+  // Push constants: time + objectId + per-object wave displacement params
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData(time_, baseTextureId_.index);
+    // Compute per-object max wave amplitude and frequency from face materials.
+    // All vertices on this object use the same displacement parameters,
+    // ensuring shared vertex positions are displaced identically across
+    // adjacent faces (preventing seams/holes).
+    float maxWaveAmp = 0.0f;
+    float maxWaveFreq = 0.0f;
+    for (const auto &fm : faceMaterials_) {
+      for (const auto &fx : fm.effects) {
+        if (fx.type == device::EffectType::eWave && !fx.params.empty()) {
+          if (fx.params.size() >= 1 && fx.params[0] > maxWaveAmp) {
+            maxWaveAmp = fx.params[0];
+          }
+          if (fx.params.size() >= 2 && fx.params[1] > maxWaveFreq) {
+            maxWaveFreq = fx.params[1];
+          }
+        }
+      }
+    }
+
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
+                                           maxWaveAmp, maxWaveFreq};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);

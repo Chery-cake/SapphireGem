@@ -50,6 +50,8 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;        // Object identifier
+    float waveAmplitude;   // Per-object global wave amplitude for displacement
+    float waveFrequency;   // Per-object global wave frequency for displacement
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -107,13 +109,11 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.params[1] = face.params[1];
 
     // Apply wave displacement to ALL vertices unconditionally.
-    // Since geometry may use shared vertex positions (e.g. the cube has
-    // 8 corner positions shared across 36 invocations), adjacent faces
-    // sharing a position must receive the same displacement to avoid
-    // seams/holes.  The displacement depends only on model-space position
-    // and time, so all invocations for the same position produce the
-    // same result regardless of their face's effectFlags.
-    float3 disp = waveVertexDisplacement(pos, pc.time, face.params[0], face.params[1]);
+    // Uses the per-object global wave amplitude/frequency from push
+    // constants (NOT per-face params) to ensure all invocations of a
+    // shared vertex position receive identical displacement, preventing
+    // seams/holes between adjacent faces with different effect params.
+    float3 disp = waveVertexDisplacement(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
     pos += disp;
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));

@@ -92,11 +92,21 @@ enum class ProcessingType : uint32_t {
  * @brief Push constant data for bindless shaders
  *
  * Matches the PushData struct in bindless shader files.
- * Used by Object::draw() to push time + objectId.
+ * Used by Object::draw() to push time, objectId, and per-object
+ * wave displacement parameters.
+ *
+ * The wave amplitude/frequency are computed as the maximum across
+ * all face materials on the object, ensuring every vertex receives
+ * the same displacement regardless of which triangle it belongs to.
  */
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
   uint32_t objectId = 0;
+  float waveAmplitude = 0.0f;  ///< Per-object max wave amplitude for vertex
+                               ///< displacement (ensures consistency across
+                               ///< shared vertices)
+  float waveFrequency = 0.0f;  ///< Per-object max wave frequency for vertex
+                               ///< displacement
 };
 
 // ============================================================================

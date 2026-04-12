@@ -209,7 +209,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 
   window::PipelineConfig pConfig;
   pConfig.topology = vk::PrimitiveTopology::eTriangleList;
-  pConfig.cullMode = vk::CullModeFlagBits::eBack;
+  pConfig.cullMode = vk::CullModeFlagBits::eNone;
   pConfig.frontFace = vk::FrontFace::eCounterClockwise;
   pConfig.depthTestEnable = true;
   pConfig.depthWriteEnable = true;
