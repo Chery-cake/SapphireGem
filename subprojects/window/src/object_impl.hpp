@@ -2,6 +2,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
+#include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
 
@@ -45,6 +46,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
   objectPipeline_ = std::move(other.objectPipeline_);
+  computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
@@ -78,6 +80,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
     objectPipeline_ = std::move(other.objectPipeline_);
+    computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
@@ -515,6 +518,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   positionBuffers_.clear();
   displacedPositionBuffers_.clear();
   indexBuffer_ = {};
+  computeUpdatePipeline_.reset();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -868,6 +872,198 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
   }
 
   return result;
+}
+
+// ============================================================================
+// Compute pipeline initialization
+// ============================================================================
+
+template <uint32_t Dim>
+bool Object<Dim>::initializeCompute(device::GPUDevice &device,
+                                    device::ShaderManager &shaderManager,
+                                    const device::ShaderTag *computeUpdateTag,
+                                    const device::ShaderTag *computeNormalTag) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  if (!initialized_ || !objectPipeline_.isValid()) {
+    std::println(
+        stderr,
+        "[Object] initializeCompute: '{}' must be initialized first", name_);
+    return false;
+  }
+
+  // The compute pipelines share the same pipeline layout as the graphics
+  // pipeline (same set 0 descriptor layout, same push constant range).
+  vk::PipelineLayout sharedLayout = **objectPipeline_.pipelineLayout;
+
+  // ---- Create per-frame update compute pipeline (object_update.slang) ----
+  if (computeUpdateTag) {
+    auto result = shaderManager.acquire(computeUpdateTag);
+    if (!result.has_value() || !result.value() ||
+        !result.value()->compute || !result.value()->compute->isValid) {
+      std::println(stderr,
+                   "[Object] Failed to acquire compute update shader for '{}'",
+                   name_);
+    } else {
+      device::ShaderProgram *prog = result.value();
+      vk::PipelineShaderStageCreateInfo stageInfo =
+          prog->compute->getStageInfo();
+      vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
+      try {
+        computeUpdatePipeline_ = std::make_unique<vk::raii::Pipeline>(
+            device.getRaiiDevice(), nullptr, pipelineInfo);
+        std::println("[Object] Created compute update pipeline for '{}'",
+                     name_);
+      } catch (const vk::SystemError &e) {
+        std::println(
+            stderr,
+            "[Object] Failed to create compute update pipeline for '{}': {}",
+            name_, e.what());
+      }
+      shaderManager.release(computeUpdateTag);
+    }
+  }
+
+  // ---- One-shot normal precomputation dispatch (object_compute.slang) ----
+  if (computeNormalTag && !vertices_.empty()) {
+    auto result = shaderManager.acquire(computeNormalTag);
+    if (!result.has_value() || !result.value() ||
+        !result.value()->compute || !result.value()->compute->isValid) {
+      std::println(stderr,
+                   "[Object] Failed to acquire compute normal shader for '{}'",
+                   name_);
+    } else {
+      device::ShaderProgram *prog = result.value();
+      vk::PipelineShaderStageCreateInfo stageInfo =
+          prog->compute->getStageInfo();
+      vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
+
+      std::unique_ptr<vk::raii::Pipeline> normalPipeline;
+      try {
+        normalPipeline = std::make_unique<vk::raii::Pipeline>(
+            device.getRaiiDevice(), nullptr, pipelineInfo);
+      } catch (const vk::SystemError &e) {
+        std::println(
+            stderr,
+            "[Object] Failed to create normal compute pipeline for '{}': {}",
+            name_, e.what());
+      }
+
+      if (normalPipeline) {
+        // One-shot command buffer on the graphics queue
+        auto qf = device.getQueueFamilies();
+        uint32_t queueFamily =
+            qf.graphicsFamily.value_or(qf.computeFamily.value_or(0u));
+
+        try {
+          vk::CommandPoolCreateInfo poolInfo{
+              vk::CommandPoolCreateFlagBits::eTransient, queueFamily};
+          vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
+
+          vk::CommandBufferAllocateInfo cmdAlloc{
+              *cmdPool, vk::CommandBufferLevel::ePrimary, 1};
+          auto cmdBufs =
+              vk::raii::CommandBuffers(device.getRaiiDevice(), cmdAlloc);
+          auto &cmd = cmdBufs[0];
+
+          cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+          cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **normalPipeline);
+          cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, sharedLayout,
+                                 0, {*descriptorSets_[0]}, {});
+          if (bindlessDescriptorSet_) {
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                   sharedLayout, 1,
+                                   {bindlessDescriptorSet_}, {});
+          }
+
+          device::BindlessPushConstants pushData(
+              0.0f, baseTextureId_.index,
+              static_cast<uint32_t>(vertices_.size()),
+              static_cast<uint32_t>(indices_.size()));
+          cmd.pushConstants(sharedLayout, pipelineConfig_.pushConstantStages,
+                            0, sizeof(device::BindlessPushConstants),
+                            &pushData);
+
+          uint32_t groups =
+              (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
+          cmd.dispatch(groups, 1, 1);
+          cmd.end();
+
+          vk::SubmitInfo submit{};
+          submit.setCommandBuffers(*cmd);
+          device.getGraphicsQueue().submit(submit);
+          device.getGraphicsQueue().waitIdle();
+          std::println(
+              "[Object] Normal precomputation dispatched for '{}'", name_);
+        } catch (const vk::SystemError &e) {
+          std::println(
+              stderr,
+              "[Object] Failed to dispatch normal precomputation for '{}': {}",
+              name_, e.what());
+        }
+      }
+
+      shaderManager.release(computeNormalTag);
+    }
+  }
+
+  return true;
+}
+
+// ============================================================================
+// Pre-render compute dispatch (wave displacement)
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::preRender(vk::CommandBuffer cmd,
+                            uint32_t frameIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  if (!initialized_ || !computeUpdatePipeline_) {
+    return;
+  }
+
+  if (frameIndex >= descriptorSets_.size()) {
+    return;
+  }
+
+  // Dispatch wave displacement compute shader
+  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **computeUpdatePipeline_);
+  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                         **objectPipeline_.pipelineLayout, 0,
+                         {*descriptorSets_[frameIndex]}, {});
+  if (bindlessDescriptorSet_) {
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                           **objectPipeline_.pipelineLayout, 1,
+                           {bindlessDescriptorSet_}, {});
+  }
+
+  device::BindlessPushConstants pushData(
+      time_, baseTextureId_.index,
+      static_cast<uint32_t>(vertices_.size()),
+      static_cast<uint32_t>(indices_.size()));
+  cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                    pipelineConfig_.pushConstantStages, 0,
+                    sizeof(device::BindlessPushConstants), &pushData);
+
+  uint32_t groups =
+      (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
+  cmd.dispatch(groups, 1, 1);
+
+  // Pipeline barrier: ensure compute writes to displacedPositions are visible
+  // to the subsequent vertex shader reads.
+  vk::BufferMemoryBarrier barrier{};
+  barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+  barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = displacedPositionBuffers_[frameIndex].getBuffer();
+  barrier.offset = 0;
+  barrier.size = VK_WHOLE_SIZE;
+
+  cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                      vk::PipelineStageFlagBits::eVertexShader, {}, {},
+                      {barrier}, {});
 }
 
 } // namespace window

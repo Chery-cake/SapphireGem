@@ -98,6 +98,23 @@ public:
   virtual void update(float deltaTime) = 0;
 
   /**
+   * @brief Record pre-render compute commands for this scene
+   *
+   * Called OUTSIDE an active render pass, immediately before
+   * beginRenderPass().  Implementations should dispatch compute
+   * shaders (e.g. wave displacement) and insert any required
+   * pipeline barriers.
+   *
+   * The default implementation is a no-op; override in subclasses
+   * that use compute shaders.
+   *
+   * @param cmd        Command buffer to record compute commands into
+   * @param frameIndex Current frame-in-flight index
+   */
+  virtual void preRender(vk::CommandBuffer /*cmd*/,
+                         uint32_t /*frameIndex*/) {}
+
+  /**
    * @brief Record draw commands for this scene
    *
    * Called within an active render pass. Implementations should

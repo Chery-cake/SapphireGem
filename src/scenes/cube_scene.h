@@ -52,6 +52,7 @@ class CubeScene3D : public window::Scene {
 
     void unload() override;
     void update(float deltaTime) override;
+    void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) override;
     void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override;
 };
 

@@ -4,10 +4,18 @@
 // Runs once at object load time.  For each unique vertex, scans the
 // index buffer to find all adjacent triangles, computes their face
 // normals (area-weighted), accumulates, normalizes, and writes the
-// result into the output position buffer's normal fields.
+// result directly back into binding 2 (basePositions), updating only
+// the nx/ny/nz fields.
 //
-// This replaces the geometry shader's per-triangle normal computation
-// with smooth (area-weighted) vertex normals computed in parallel.
+// Writing in-place to basePositions is safe because each thread writes
+// only its own vertex's normal fields while neighbouring threads only
+// READ position (x/y/z) fields of shared vertices – those are disjoint
+// memory offsets within the same struct.
+//
+// After this dispatch, basePositions holds correct smooth normals.
+// object_update.slang then reads basePositions every frame and copies
+// the normals (along with displaced positions) into displacedPositions
+// (binding 3), which the vertex shader reads for lighting.
 //
 // Workgroup size: 64 threads per group.
 
@@ -25,10 +33,9 @@ struct VertexPosition {
 // ---------------------------------------------------------------------------
 // Bindings (set 0)
 // ---------------------------------------------------------------------------
-[[vk::binding(1, 0)]] StructuredBuffer<FaceData>          faceData;
-[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition>    basePositions;
-[[vk::binding(3, 0)]] RWStructuredBuffer<VertexPosition>  outputPositions;
-[[vk::binding(4, 0)]] StructuredBuffer<uint>              indices;
+[[vk::binding(1, 0)]] StructuredBuffer<FaceData>           faceData;
+[[vk::binding(2, 0)]] RWStructuredBuffer<VertexPosition>   basePositions;
+[[vk::binding(4, 0)]] StructuredBuffer<uint>               indices;
 
 // ---------------------------------------------------------------------------
 // Push constants
@@ -50,7 +57,6 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     uint vi = dispatchThreadID.x;
     if (vi >= pc.vertexCount) return;
 
-    VertexPosition base = basePositions[vi];
     float3 normalAccum = float3(0.0, 0.0, 0.0);
 
     // Triangle topology: every 3 indices form one face.
@@ -85,10 +91,13 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     float len = length(normalAccum);
     float3 finalNormal = len > 0.001 ? normalAccum / len : float3(0.0, 1.0, 0.0);
 
-    // Write output: copy base position + computed normal
-    VertexPosition out = base;
+    // Write output: copy base position + computed normal back into basePositions
+    // in-place.  Only the normal fields change; position and colour are
+    // preserved.  object_update.slang subsequently reads basePositions so it
+    // will see the correct smooth normals when it builds displacedPositions.
+    VertexPosition out = basePositions[vi];
     out.nx = finalNormal.x;
     out.ny = finalNormal.y;
     out.nz = finalNormal.z;
-    outputPositions[vi] = out;
+    basePositions[vi] = out;
 }

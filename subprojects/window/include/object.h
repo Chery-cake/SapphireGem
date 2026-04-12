@@ -4,6 +4,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
+#include "shader_manager.h"
 #include "texture.h"
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
@@ -261,6 +262,43 @@ public:
    */
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
+  /**
+   * @brief Initialize the per-frame compute update pipeline and run the
+   *        one-time normal-precomputation dispatch.
+   *
+   * Must be called after initialize().  Creates a compute pipeline from
+   * @p computeUpdateTag (object_update.slang) for per-frame wave
+   * displacement, and immediately dispatches @p computeNormalTag
+   * (object_compute.slang) once to pre-compute smooth vertex normals into
+   * the base-position buffer.
+   *
+   * @param device            GPU device
+   * @param shaderManager     Shader manager used to compile shaders
+   * @param computeUpdateTag  ShaderTag for the per-frame update shader
+   * @param computeNormalTag  ShaderTag for the one-shot normal shader
+   * @return true if the compute pipeline was created successfully
+   */
+  bool initializeCompute(device::GPUDevice &device,
+                         device::ShaderManager &shaderManager,
+                         const device::ShaderTag *computeUpdateTag,
+                         const device::ShaderTag *computeNormalTag);
+
+  /**
+   * @brief Dispatch the per-frame vertex-displacement compute shader.
+   *
+   * Must be called OUTSIDE an active render pass (i.e. before
+   * beginRenderPass) once per frame.  Issues a compute dispatch
+   * followed by a pipeline barrier that makes the written
+   * displacedPositions visible to the subsequent vertex shader.
+   *
+   * Does nothing if initializeCompute() has not been called or if the
+   * compute pipeline is not valid.
+   *
+   * @param cmd        Command buffer to record compute commands into
+   * @param frameIndex Current frame-in-flight index
+   */
+  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+
   // =========================================================================
   // Bindless texture ID support
   // =========================================================================
@@ -392,6 +430,10 @@ private:
 
   // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;
+
+  // Compute pipeline for per-frame wave displacement (object_update.slang).
+  // Shares the same pipeline layout as the graphics pipeline.
+  std::unique_ptr<vk::raii::Pipeline> computeUpdatePipeline_;
 
   // Pipeline config (for push constants)
   PipelineConfig pipelineConfig_;

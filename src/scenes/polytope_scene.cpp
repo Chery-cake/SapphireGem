@@ -247,6 +247,18 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     return false;
   }
 
+  // Compute shader tags for wave displacement and normal precomputation
+  static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
+      "object_update", "object_update.slang", nullptr, nullptr,
+      nullptr, "updateMain"};
+  static constexpr device::ShaderTag OBJECT_COMPUTE_SHADER_TAG{
+      "object_compute", "object_compute.slang", nullptr, nullptr,
+      nullptr, "computeMain"};
+
+  polytope_->initializeCompute(device, shaderManager,
+                               &OBJECT_UPDATE_SHADER_TAG,
+                               &OBJECT_COMPUTE_SHADER_TAG);
+
   setLoaded(true);
   std::println("[{}] Polytope scene loaded ({} faces)", getName(), numFaces);
   return true;
@@ -270,6 +282,12 @@ void PolytopeDemoScene::update(float deltaTime) {
   rotX_ += deltaTime * 0.7f;
   rotY_ += deltaTime * 1.1f;
   rotZ_ += deltaTime * 0.4f;
+}
+
+void PolytopeDemoScene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
+  if (polytope_ && polytope_->isInitialized()) {
+    polytope_->preRender(cmd, frameIndex);
+  }
 }
 
 void PolytopeDemoScene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {

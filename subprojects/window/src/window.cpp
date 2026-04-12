@@ -513,6 +513,12 @@ bool Window::renderFrame(float deltaTime) {
     return false;
   }
 
+  // Dispatch per-scene compute shaders BEFORE the render pass.
+  // Compute commands cannot be issued inside an active render pass.
+  for (auto *scene : scenesToRender) {
+    scene->preRender(cmd, frameIndex);
+  }
+
   // Begin render pass
   auto clearValues = renderer_->getClearValues();
 
