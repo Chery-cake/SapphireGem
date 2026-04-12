@@ -251,7 +251,7 @@ struct DEVICE_API FaceMaterial {
  *   bit 1 (0x02): wave
  *   bit 2 (0x04): drawing
  *
- * There are only 2 float param slots (effectParam0, effectParam1) for all
+ * There are only 2 float param slots (params[0], params[1]) for all
  * effects combined on a face. Params are packed in effect-slot order: the
  * first parameterized effect fills as many slots as it needs (up to 2),
  * then the second parameterized effect takes whatever remains. If both
@@ -268,8 +268,7 @@ struct DEVICE_API FaceMaterial {
 struct DEVICE_API GPUFaceData {
   uint32_t textureId;   ///< Index into TextureRecord[]
   uint32_t effectFlags; ///< Bitmask derived from effects array
-  float effectParam0;
-  float effectParam1;
+  float params[2];      ///< Packed effect parameters (params[0], params[1])
 
   /**
    * @brief Construct from a FaceMaterial
@@ -308,7 +307,7 @@ struct DEVICE_API GPUFaceData {
       }
     }
 
-    return {fm.textureId, flags, slots[0], slots[1]};
+    return {fm.textureId, flags, {slots[0], slots[1]}};
   }
 };
 static_assert(sizeof(GPUFaceData) == 16,
