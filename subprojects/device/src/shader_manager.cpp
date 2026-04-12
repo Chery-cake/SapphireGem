@@ -42,8 +42,8 @@ vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
       {},
       getVkStage(),
       module,
-      //"main"}; // TODO find a better way to deal with this naming problem
-      entryPoint.c_str()};
+      "main"}; // TODO find a better way to deal with this naming problem
+               // entryPoint.c_str()};
 }
 
 // ============================================================================

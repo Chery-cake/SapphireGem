@@ -202,6 +202,18 @@ VMAAllocator::createStorageBuffer(vk::DeviceSize size,
   return createBuffer(info);
 }
 
+AllocatedBuffer
+VMAAllocator::createHostVisibleStorageBuffer(vk::DeviceSize size,
+                                             const std::string &debugName) {
+  BufferCreateInfo info{};
+  info.size = size;
+  info.usage = vk::BufferUsageFlagBits::eStorageBuffer;
+  info.memoryUsage = vma::MemoryUsage::eCpuToGpu;
+  info.flags = vma::AllocationCreateFlagBits::eMapped;
+  info.debugName = debugName.empty() ? "HostVisibleStorageBuffer" : debugName;
+  return createBuffer(info);
+}
+
 AllocatedImage VMAAllocator::createImage(const ImageCreateInfo &info) {
   std::lock_guard<std::mutex> lock(allocatorMutex_);
 

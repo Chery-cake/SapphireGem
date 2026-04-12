@@ -50,7 +50,7 @@ void updateMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
             if ((face.effectFlags & EFFECT_WAVE) != 0) {
                 float3 disp = waveVertexDisplacement(
                     vert.position.xyz, params.time,
-                    face.effectParam0, face.effectParam1);
+                    face.params[0], face.params[1]);
                 vert.position.xyz += disp;
             }
         }

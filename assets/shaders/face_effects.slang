@@ -14,8 +14,7 @@ import bindless_common;
 struct FaceData {
     uint  textureId;     // Index into TextureRecord[]
     uint  effectFlags;   // Bitmask
-    float effectParam0;  // e.g. wave amplitude
-    float effectParam1;  // e.g. wave frequency
+    float params[2];     // packed params, same layout as GPUFaceData::params
 };
 
 // Effect flag constants

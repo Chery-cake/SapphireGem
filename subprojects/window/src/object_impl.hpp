@@ -52,10 +52,12 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
+  faceDataBuffers_ = std::move(other.faceDataBuffers_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
   initialized_ = other.initialized_;
+  geometryDirty_ = other.geometryDirty_;
   other.initialized_ = false;
 }
 
@@ -80,10 +82,12 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
+    faceDataBuffers_ = std::move(other.faceDataBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
     descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
+    geometryDirty_ = other.geometryDirty_;
     other.initialized_ = false;
   }
   return *this;
@@ -141,7 +145,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  if (!baseMaterialTag_) {
+  if (baseMaterialTag_ == nullptr) {
     std::println(stderr, "[Object] No base material tag set for object: {}",
                  name_);
     return false;
@@ -163,18 +167,26 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   // Log binding table for this object's pipeline
   std::println("[Object] Binding table for '{}':", name_);
   std::println("  [0] UBO ({}D, {}B)", Dim, sizeof(GPUUBO));
+  std::println("  [1] FaceData SSBO ({} faces, {}B)", faces_.size(),
+               faces_.size() * sizeof(device::GPUFaceData));
 
   // Create descriptor set layout (owned by this object)
   // Binding 0: UBO (uniform buffer) — textures are accessed via bindless (set
   // 1)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(1);
+  bindings.reserve(2);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
           vk::ShaderStageFlagBits::eFragment};
   bindings.push_back(uboLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding faceDataLayoutBinding{
+      1, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+          vk::ShaderStageFlagBits::eFragment};
+  bindings.push_back(faceDataLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
       {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
@@ -219,9 +231,28 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     uniformBuffers_.push_back(std::move(ubo));
   }
 
-  // Create descriptor pool with enough room for UBO only
+  // Create face data storage buffers (one per frame in flight)
+  const vk::DeviceSize faceDataSize =
+      std::max(faces_.size(), static_cast<size_t>(1)) *
+      sizeof(device::GPUFaceData);
+  faceDataBuffers_.reserve(framesInFlight);
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    auto ssbo = allocator.createStorageBuffer(
+        faceDataSize, std::string(name_) + "_facedata_" + std::to_string(i));
+    if (!ssbo.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create face data buffer {} for '{}'", i,
+                   name_);
+      release();
+      return false;
+    }
+    faceDataBuffers_.push_back(std::move(ssbo));
+  }
+
+  // Create descriptor pool with room for UBO + face data SSBO
   std::vector<vk::DescriptorPoolSize> poolSizes;
-  poolSizes.push_back({vk::DescriptorType::eUniformBuffer, framesInFlight});
+  poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
+  poolSizes.emplace_back(vk::DescriptorType::eStorageBuffer, framesInFlight);
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -258,7 +289,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers (UBO only)
+  // Update descriptor sets to point to uniform buffers and face data SSBOs
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
@@ -272,7 +303,24 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                     &bufferInfo,
                                     nullptr};
 
-    device.getRaiiDevice().updateDescriptorSets({uboWrite}, {});
+    vk::DescriptorBufferInfo faceDataInfo{faceDataBuffers_[i].getBuffer(), 0,
+                                          faceDataSize};
+
+    vk::WriteDescriptorSet faceDataWrite{*descriptorSets_[i],
+                                         1,
+                                         0,
+                                         1,
+                                         vk::DescriptorType::eStorageBuffer,
+                                         nullptr,
+                                         &faceDataInfo,
+                                         nullptr};
+
+    device.getRaiiDevice().updateDescriptorSets({uboWrite, faceDataWrite}, {});
+  }
+
+  // Upload initial face data to all frames
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    uploadFaceData(i);
   }
 
   initialized_ = true;
@@ -285,9 +333,11 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorSets_.clear();
   descriptorPool_.reset();
   uniformBuffers_.clear();
+  faceDataBuffers_.clear();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
+  geometryDirty_ = true;
   initialized_ = false;
 }
 
@@ -446,6 +496,39 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
 }
 
 // ============================================================================
+// Face data SSBO upload
+// ============================================================================
+
+template <uint32_t Dim> void Object<Dim>::uploadFaceData(uint32_t frameIndex) {
+  if (!initialized_ || faceDataBuffers_.empty()) {
+    return;
+  }
+
+  if (frameIndex >= faceDataBuffers_.size()) {
+    return;
+  }
+
+  // Build GPUFaceData array from faceMaterials_
+  const size_t faceCount = std::max(faces_.size(), static_cast<size_t>(1));
+  std::vector<device::GPUFaceData> gpuData(faceCount);
+
+  for (size_t i = 0; i < faceCount; ++i) {
+    if (i < faceMaterials_.size()) {
+      gpuData[i] = device::GPUFaceData::fromFaceMaterial(faceMaterials_[i]);
+    } else {
+      gpuData[i] = device::GPUFaceData::fromFaceMaterial({});
+    }
+  }
+
+  void *mapped = faceDataBuffers_[frameIndex].map();
+  if (mapped) {
+    std::memcpy(mapped, gpuData.data(),
+                faceCount * sizeof(device::GPUFaceData));
+    faceDataBuffers_[frameIndex].unmap();
+  }
+}
+
+// ============================================================================
 // Draw
 // ============================================================================
 
@@ -468,6 +551,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     std::println(stderr, "[Object] No valid pipeline for draw '{}'", name_);
     return;
   }
+
+  // Upload face data SSBO for this frame (cheap memcpy to persistently mapped
+  // buffer)
+  uploadFaceData(frameIndex);
 
   // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,

@@ -314,6 +314,18 @@ public:
    */
   void setBindlessDescriptorSet(vk::DescriptorSet set);
 
+  /**
+   * @brief Upload face data SSBO for the specified frame
+   *
+   * Converts each FaceMaterial to GPUFaceData and writes the array
+   * into the per-frame storage buffer. Called unconditionally by
+   * draw() since the buffer is persistently mapped and the memcpy
+   * is cheap.
+   *
+   * @param frameIndex  Frame in flight index
+   */
+  void uploadFaceData(uint32_t frameIndex);
+
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
   // =========================================================================
@@ -396,11 +408,15 @@ private:
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
+  std::vector<device::AllocatedBuffer>
+      faceDataBuffers_; ///< Per-frame face SSBO
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
+  // True when geometry topology has changed and GPU resources must be rebuilt
+  bool geometryDirty_ = true;
   mutable std::mutex objectMutex_;
 };
 

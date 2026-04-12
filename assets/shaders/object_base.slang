@@ -47,29 +47,22 @@ struct PushData {
 // ---------------------------------------------------------------------------
 struct VSOutput {
     float4 pos : SV_Position;
-    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
-    float waveAmount;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
-    nointerpolation float effectParam0;
-    nointerpolation float effectParam1;
+    nointerpolation float params[2];
 };
 
 struct GSOutput {
     float4 pos : SV_Position;
-    nointerpolation uint renderMode;
     float3 color;
     float2 uv;
     float3 modelPos;
-    float waveAmount;
     nointerpolation uint textureId;
     nointerpolation uint effectFlags;
-    nointerpolation float effectParam0;
-    nointerpolation float effectParam1;
-    float lightFactor;
+    nointerpolation float params[2];
 };
 
 // ---------------------------------------------------------------------------
@@ -121,30 +114,18 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     FaceData face = faceDataBuffer[triIndex];
     output.textureId = face.textureId;
     output.effectFlags = face.effectFlags;
-    output.effectParam0 = face.effectParam0;
-    output.effectParam1 = face.effectParam1;
-
-    // Determine render mode from effect flags
-    if (face.effectFlags != 0) {
-        output.renderMode = 3; // Effects mode
-    } else if (face.textureId != 0xFFFFFFFF) {
-        output.renderMode = 1; // Texture mode
-    } else {
-        output.renderMode = 0; // Plain colour
-    }
+    output.params[0] = face.params[0];
+    output.params[1] = face.params[1];
 
     // Apply wave displacement to ALL vertices unconditionally.
     // Since the cube uses shared vertex indices, adjacent faces
     // sharing vertices must see the same displacement to avoid seams.
     // We use the face's parameters but apply to all verts.
-    float amplitude = face.effectParam0;
-    float frequency = face.effectParam1;
+    float amplitude = face.params[0];
+    float frequency = face.params[1];
     if ((face.effectFlags & EFFECT_WAVE) != 0) {
         float3 disp = waveVertexDisplacement(pos, pc.time, amplitude, frequency);
         pos += disp;
-        output.waveAmount = disp.y;
-    } else {
-        output.waveAmount = 0.0;
     }
 
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
@@ -178,16 +159,13 @@ void geomMain(
     for (int i = 0; i < 3; i++) {
         GSOutput output;
         output.pos          = input[i].pos;
-        output.renderMode   = input[i].renderMode;
         output.color        = input[i].color * lightFactor;
         output.uv           = input[i].uv;
         output.modelPos     = input[i].modelPos;
-        output.waveAmount   = input[i].waveAmount;
         output.textureId    = input[i].textureId;
         output.effectFlags  = input[i].effectFlags;
-        output.effectParam0 = input[i].effectParam0;
-        output.effectParam1 = input[i].effectParam1;
-        output.lightFactor  = lightFactor;
+        output.params[0]    = input[i].params[0];
+        output.params[1]    = input[i].params[1];
         outputStream.Append(output);
     }
     outputStream.RestartStrip();
@@ -205,7 +183,7 @@ float4 fragMain(GSOutput input) : SV_TARGET {
     if (flags != 0) {
         float4 effectColor = dispatchFaceEffect(
             flags, input.uv, input.modelPos.xy, pc.time,
-            input.effectParam0, input.effectParam1, 1.0);
+            input.params[0], input.params[1], 1.0);
 
         // If there's also a texture, blend it
         if (texId != 0xFFFFFFFF) {

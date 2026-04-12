@@ -89,14 +89,16 @@ void test_gpu_face_data_layout() {
 
   // Build a FaceMaterial with wave + gradient, then convert
   device::FaceMaterial fm{};
-  fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
-  fm.addEffect(device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
+  (void)fm.addEffect(
+      device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
+  (void)fm.addEffect(
+      device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
   device::GPUFaceData data = device::GPUFaceData::fromFaceMaterial(fm);
 
   assert(data.textureId == device::TextureId::INVALID);
   assert(data.effectFlags == (0x02u | 0x01u)); // WAVE | GRADIENT
-  assert(data.effectParam0 == 0.05f);
-  assert(data.effectParam1 == 4.0f);
+  assert(data.params[0] == 0.05f);
+  assert(data.params[1] == 4.0f);
 
   PASS();
 }
@@ -113,19 +115,21 @@ void test_effect_flag_constants() {
 
   {
     device::FaceMaterial fm;
-    fm.addEffect(device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
     auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
     assert(gpu.effectFlags == 0x01u);
   }
   {
     device::FaceMaterial fm;
-    fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.0f, 0.0f});
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eWave, 0.0f, 0.0f});
     auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
     assert(gpu.effectFlags == 0x02u);
   }
   {
     device::FaceMaterial fm;
-    fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
+    (void)fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
     auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
     assert(gpu.effectFlags == 0x04u);
   }
@@ -138,8 +142,10 @@ void test_effect_flag_constants() {
   // Combining
   {
     device::FaceMaterial fm;
-    fm.addEffect(device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
-    fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.0f, 0.0f});
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eWave, 0.0f, 0.0f});
     auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
     assert((gpu.effectFlags & 0x01u) != 0); // gradient set
     assert((gpu.effectFlags & 0x02u) != 0); // wave set
@@ -161,8 +167,8 @@ void test_face_material_defaults() {
   // Convert to GPU data and verify
   auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == 0);
-  assert(gpu.effectParam0 == 0.0f);
-  assert(gpu.effectParam1 == 0.0f);
+  assert(gpu.params[0] == 0.0f);
+  assert(gpu.params[1] == 0.0f);
 
   PASS();
 }
@@ -182,8 +188,8 @@ void test_face_material_effects_array() {
 
   auto gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == 0x01u); // GRADIENT
-  assert(gpu.effectParam0 == 0.5f);
-  assert(gpu.effectParam1 == 1.0f);
+  assert(gpu.params[0] == 0.5f);
+  assert(gpu.params[1] == 1.0f);
 
   // Add a wave effect
   assert(
@@ -191,16 +197,16 @@ void test_face_material_effects_array() {
   gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == (0x01u | 0x02u)); // GRADIENT | WAVE
   // First effect's params are kept
-  assert(gpu.effectParam0 == 0.5f);
-  assert(gpu.effectParam1 == 1.0f);
+  assert(gpu.params[0] == 0.5f);
+  assert(gpu.params[1] == 1.0f);
 
   // Remove gradient
   assert(fm.removeEffect(device::EffectType::eGradient));
   gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.effectFlags == 0x02u); // WAVE only
   // Now wave is the first active effect
-  assert(gpu.effectParam0 == 0.05f);
-  assert(gpu.effectParam1 == 4.0f);
+  assert(gpu.params[0] == 0.05f);
+  assert(gpu.params[1] == 4.0f);
 
   // Clear all
   fm.clearEffects();
@@ -240,14 +246,14 @@ void test_gpu_face_data_from_face_material() {
 
   device::FaceMaterial fm{};
   fm.textureId = 42;
-  fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.1f, 8.0f});
-  fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
+  (void)fm.addEffect(device::FaceEffect{device::EffectType::eWave, 0.1f, 8.0f});
+  (void)fm.addEffect(device::FaceEffect{device::EffectType::eDrawing});
 
   device::GPUFaceData gpu = device::GPUFaceData::fromFaceMaterial(fm);
   assert(gpu.textureId == 42);
   assert(gpu.effectFlags == (0x02u | 0x04u)); // WAVE | DRAWING
-  assert(gpu.effectParam0 == 0.1f);
-  assert(gpu.effectParam1 == 8.0f);
+  assert(gpu.params[0] == 0.1f);
+  assert(gpu.params[1] == 8.0f);
 
   PASS();
 }
