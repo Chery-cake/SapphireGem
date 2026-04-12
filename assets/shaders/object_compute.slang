@@ -64,11 +64,11 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
         out.normal = normalize(cross(e1, e2));
     }
 
-    // Apply per-face effects (wave displacement using global params
-    // for consistency with the vertex shader — shared vertices must get
-    // identical displacement regardless of which face they belong to).
-    // TODO: Pass global wave amplitude/frequency via ComputeParams
-    // instead of per-face params to match the rasterization path fix.
+    // Apply per-face effects (wave displacement using per-face params).
+    // NOTE: With indexed drawing, triIndex = vertexIdx / 3 is only valid
+    // for non-indexed input. If this compute shader processes indexed geometry,
+    // an index-to-face mapping SSBO will be needed.
+    // TODO: Update face index lookup to support indexed drawing input.
     if (triIndex < params.faceCount) {
         FaceData face = faceData[triIndex];
         float3 disp = waveVertexDisplacement(

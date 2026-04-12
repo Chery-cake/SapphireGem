@@ -1,21 +1,17 @@
 // object_base.slang
 // Primary shader file for 3D objects with per-face material support.
 //
-// Replaces cube_bindless.slang.
-// Uses per-face GPU data (FaceData SSBO at set 0 binding 1) to select
-// texture and effect per triangle.
-// Reads vertex positions from a per-object SSBO (set 0 binding 2) so that
-// each Object can supply its own geometry (cube, polytope, etc.).
+// Uses indexed drawing with shared vertices. The vertex shader transforms
+// positions without face-specific data. The geometry shader looks up
+// per-face data via SV_PrimitiveID and applies per-face wave displacement,
+// ensuring faces with wave effects displace independently without affecting
+// non-wave faces or causing seams at shared edges.
 //
 // Descriptor set 0:
 //   binding 0: per-object UBO (model/view/proj 4×4 matrices)
 //   binding 1: FaceData[] SSBO (per-face material data)
 //   binding 2: VertexPosition[] SSBO (per-vertex positions)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
-//
-// Vertex displacement (wave) is applied unconditionally to ALL
-// vertices before per-face shading diverges. This prevents seams
-// when adjacent faces share vertex positions but have different effects.
 
 import bindless_common;
 import face_effects;
@@ -49,9 +45,7 @@ struct VertexPosition {
 // ---------------------------------------------------------------------------
 struct PushData {
     float time;
-    uint  objectId;        // Object identifier
-    float waveAmplitude;   // Per-object global wave amplitude for displacement
-    float waveFrequency;   // Per-object global wave frequency for displacement
+    uint  objectId;
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -63,9 +57,6 @@ struct VSOutput {
     float3 color;
     float2 uv;
     float3 modelPos;
-    nointerpolation uint textureId;
-    nointerpolation uint effectFlags;
-    nointerpolation float params[2];
 };
 
 struct GSOutput {
@@ -100,28 +91,18 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     float3 pos = float3(vp.x, vp.y, vp.z);
     output.modelPos = pos;
 
-    // Per-face data from SSBO
-    uint triIndex = vertexID / 3;
-    FaceData face = faceDataBuffer[triIndex];
-    output.textureId = face.textureId;
-    output.effectFlags = face.effectFlags;
-    output.params[0] = face.params[0];
-    output.params[1] = face.params[1];
-
-    // Apply wave displacement to ALL vertices unconditionally.
-    // Uses the per-object global wave amplitude/frequency from push
-    // constants (NOT per-face params) to ensure all invocations of a
-    // shared vertex position receive identical displacement, preventing
-    // seams/holes between adjacent faces with different effect params.
-    float3 disp = waveVertexDisplacement(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
-    pos += disp;
-
+    // Transform position: model → view → proj
+    // No wave displacement here — that is applied per-face in the geometry
+    // shader so that shared vertices between wave and non-wave faces are
+    // handled correctly.
     float4 worldPos = mul(ubo.model, float4(pos, 1.0));
     float4 viewPos  = mul(ubo.view, worldPos);
     output.pos = mul(ubo.proj, viewPos);
 
-    uint localIdx = vertexID % 6;
-    output.uv = faceUVs[localIdx];
+    // UV from the draw-order position within each quad
+    // With indexed drawing, vertexID is the vertex buffer index.
+    // The geometry shader will assign per-face UVs instead.
+    output.uv = float2(0.0, 0.0);
 
     output.color = float3(0.27, 0.51, 0.71);
 
@@ -129,31 +110,55 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
 }
 
 // ---------------------------------------------------------------------------
-// Geometry shader – compute face normal for lighting
+// Geometry shader – per-face data lookup, wave displacement, lighting
 // ---------------------------------------------------------------------------
 [shader("geometry")]
 [maxvertexcount(3)]
 void geomMain(
     triangle VSOutput input[3],
+    uint primitiveID : SV_PrimitiveID,
     inout TriangleStream<GSOutput> outputStream
 ) {
-    float3 edge1 = input[1].modelPos - input[0].modelPos;
-    float3 edge2 = input[2].modelPos - input[0].modelPos;
+    // Look up per-face data using the primitive ID (triangle index)
+    FaceData face = faceDataBuffer[primitiveID];
+
+    // Apply per-face wave displacement to vertex positions.
+    // Each face displaces its own copy of the vertices independently.
+    // Non-wave faces (params={0,0}) get zero displacement.
+    float3 positions[3];
+    for (int j = 0; j < 3; j++) {
+        float3 pos = input[j].modelPos;
+        float3 disp = waveVertexDisplacement(pos, pc.time, face.params[0], face.params[1]);
+        positions[j] = pos + disp;
+    }
+
+    // Compute face normal from (potentially displaced) positions
+    float3 edge1 = positions[1] - positions[0];
+    float3 edge2 = positions[2] - positions[0];
     float3 faceNormal = normalize(cross(edge1, edge2));
 
     float3 lightDir = normalize(float3(0.3, 1.0, 0.5));
     float lightFactor = max(dot(faceNormal, lightDir), 0.3);
 
+    // Re-transform displaced positions through model/view/proj
     for (int i = 0; i < 3; i++) {
         GSOutput output;
-        output.pos          = input[i].pos;
+
+        float4 worldPos = mul(ubo.model, float4(positions[i], 1.0));
+        float4 viewPos  = mul(ubo.view, worldPos);
+        output.pos = mul(ubo.proj, viewPos);
+
         output.color        = input[i].color * lightFactor;
-        output.uv           = input[i].uv;
-        output.modelPos     = input[i].modelPos;
-        output.textureId    = input[i].textureId;
-        output.effectFlags  = input[i].effectFlags;
-        output.params[0]    = input[i].params[0];
-        output.params[1]    = input[i].params[1];
+        output.modelPos     = positions[i];
+        output.textureId    = face.textureId;
+        output.effectFlags  = face.effectFlags;
+        output.params[0]    = face.params[0];
+        output.params[1]    = face.params[1];
+
+        // UV from draw-order position within each quad (6 verts per quad)
+        uint localIdx = (primitiveID % 2) * 3 + uint(i);
+        output.uv = faceUVs[localIdx];
+
         outputStream.Append(output);
     }
     outputStream.RestartStrip();

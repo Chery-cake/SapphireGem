@@ -1,9 +1,9 @@
 // object_base_2d.slang
 // Shader file for 2D objects with per-face material support.
 //
-// Uses per-face GPU data (FaceData SSBO at set 0 binding 1) to select
-// texture and effect per triangle.
-// Reads vertex positions from a per-object SSBO (set 0 binding 2).
+// Uses indexed drawing with shared vertices. The vertex shader transforms
+// positions without face-specific data. The geometry shader looks up
+// per-face data via SV_PrimitiveID and applies per-face wave displacement.
 //
 // Descriptor set 0:
 //   binding 0: per-object UBO (model/view/proj 3×3 matrices, std140 padded)
@@ -11,9 +11,7 @@
 //   binding 2: VertexPosition[] SSBO (per-vertex 2D positions, stored as float4)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
 //
-// No geometry shader — 2D objects do not need face-normal lighting.
 // Depth is hardcoded to 0.0 (front), w=1.0 for clip output.
-// Wave displacement is applied unconditionally to all vertices.
 
 import bindless_common;
 import face_effects;
@@ -53,8 +51,6 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;
-    float waveAmplitude;   // Per-object global wave amplitude for displacement
-    float waveFrequency;   // Per-object global wave frequency for displacement
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -62,6 +58,13 @@ struct PushData {
 // Shader I/O structs
 // ---------------------------------------------------------------------------
 struct VSOutput {
+    float4 pos : SV_Position;
+    float3 color;
+    float2 uv;
+    float2 modelPos;
+};
+
+struct GSOutput {
     float4 pos : SV_Position;
     float3 color;
     float2 uv;
@@ -106,21 +109,10 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     float2 pos = float2(vp.x, vp.y);
     output.modelPos = pos;
 
-    // Per-face data from SSBO
-    uint triIndex = vertexID / 3;
-    FaceData face = faceDataBuffer[triIndex];
-    output.textureId = face.textureId;
-    output.effectFlags = face.effectFlags;
-    output.params[0] = face.params[0];
-    output.params[1] = face.params[1];
-
-    // Apply 2D wave displacement unconditionally using per-object global
-    // wave params from push constants (NOT per-face params) to ensure
-    // shared boundary vertices get identical displacement.
-    float2 disp = waveVertexDisplacement2D(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
-    pos += disp;
-
     // Transform through model → view → proj (all 3×3)
+    // No wave displacement here — that is applied per-face in the
+    // geometry shader so that shared vertices between wave and non-wave
+    // faces are handled correctly.
     float3 modelPos3 = mulMat3(ubo.model, float3(pos, 1.0));
     float3 viewPos3  = mulMat3(ubo.view,  modelPos3);
     float3 clipPos3  = mulMat3(ubo.proj,  viewPos3);
@@ -128,8 +120,7 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     // 2D: depth=0 (front), w=1
     output.pos = float4(clipPos3.xy, 0.0, 1.0);
 
-    uint localIdx = vertexID % 6;
-    output.uv = faceUVs[localIdx];
+    output.uv = float2(0.0, 0.0);
 
     output.color = float3(0.8, 0.8, 0.8);
 
@@ -137,10 +128,55 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
 }
 
 // ---------------------------------------------------------------------------
+// Geometry shader – per-face data lookup and wave displacement
+// ---------------------------------------------------------------------------
+[shader("geometry")]
+[maxvertexcount(3)]
+void geomMain(
+    triangle VSOutput input[3],
+    uint primitiveID : SV_PrimitiveID,
+    inout TriangleStream<GSOutput> outputStream
+) {
+    // Look up per-face data using the primitive ID (triangle index)
+    FaceData face = faceDataBuffer[primitiveID];
+
+    for (int i = 0; i < 3; i++) {
+        GSOutput output;
+
+        float2 pos = input[i].modelPos;
+
+        // Apply per-face 2D wave displacement.
+        // Non-wave faces (params={0,0}) get zero displacement.
+        float2 disp = waveVertexDisplacement2D(pos, pc.time, face.params[0], face.params[1]);
+        pos += disp;
+
+        // Re-transform displaced position through model → view → proj
+        float3 modelPos3 = mulMat3(ubo.model, float3(pos, 1.0));
+        float3 viewPos3  = mulMat3(ubo.view,  modelPos3);
+        float3 clipPos3  = mulMat3(ubo.proj,  viewPos3);
+
+        output.pos = float4(clipPos3.xy, 0.0, 1.0);
+        output.color        = input[i].color;
+        output.modelPos     = pos;
+        output.textureId    = face.textureId;
+        output.effectFlags  = face.effectFlags;
+        output.params[0]    = face.params[0];
+        output.params[1]    = face.params[1];
+
+        // UV from draw-order position within each quad
+        uint localIdx = (primitiveID % 2) * 3 + uint(i);
+        output.uv = faceUVs[localIdx];
+
+        outputStream.Append(output);
+    }
+    outputStream.RestartStrip();
+}
+
+// ---------------------------------------------------------------------------
 // Fragment shader – selects rendering based on per-face data
 // ---------------------------------------------------------------------------
 [shader("fragment")]
-float4 fragMain(VSOutput input) : SV_TARGET {
+float4 fragMain(GSOutput input) : SV_TARGET {
     uint flags = input.effectFlags;
     uint texId = input.textureId;
 

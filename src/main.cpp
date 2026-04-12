@@ -33,9 +33,10 @@
 static constexpr device::ShaderTag OBJECT_BASE_SHADER_TAG{
     "object_base", "object_base.slang", "vertMain", "fragMain", "geomMain"};
 
-// 2D object shader tag (vertex + fragment, no geometry shader)
+// 2D object shader tag (vertex + fragment + geometry shader for per-face effects)
 static constexpr device::ShaderTag OBJECT_BASE_2D_SHADER_TAG{
-    "object_base_2d", "object_base_2d.slang", "vertMain", "fragMain"};
+    "object_base_2d", "object_base_2d.slang", "vertMain", "fragMain",
+    "geomMain"};
 
 // Material tags – 3D objects use object_base, 2D objects use object_base_2d
 // constexpr ensures constant (compile-time) initialization; external linkage

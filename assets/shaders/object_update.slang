@@ -46,9 +46,10 @@ void updateMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     if (triIndex < params.faceCount) {
         FaceData face = faceData[triIndex];
         // Apply wave displacement using per-face params.
-        // TODO: Use global wave amplitude/frequency via UpdateParams
-        // instead of per-face params to match the rasterization path fix
-        // and ensure shared vertices get identical displacement.
+        // NOTE: With indexed drawing, triIndex = vertexIdx / 3 is only valid
+        // for non-indexed input. If this update shader processes indexed geometry,
+        // an index-to-face mapping SSBO will be needed.
+        // TODO: Update face index lookup to support indexed drawing input.
         float3 disp = waveVertexDisplacement(
             vert.position.xyz, params.time,
             face.params[0], face.params[1]);
