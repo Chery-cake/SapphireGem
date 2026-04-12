@@ -93,12 +93,14 @@ enum class ProcessingType : uint32_t {
  *
  * Matches the PushData struct in bindless shader files.
  * Used by Object::draw() to push time + objectId.
+ *
+ * Wave parameters are stored per-face in FaceMaterial effects and
+ * uploaded via the FaceData SSBO — they are NOT in push constants.
+ * This avoids combinatorial parameter growth as more effects are added.
  */
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
   uint32_t objectId = 0;
-  float waveAmplitude = 0.0f; // TODO remove wave vars from here
-  float waveFrequency = 0.0f;
 };
 
 // ============================================================================

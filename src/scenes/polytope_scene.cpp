@@ -5,10 +5,8 @@
 #include "renderer.h"
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 #include <print>
 #include <random>
-#include <ranges>
 
 PolytopeDemoScene::PolytopeDemoScene(
     const window::SceneTag &sceneTag,
@@ -80,11 +78,8 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     }
   }
 
-  // Generate a random convex polytope
-  // Fixed seed (42) for reproducible polytope generation across runs.
-  std::mt19937 rng(42);
-  std::uniform_int_distribution<int> faceDist(6, 12);
-  int targetFaces = faceDist(rng);
+  // Generate a convex polytope from a full icosahedron
+  // All 20 faces are rendered so there are no holes in the geometry.
 
   // Golden ratio icosahedron vertices
   const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
@@ -107,23 +102,17 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       {4, 9, 5},  {2, 4, 11}, {6, 2, 10},  {8, 6, 7},  {9, 8, 1},
   };
 
-  // Select up to targetFaces from the icosahedron
-  int numFaces = std::min(targetFaces, static_cast<int>(icoFaces.size()));
+  int numFaces = static_cast<int>(icoFaces.size());
 
-  // Shuffle faces and pick the first N
-  std::vector<int> faceIndices(static_cast<size_t>(icoFaces.size()));
-  std::iota(faceIndices.begin(), faceIndices.end(), 0);
-  std::ranges::shuffle(faceIndices, rng);
-
-  // Random colours
+  // Random colours (fixed seed for reproducibility)
+  std::mt19937 rng(42);
   std::uniform_real_distribution<float> colorDist(0.2f, 1.0f);
 
   std::vector<window::Vertex<3>> vertices;
   std::vector<uint32_t> indices;
 
   for (int fi = 0; fi < numFaces; ++fi) {
-    auto &face =
-        icoFaces[static_cast<size_t>(faceIndices[static_cast<size_t>(fi)])];
+    auto &face = icoFaces[static_cast<size_t>(fi)];
     float r = colorDist(rng), g = colorDist(rng), b = colorDist(rng);
 
     // Get the 3 vertex positions
@@ -159,12 +148,10 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   polytope_ = std::make_unique<window::Object<3>>(
       POLYTOPE_OBJ_TAG, std::move(vertices), std::move(indices));
 
-  // Assign random per-face materials
-  std::uniform_int_distribution<int> typeDist(0, 5);
-
+  // Assign per-face materials cycling through material types
   for (int fi = 0; fi < numFaces; ++fi) {
     uint32_t faceIdx = static_cast<uint32_t>(fi);
-    int matType = typeDist(rng);
+    int matType = fi % 6; // Cycle through all material types deterministically
     device::FaceMaterial fm;
 
     switch (matType) {

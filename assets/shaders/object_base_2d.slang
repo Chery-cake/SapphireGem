@@ -13,7 +13,7 @@
 //
 // No geometry shader — 2D objects do not need face-normal lighting.
 // Depth is hardcoded to 0.0 (front), w=1.0 for clip output.
-// Wave displacement is applied unconditionally to all vertices.
+// Wave displacement is applied to flagged vertices using per-face params.
 
 import bindless_common;
 import face_effects;
@@ -55,8 +55,6 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;
-    float waveAmplitude;   // Per-object max wave amplitude
-    float waveFrequency;   // Per-object max wave frequency
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -117,9 +115,9 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     output.params[1] = face.params[1];
 
     // Apply 2D wave displacement only to flagged vertices.
-    // Same per-vertex flag and push-constant param approach as 3D.
+    // Wave parameters come from the per-face FaceData SSBO.
     if (vp.flags & 0x01u) {
-        float2 disp = waveVertexDisplacement2D(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
+        float2 disp = waveVertexDisplacement2D(pos, pc.time, face.params[0], face.params[1]);
         pos += disp;
     }
 
