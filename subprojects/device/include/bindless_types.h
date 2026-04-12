@@ -92,15 +92,20 @@ enum class ProcessingType : uint32_t {
  * @brief Push constant data for bindless shaders
  *
  * Matches the PushData struct in bindless shader files.
- * Used by Object::draw() to push time + objectId.
+ * Used by Object::draw() to push time + objectId + counts for compute.
  *
  * Wave parameters are stored per-face in FaceMaterial effects and
  * uploaded via the FaceData SSBO — they are NOT in push constants.
  * This avoids combinatorial parameter growth as more effects are added.
+ *
+ * vertexCount and indexCount are used by the compute shader to guard
+ * dispatch bounds and iterate the index buffer for adjacency scanning.
  */
 struct DEVICE_API BindlessPushConstants {
   float time = 0.0f;
   uint32_t objectId = 0;
+  uint32_t vertexCount = 0;
+  uint32_t indexCount = 0;
 };
 
 // ============================================================================
@@ -348,7 +353,7 @@ static_assert(sizeof(GPUFaceData) == 16,
               "GPUFaceData must be 16 bytes (std430)");
 
 /**
- * @brief GPU-side per-vertex data (32 bytes, std430)
+ * @brief GPU-side per-vertex data (48 bytes, std430)
  *
  * Uploaded by Object to a storage buffer (set 0, binding 2) so that
  * each object can supply its own geometry to the shader.
@@ -359,11 +364,10 @@ static_assert(sizeof(GPUFaceData) == 16,
  * The color fields (r, g, b) carry per-vertex RGB color from
  * Vertex::color so the shader can use it instead of hardcoding.
  *
- * The flags field is a bitmask:
- *   bit 0 (0x01): vertex should receive wave displacement
- *
- * A vertex is flagged for wave displacement when it shares its
- * position with at least one vertex belonging to a wave-effect face.
+ * The normal fields (nx, ny, nz) store the pre-computed smooth vertex
+ * normal (area-weighted average of adjacent face normals), computed by
+ * the object_compute.slang compute shader at load time.  This replaces
+ * the geometry shader's per-triangle normal calculation.
  */
 struct DEVICE_API GPUVertexPosition {
   float x = 0.0f;
@@ -373,10 +377,14 @@ struct DEVICE_API GPUVertexPosition {
   float r = 1.0f;
   float g = 1.0f;
   float b = 1.0f;
-  uint32_t flags = 0;
+  float pad0 = 0.0f;
+  float nx = 0.0f;
+  float ny = 1.0f;
+  float nz = 0.0f;
+  float npad = 0.0f;
 };
-static_assert(sizeof(GPUVertexPosition) == 32,
-              "GPUVertexPosition must be 32 bytes (std430)");
+static_assert(sizeof(GPUVertexPosition) == 48,
+              "GPUVertexPosition must be 48 bytes (std430)");
 
 } // namespace device
 
