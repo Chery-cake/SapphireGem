@@ -13,9 +13,10 @@
 //   binding 2: VertexPosition[] SSBO (per-vertex positions)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
 //
-// Vertex displacement (wave) is applied unconditionally to ALL
-// vertices before per-face shading diverges. This prevents seams
-// when adjacent faces share vertex positions but have different effects.
+// Vertex displacement (wave) is applied to flagged vertices using
+// per-face wave parameters from the FaceData SSBO.  Shared vertex
+// positions receive displacement from whichever face they belong to,
+// ensuring the effect propagates correctly to adjacent faces.
 
 import bindless_common;
 import face_effects;
@@ -52,8 +53,6 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;        // Object identifier
-    float waveAmplitude;   // Per-object max wave amplitude
-    float waveFrequency;   // Per-object max wave frequency
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -112,11 +111,11 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
 
     // Apply wave displacement only to vertices flagged for it.
     // The flag is set on the CPU for any vertex that shares its position
-    // with at least one wave-effect face.  Using per-object push-constant
-    // amplitude/frequency ensures that all invocations at the same position
-    // produce identical displacement — no seams at shared boundaries.
+    // with at least one wave-effect face.  Wave parameters come from the
+    // per-face FaceData SSBO (params[0]=amplitude, params[1]=frequency),
+    // ensuring each face's effect is self-contained without push constants.
     if (vp.flags & 0x01u) {
-        float3 disp = waveVertexDisplacement(pos, pc.time, pc.waveAmplitude, pc.waveFrequency);
+        float3 disp = waveVertexDisplacement(pos, pc.time, face.params[0], face.params[1]);
         pos += disp;
     }
 

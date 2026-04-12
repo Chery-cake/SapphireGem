@@ -702,26 +702,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + objectId + wave params (bindless)
+  // Push constants: time + objectId (bindless)
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    // Compute per-object max wave amplitude and frequency from face
-    // materials
-    float maxWaveAmp = 0.0f;
-    float maxWaveFreq = 0.0f;
-    for (const auto &fm : faceMaterials_) {
-      for (const auto &fx : fm.effects) {
-        if (fx.type == device::EffectType::eWave && fx.isActive()) {
-          if (fx.params.size() >= 2) {
-            maxWaveAmp = std::max(maxWaveAmp, fx.params[0]);
-            maxWaveFreq = std::max(maxWaveFreq, fx.params[1]);
-          }
-        }
-      }
-    }
-
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
-                                           maxWaveAmp, maxWaveFreq};
+    device::BindlessPushConstants pushData{time_, baseTextureId_.index};
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);

@@ -59,9 +59,9 @@ inline float4 applyWaveColor(float2 uv, float time, float amplitude,
                              // Wave vertex displacement (applied in vertex shader)
                              //
                              // Returns zero displacement when amplitude <= 0 so that non-wave faces
-                             // are not affected.  This is safe for shared-vertex geometry (e.g. the cube)
-                             // because non-wave faces store params = {0,0} and all invocations sharing
-                             // the same position will consistently produce zero displacement.
+                             // are not affected.  Wave parameters come from the per-face FaceData SSBO,
+                             // so each face carries its own amplitude/frequency.  Shared vertices
+                             // receive displacement from whichever face they belong to.
                              // ---------------------------------------------------------------------------
                              inline float3 waveVertexDisplacement(float3 pos, float time, float amplitude,
                                                                   float frequency) {
