@@ -1,78 +1,90 @@
 // object_compute.slang
-// Compute shader for pre-computing object geometry.
+// Static compute shader for pre-computing per-vertex smooth normals.
 //
-// Receives raw vertex positions and face topology as input SSBOs,
-// writes out transformed, lighting-pre-baked ProcessedVertex[] into
-// device-local memory. This runs once at object load time.
+// Runs once at object load time.  For each unique vertex, scans the
+// index buffer to find all adjacent triangles, computes their face
+// normals (area-weighted), accumulates, normalizes, and writes the
+// result into the output position buffer's normal fields.
+//
+// This replaces the geometry shader's per-triangle normal computation
+// with smooth (area-weighted) vertex normals computed in parallel.
 //
 // Workgroup size: 64 threads per group.
 
 import face_effects;
 
-struct RawVertex {
-    float3 position;
-    float3 color;
-    float2 uv;
+// ---------------------------------------------------------------------------
+// Per-vertex position struct (must match device::GPUVertexPosition, 48 bytes)
+// ---------------------------------------------------------------------------
+struct VertexPosition {
+    float x, y, z, w;
+    float r, g, b, pad0;
+    float nx, ny, nz, npad;
 };
 
-struct ProcessedVertex {
-    float4 position;    // Object-space position (not yet view/proj transformed)
-    float3 color;
-    float2 uv;
-    float3 normal;      // Pre-computed face normal
-    float  pad0;
-};
+// ---------------------------------------------------------------------------
+// Bindings (set 0)
+// ---------------------------------------------------------------------------
+[[vk::binding(1, 0)]] StructuredBuffer<FaceData>          faceData;
+[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition>    basePositions;
+[[vk::binding(3, 0)]] RWStructuredBuffer<VertexPosition>  outputPositions;
+[[vk::binding(4, 0)]] StructuredBuffer<uint>              indices;
 
+// ---------------------------------------------------------------------------
+// Push constants
+// ---------------------------------------------------------------------------
 struct ComputeParams {
-    uint vertexCount;
-    uint faceCount;
     float time;
-    uint flags;
+    uint  objectId;
+    uint  vertexCount;
+    uint  indexCount;
 };
+[[vk::push_constant]] ConstantBuffer<ComputeParams> pc;
 
-[[vk::binding(0, 0)]] StructuredBuffer<RawVertex> inputVertices;
-[[vk::binding(1, 0)]] StructuredBuffer<FaceData> faceData;
-[[vk::binding(2, 0)]] RWStructuredBuffer<ProcessedVertex> outputVertices;
-[[vk::binding(3, 0)]] ConstantBuffer<ComputeParams> params;
-
+// ---------------------------------------------------------------------------
+// Compute shader entry point
+// ---------------------------------------------------------------------------
 [shader("compute")]
 [numthreads(64, 1, 1)]
 void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
-    uint vertexIdx = dispatchThreadID.x;
-    if (vertexIdx >= params.vertexCount) {
-        return;
-    }
+    uint vi = dispatchThreadID.x;
+    if (vi >= pc.vertexCount) return;
 
-    RawVertex raw = inputVertices[vertexIdx];
-    ProcessedVertex out;
-    out.position = float4(raw.position, 1.0);
-    out.color = raw.color;
-    out.uv = raw.uv;
-    out.normal = float3(0.0, 1.0, 0.0); // Will be computed per-face
-    out.pad0 = 0.0;
+    VertexPosition base = basePositions[vi];
+    float3 normalAccum = float3(0.0, 0.0, 0.0);
 
-    // Compute face normal if this vertex starts a triangle
-    uint triIndex = vertexIdx / 3;
-    uint localIdx = vertexIdx % 3;
+    uint faceCount = pc.indexCount / 3u;
+    for (uint fi = 0u; fi < faceCount; ++fi) {
+        uint i0 = indices[fi * 3u + 0u];
+        uint i1 = indices[fi * 3u + 1u];
+        uint i2 = indices[fi * 3u + 2u];
+        if (i0 != vi && i1 != vi && i2 != vi) continue;
 
-    if (localIdx == 0 && (triIndex * 3 + 2) < params.vertexCount) {
-        float3 p0 = inputVertices[triIndex * 3 + 0].position;
-        float3 p1 = inputVertices[triIndex * 3 + 1].position;
-        float3 p2 = inputVertices[triIndex * 3 + 2].position;
+        // Read the three vertex positions of this triangle
+        VertexPosition v0 = basePositions[i0];
+        VertexPosition v1 = basePositions[i1];
+        VertexPosition v2 = basePositions[i2];
+
+        float3 p0 = float3(v0.x, v0.y, v0.z);
+        float3 p1 = float3(v1.x, v1.y, v1.z);
+        float3 p2 = float3(v2.x, v2.y, v2.z);
+
+        // Area-weighted face normal (cross product magnitude = 2 * area)
         float3 e1 = p1 - p0;
         float3 e2 = p2 - p0;
-        out.normal = normalize(cross(e1, e2));
+        float3 faceNormal = cross(e1, e2);
+
+        normalAccum += faceNormal; // area-weighted accumulation
     }
 
-    // Apply per-face effects (wave displacement unconditionally for
-    // consistency with the vertex shader — shared vertices must get
-    // identical displacement)
-    if (triIndex < params.faceCount) {
-        FaceData face = faceData[triIndex];
-        float3 disp = waveVertexDisplacement(
-            raw.position, params.time, face.params[0], face.params[1]);
-        out.position.xyz += disp;
-    }
+    // Normalize the accumulated normal
+    float len = length(normalAccum);
+    float3 finalNormal = len > 0.001 ? normalAccum / len : float3(0.0, 1.0, 0.0);
 
-    outputVertices[vertexIdx] = out;
+    // Write output: copy base position + computed normal
+    VertexPosition out = base;
+    out.nx = finalNormal.x;
+    out.ny = finalNormal.y;
+    out.nz = finalNormal.z;
+    outputPositions[vi] = out;
 }

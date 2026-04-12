@@ -29,9 +29,10 @@
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Unified object shader tag (vertex + fragment + geometry) for 3D objects
+// Unified object shader tag (vertex + fragment) for 3D objects
+// No geometry shader — normals are pre-computed by compute shader
 static constexpr device::ShaderTag OBJECT_BASE_SHADER_TAG{
-    "object_base", "object_base.slang", "vertMain", "fragMain", "geomMain"};
+    "object_base", "object_base.slang", "vertMain", "fragMain"};
 
 // 2D object shader tag (vertex + fragment, no geometry shader)
 static constexpr device::ShaderTag OBJECT_BASE_2D_SHADER_TAG{
