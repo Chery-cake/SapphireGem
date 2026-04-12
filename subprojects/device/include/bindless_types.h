@@ -343,6 +343,24 @@ struct DEVICE_API GPUFaceData {
 static_assert(sizeof(GPUFaceData) == 16,
               "GPUFaceData must be 16 bytes (std430)");
 
+/**
+ * @brief GPU-side per-vertex position (16 bytes, std430)
+ *
+ * Uploaded by Object to a storage buffer (set 0, binding 2) so that
+ * each object can supply its own geometry to the shader.
+ *
+ * For 3D objects: (x, y, z, 1.0)
+ * For 2D objects: (x, y, 0.0, 1.0)
+ */
+struct DEVICE_API GPUVertexPosition {
+  float x = 0.0f;
+  float y = 0.0f;
+  float z = 0.0f;
+  float w = 1.0f;
+};
+static_assert(sizeof(GPUVertexPosition) == 16,
+              "GPUVertexPosition must be 16 bytes (std430)");
+
 } // namespace device
 
 #endif // BINDLESS_TYPES_H_

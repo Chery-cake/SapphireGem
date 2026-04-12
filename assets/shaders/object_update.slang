@@ -45,15 +45,13 @@ void updateMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
     // Only update vertices belonging to animated faces
     if (triIndex < params.faceCount) {
         FaceData face = faceData[triIndex];
-        if (face.effectFlags != 0) {
-            // Apply wave displacement delta
-            if ((face.effectFlags & EFFECT_WAVE) != 0) {
-                float3 disp = waveVertexDisplacement(
-                    vert.position.xyz, params.time,
-                    face.params[0], face.params[1]);
-                vert.position.xyz += disp;
-            }
-        }
+        // Apply wave displacement unconditionally for consistency
+        // with the vertex shader — shared vertices must get identical
+        // displacement to avoid seams
+        float3 disp = waveVertexDisplacement(
+            vert.position.xyz, params.time,
+            face.params[0], face.params[1]);
+        vert.position.xyz += disp;
     }
 
     animatedVertices[vertexIdx] = vert;

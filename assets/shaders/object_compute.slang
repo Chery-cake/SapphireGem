@@ -64,14 +64,14 @@ void computeMain(uint3 dispatchThreadID : SV_DispatchThreadID) {
         out.normal = normalize(cross(e1, e2));
     }
 
-    // Apply per-face effects (wave displacement)
+    // Apply per-face effects (wave displacement unconditionally for
+    // consistency with the vertex shader — shared vertices must get
+    // identical displacement)
     if (triIndex < params.faceCount) {
         FaceData face = faceData[triIndex];
-        if ((face.effectFlags & EFFECT_WAVE) != 0) {
-            float3 disp = waveVertexDisplacement(
-                raw.position, params.time, face.params[0], face.params[1]);
-            out.position.xyz += disp;
-        }
+        float3 disp = waveVertexDisplacement(
+            raw.position, params.time, face.params[0], face.params[1]);
+        out.position.xyz += disp;
     }
 
     outputVertices[vertexIdx] = out;
