@@ -57,27 +57,38 @@ inline float4 applyWaveColor(float2 uv, float time, float amplitude,
 
                              // ---------------------------------------------------------------------------
                              // Wave vertex displacement (applied in vertex shader)
+                             //
+                             // Returns zero displacement when amplitude <= 0 so that non-wave faces
+                             // are not affected.  This is safe for shared-vertex geometry (e.g. the cube)
+                             // because non-wave faces store params = {0,0} and all invocations sharing
+                             // the same position will consistently produce zero displacement.
                              // ---------------------------------------------------------------------------
                              inline float3 waveVertexDisplacement(float3 pos, float time, float amplitude,
                                                                   float frequency) {
-                                 float amp = amplitude > 0.0 ? amplitude : 0.05;
+                                 if (amplitude <= 0.0)
+                                     return float3(0.0, 0.0, 0.0);
+
                                  float freq = frequency > 0.0 ? frequency : 4.0;
 
-                                 float wave = sin(pos.x * freq + time * 2.0) * amp;
-                                 wave += cos(pos.z * freq + time * 1.5) * amp;
+                                 float wave = sin(pos.x * freq + time * 2.0) * amplitude;
+                                 wave += cos(pos.z * freq + time * 1.5) * amplitude;
                                  return float3(0.0, wave, 0.0);
                                                                   }
 
                                                                   // ---------------------------------------------------------------------------
                                                                   // 2D wave vertex displacement (for Object<2>)
+                                                                  //
+                                                                  // Same zero-displacement rule: amplitude <= 0 means no displacement.
                                                                   // ---------------------------------------------------------------------------
                                                                   inline float2 waveVertexDisplacement2D(float2 pos, float time, float amplitude,
                                                                                                          float frequency) {
-                                                                      float amp = amplitude > 0.0 ? amplitude : 0.04;
+                                                                      if (amplitude <= 0.0)
+                                                                          return float2(0.0, 0.0);
+
                                                                       float freq = frequency > 0.0 ? frequency : 6.0;
 
-                                                                      float dx = sin(pos.y * freq + time * 2.5) * amp;
-                                                                      float dy = cos(pos.x * freq * 0.83 + time * 2.0) * amp;
+                                                                      float dx = sin(pos.y * freq + time * 2.5) * amplitude;
+                                                                      float dy = cos(pos.x * freq * 0.83 + time * 2.0) * amplitude;
                                                                       return float2(dx, dy);
                                                                                                          }
 

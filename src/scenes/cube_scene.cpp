@@ -184,10 +184,33 @@ bool CubeScene3D::load(device::GPUDevice &device,
   }
 
   // Create cube geometry (36 vertices for 12 triangles)
+  // Expand the 8 shared cube positions into 36 individual vertices using
+  // the standard cube index mapping, so the GPU reads per-vertex positions
+  // from the position SSBO.
+  static constexpr std::array<std::array<float, 3>, 8> cubePos = {{
+      {-0.5f, -0.5f, 0.5f},
+      {0.5f, -0.5f, 0.5f},
+      {0.5f, 0.5f, 0.5f},
+      {-0.5f, 0.5f, 0.5f},
+      {-0.5f, -0.5f, -0.5f},
+      {0.5f, -0.5f, -0.5f},
+      {0.5f, 0.5f, -0.5f},
+      {-0.5f, 0.5f, -0.5f},
+  }};
+  static constexpr std::array<uint32_t, 36> cubeIdx = {
+      0, 1, 2, 0, 2, 3, // Front  (+Z)
+      5, 4, 7, 5, 7, 6, // Back   (-Z)
+      4, 0, 3, 4, 3, 7, // Left   (-X)
+      1, 5, 6, 1, 6, 2, // Right  (+X)
+      3, 2, 6, 3, 6, 7, // Top    (+Y)
+      4, 5, 1, 4, 1, 0, // Bottom (-Y)
+  };
+
   std::vector<window::Vertex<3>> vertices(36);
-  for (auto &v : vertices) {
-    v.position = {0.0f, 0.0f, 0.0f};
-    v.color = {1.0f, 1.0f, 1.0f};
+  for (size_t i = 0; i < 36; ++i) {
+    auto &cp = cubePos[cubeIdx[i]];
+    vertices[i].position = {cp[0], cp[1], cp[2]};
+    vertices[i].color = {1.0f, 1.0f, 1.0f};
   }
 
   std::vector<uint32_t> indices;

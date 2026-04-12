@@ -29,17 +29,21 @@
 // Static tags (must have static storage duration)
 // ============================================================================
 
-// Unified object shader tag (vertex + fragment + geometry)
+// Unified object shader tag (vertex + fragment + geometry) for 3D objects
 static constexpr device::ShaderTag OBJECT_BASE_SHADER_TAG{
     "object_base", "object_base.slang", "vertMain", "fragMain", "geomMain"};
 
-// Material tags – all use the unified object_base shader
+// 2D object shader tag (vertex + fragment, no geometry shader)
+static constexpr device::ShaderTag OBJECT_BASE_2D_SHADER_TAG{
+    "object_base_2d", "object_base_2d.slang", "vertMain", "fragMain"};
+
+// Material tags – 3D objects use object_base, 2D objects use object_base_2d
 // constexpr ensures constant (compile-time) initialization; external linkage
 // is inherited from the extern declarations in the scene headers.
 constexpr window::MaterialTag CUBE_MATERIAL_TAG{"cube_bindless_mat",
                                                 &OBJECT_BASE_SHADER_TAG};
 constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{"quad2d_bindless_mat",
-                                                   &OBJECT_BASE_SHADER_TAG};
+                                                   &OBJECT_BASE_2D_SHADER_TAG};
 constexpr window::MaterialTag POLYTOPE_MATERIAL_TAG{"polytope_mat",
                                                     &OBJECT_BASE_SHADER_TAG};
 

@@ -53,6 +53,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
   faceDataBuffers_ = std::move(other.faceDataBuffers_);
+  positionBuffers_ = std::move(other.positionBuffers_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
@@ -79,6 +80,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
     faceMaterials_ = std::move(other.faceMaterials_);
+    positionBuffers_ = std::move(other.positionBuffers_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -171,10 +173,11 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                faces_.size() * sizeof(device::GPUFaceData));
 
   // Create descriptor set layout (owned by this object)
-  // Binding 0: UBO (uniform buffer) — textures are accessed via bindless (set
-  // 1)
+  // Binding 0: UBO (uniform buffer)
+  // Binding 1: FaceData SSBO (per-face materials)
+  // Binding 2: VertexPosition SSBO (per-vertex positions)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(2);
+  bindings.reserve(3);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
@@ -187,6 +190,11 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
           vk::ShaderStageFlagBits::eFragment};
   bindings.push_back(faceDataLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding positionLayoutBinding{
+      2, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex};
+  bindings.push_back(positionLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
       {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
@@ -249,10 +257,54 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     faceDataBuffers_.push_back(std::move(ssbo));
   }
 
-  // Create descriptor pool with room for UBO + face data SSBO
+  // Create vertex position storage buffers (one per frame in flight)
+  const size_t vertCount = std::max(vertices_.size(), static_cast<size_t>(1));
+  const vk::DeviceSize positionDataSize =
+      vertCount * sizeof(device::GPUVertexPosition);
+  positionBuffers_.reserve(framesInFlight);
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
+        positionDataSize,
+        std::string(name_) + "_positions_" + std::to_string(i));
+    if (!ssbo.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create position buffer {} for '{}'", i,
+                   name_);
+      release();
+      return false;
+    }
+    positionBuffers_.push_back(std::move(ssbo));
+  }
+
+  // Upload vertex positions to all position buffers
+  {
+    std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
+    for (size_t vi = 0; vi < vertices_.size(); ++vi) {
+      device::GPUVertexPosition gp;
+      if constexpr (Dim >= 1)
+        gp.x = vertices_[vi].position[0];
+      if constexpr (Dim >= 2)
+        gp.y = vertices_[vi].position[1];
+      if constexpr (Dim >= 3)
+        gp.z = vertices_[vi].position[2];
+      gp.w = 1.0f;
+      gpuPositions[vi] = gp;
+    }
+    for (uint32_t i = 0; i < framesInFlight; ++i) {
+      void *mapped = positionBuffers_[i].map();
+      if (mapped) {
+        std::memcpy(mapped, gpuPositions.data(),
+                    vertCount * sizeof(device::GPUVertexPosition));
+        positionBuffers_[i].unmap();
+      }
+    }
+  }
+
+  // Create descriptor pool with room for UBO + face data SSBO + position SSBO
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
-  poolSizes.emplace_back(vk::DescriptorType::eStorageBuffer, framesInFlight);
+  poolSizes.emplace_back(vk::DescriptorType::eStorageBuffer,
+                         framesInFlight * 2); // face data + positions
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -289,7 +341,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers and face data SSBOs
+  // Update descriptor sets to point to uniform buffers, face data SSBOs,
+  // and position SSBOs
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
@@ -315,7 +368,20 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                          &faceDataInfo,
                                          nullptr};
 
-    device.getRaiiDevice().updateDescriptorSets({uboWrite, faceDataWrite}, {});
+    vk::DescriptorBufferInfo positionInfo{positionBuffers_[i].getBuffer(), 0,
+                                          positionDataSize};
+
+    vk::WriteDescriptorSet positionWrite{*descriptorSets_[i],
+                                         2,
+                                         0,
+                                         1,
+                                         vk::DescriptorType::eStorageBuffer,
+                                         nullptr,
+                                         &positionInfo,
+                                         nullptr};
+
+    device.getRaiiDevice().updateDescriptorSets(
+        {uboWrite, faceDataWrite, positionWrite}, {});
   }
 
   // Upload initial face data to all frames
@@ -334,6 +400,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorPool_.reset();
   uniformBuffers_.clear();
   faceDataBuffers_.clear();
+  positionBuffers_.clear();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};

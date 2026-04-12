@@ -75,11 +75,53 @@ bool Quad2DScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  // 2D quad: 24 vertices (4 faces x 2 triangles x 3 vertices)
+  // 2D quad: 24 vertices (4 quadrants x 2 triangles x 3 vertices)
+  // Each quadrant is a separate pair of triangles so they can have
+  // independent per-face materials.
+  //
+  // Quadrant layout (Vulkan NDC, Y-down):
+  //   Face 0 (top-left):     triangles 0-1
+  //   Face 1 (top-right):    triangles 2-3
+  //   Face 2 (bottom-left):  triangles 4-5
+  //   Face 3 (bottom-right): triangles 6-7
+  struct P2 {
+    float x, y;
+  };
+  static constexpr P2 quadPositions[24] = {
+      // Face 0 (top-left quadrant)
+      {-0.8f, 0.0f},
+      {0.0f, 0.0f},
+      {0.0f, 0.8f}, // tri 0
+      {-0.8f, 0.0f},
+      {0.0f, 0.8f},
+      {-0.8f, 0.8f}, // tri 1
+      // Face 1 (top-right quadrant)
+      {0.0f, 0.0f},
+      {0.8f, 0.0f},
+      {0.8f, 0.8f}, // tri 2
+      {0.0f, 0.0f},
+      {0.8f, 0.8f},
+      {0.0f, 0.8f}, // tri 3
+      // Face 2 (bottom-left quadrant)
+      {-0.8f, -0.8f},
+      {0.0f, -0.8f},
+      {0.0f, 0.0f}, // tri 4
+      {-0.8f, -0.8f},
+      {0.0f, 0.0f},
+      {-0.8f, 0.0f}, // tri 5
+      // Face 3 (bottom-right quadrant)
+      {0.0f, -0.8f},
+      {0.8f, -0.8f},
+      {0.8f, 0.0f}, // tri 6
+      {0.0f, -0.8f},
+      {0.8f, 0.0f},
+      {0.0f, 0.0f}, // tri 7
+  };
+
   std::vector<window::Vertex<2>> vertices(24);
-  for (auto &v : vertices) {
-    v.position = {0.0f, 0.0f};
-    v.color = {1.0f, 1.0f, 1.0f};
+  for (size_t i = 0; i < 24; ++i) {
+    vertices[i].position = {quadPositions[i].x, quadPositions[i].y};
+    vertices[i].color = {1.0f, 1.0f, 1.0f};
   }
 
   std::vector<uint32_t> indices;
@@ -94,6 +136,34 @@ bool Quad2DScene::load(device::GPUDevice &device,
   // Set the bindless texture ID and descriptor set
   quad_->setTextureId(quadTextureId_);
   quad_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+
+  // Assign per-face materials (8 triangles = 4 quadrants x 2 tris)
+  // Quadrant 0 (top-left, tri 0-1): plain colour, no effect
+  quad_->setFaceMaterial(0, {});
+  quad_->setFaceMaterial(1, {});
+  // Quadrant 1 (top-right, tri 2-3): texture
+  {
+    device::FaceMaterial fm;
+    fm.textureId = quadTextureId_.index;
+    quad_->setFaceMaterial(2, fm);
+    quad_->setFaceMaterial(3, fm);
+  }
+  // Quadrant 2 (bottom-left, tri 4-5): gradient effect
+  {
+    device::FaceMaterial fm;
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
+    quad_->setFaceMaterial(4, fm);
+    quad_->setFaceMaterial(5, fm);
+  }
+  // Quadrant 3 (bottom-right, tri 6-7): wave effect
+  {
+    device::FaceMaterial fm;
+    (void)fm.addEffect(
+        device::FaceEffect{device::EffectType::eWave, 0.04f, 6.0f});
+    quad_->setFaceMaterial(6, fm);
+    quad_->setFaceMaterial(7, fm);
+  }
 
   window::PipelineConfig pConfig;
   pConfig.topology = vk::PrimitiveTopology::eTriangleList;
