@@ -354,7 +354,7 @@ static_assert(sizeof(GPUFaceData) == 16,
  * For 3D objects: (x, y, z, 1.0)
  * For 2D objects: (x, y, 0.0, 1.0)
  *
- * The colour fields (r, g, b) carry per-vertex RGB colour from
+ * The color fields (r, g, b) carry per-vertex RGB color from
  * Vertex::color so the shader can use it instead of hardcoding.
  *
  * The flags field is a bitmask:

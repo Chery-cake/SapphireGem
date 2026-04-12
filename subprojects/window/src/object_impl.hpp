@@ -277,11 +277,11 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     positionBuffers_.push_back(std::move(ssbo));
   }
 
-  // Upload vertex positions, colours, and wave flags to all position buffers
+  // Upload vertex positions, colors, and wave flags to all position buffers
   {
     std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
 
-    // Pass 1: copy positions and colours
+    // Pass 1: copy positions and colors
     for (size_t vi = 0; vi < vertices_.size(); ++vi) {
       device::GPUVertexPosition gp;
       if constexpr (Dim >= 1)
