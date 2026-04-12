@@ -324,7 +324,7 @@ public:
    *
    * @param frameIndex  Frame in flight index
    */
-  void uploadFaceData(uint32_t frameIndex);
+  void uploadFaceData(uint32_t frameIndex) const;
 
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)

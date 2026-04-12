@@ -1,5 +1,6 @@
 #include "bindless_types.h"
 #include "shader_manager.h"
+#include "texture_table.h"
 #include <cassert>
 #include <cstdio>
 #include <string>
