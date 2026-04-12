@@ -203,6 +203,20 @@ VMAAllocator::createStorageBuffer(vk::DeviceSize size,
 }
 
 AllocatedBuffer
+VMAAllocator::createIndexStorageBuffer(vk::DeviceSize size,
+                                       const std::string &debugName) {
+  BufferCreateInfo info{};
+  info.size = size;
+  info.usage = vk::BufferUsageFlagBits::eIndexBuffer |
+               vk::BufferUsageFlagBits::eStorageBuffer |
+               vk::BufferUsageFlagBits::eTransferDst;
+  info.memoryUsage = vma::MemoryUsage::eCpuToGpu;
+  info.flags = vma::AllocationCreateFlagBits::eMapped;
+  info.debugName = debugName.empty() ? "IndexStorageBuffer" : debugName;
+  return createBuffer(info);
+}
+
+AllocatedBuffer
 VMAAllocator::createHostVisibleStorageBuffer(vk::DeviceSize size,
                                              const std::string &debugName) {
   BufferCreateInfo info{};

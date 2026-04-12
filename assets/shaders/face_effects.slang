@@ -56,12 +56,12 @@ inline float4 applyWaveColor(float2 uv, float time, float amplitude,
                              }
 
                              // ---------------------------------------------------------------------------
-                             // Wave vertex displacement (applied in vertex shader)
+                             // Wave vertex displacement (applied in compute shader)
                              //
                              // Returns zero displacement when amplitude <= 0 so that non-wave faces
                              // are not affected.  Wave parameters come from the per-face FaceData SSBO,
-                             // so each face carries its own amplitude/frequency.  Shared vertices
-                             // receive displacement from whichever face they belong to.
+                             // so each face carries its own amplitude/frequency.  The compute shader
+                             // accumulates displacement across all adjacent faces for each vertex.
                              // ---------------------------------------------------------------------------
                              inline float3 waveVertexDisplacement(float3 pos, float time, float amplitude,
                                                                   float frequency) {

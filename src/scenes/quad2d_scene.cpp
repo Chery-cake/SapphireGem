@@ -1,6 +1,7 @@
 #include "quad2d_scene.h"
 #include "bindless_types.h"
 #include "renderer.h"
+#include "vulkan/vulkan.hpp"
 #include <print>
 
 Quad2DScene::Quad2DScene(
@@ -75,60 +76,74 @@ bool Quad2DScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  // 2D quad: 24 vertices (4 quadrants x 2 triangles x 3 vertices)
-  // Each quadrant is a separate pair of triangles so they can have
-  // independent per-face materials.
+  // 2D quad: 9 unique vertices + 24 indices (4 quadrants × 2 triangles × 3
+  // verts) Using indexed drawing so the center vertex (shared by all 4
+  // quadrants) correctly receives wave displacement from any quadrant's
+  // effects.
+  //
+  // Vertex layout (3×3 grid):
+  //   6---7---8
+  //   |  Q2 | Q3 |
+  //   3---4---5
+  //   |  Q0 | Q1 |
+  //   0---1---2
   //
   // Quadrant layout (Vulkan NDC, Y-down):
-  //   Face 0 (top-left):     triangles 0-1
-  //   Face 1 (top-right):    triangles 2-3
-  //   Face 2 (bottom-left):  triangles 4-5
-  //   Face 3 (bottom-right): triangles 6-7
+  //   Face 0 (top-left):     Q0 = triangles 0-1 (verts 3,4,7 / 3,7,6)
+  //   Face 1 (top-right):    Q1 = triangles 2-3 (verts 4,5,8 / 4,8,7)
+  //   Face 2 (bottom-left):  Q2 = triangles 4-5 (verts 0,1,4 / 0,4,3)
+  //   Face 3 (bottom-right): Q3 = triangles 6-7 (verts 1,2,5 / 1,5,4)
   struct P2 {
     float x, y;
   };
-  static constexpr P2 quadPositions[24] = {
-      // Face 0 (top-left quadrant)
-      {-0.8f, 0.0f},
-      {0.0f, 0.0f},
-      {0.0f, 0.8f}, // tri 0
-      {-0.8f, 0.0f},
-      {0.0f, 0.8f},
-      {-0.8f, 0.8f}, // tri 1
-      // Face 1 (top-right quadrant)
-      {0.0f, 0.0f},
-      {0.8f, 0.0f},
-      {0.8f, 0.8f}, // tri 2
-      {0.0f, 0.0f},
-      {0.8f, 0.8f},
-      {0.0f, 0.8f}, // tri 3
-      // Face 2 (bottom-left quadrant)
-      {-0.8f, -0.8f},
-      {0.0f, -0.8f},
-      {0.0f, 0.0f}, // tri 4
-      {-0.8f, -0.8f},
-      {0.0f, 0.0f},
-      {-0.8f, 0.0f}, // tri 5
-      // Face 3 (bottom-right quadrant)
-      {0.0f, -0.8f},
-      {0.8f, -0.8f},
-      {0.8f, 0.0f}, // tri 6
-      {0.0f, -0.8f},
-      {0.8f, 0.0f},
-      {0.0f, 0.0f}, // tri 7
+  static constexpr std::array<P2, 9> gridPositions = {
+      P2(-0.8f, -0.8f), // 0: bottom-left
+      P2(0.0f, -0.8f),  // 1: bottom-center
+      P2(0.8f, -0.8f),  // 2: bottom-right
+      P2(-0.8f, 0.0f),  // 3: middle-left
+      P2(0.0f, 0.0f),   // 4: center (shared by all quadrants)
+      P2(0.8f, 0.0f),   // 5: middle-right
+      P2(-0.8f, 0.8f),  // 6: top-left
+      P2(0.0f, 0.8f),   // 7: top-center
+      P2(0.8f, 0.8f),   // 8: top-right
   };
 
-  std::vector<window::Vertex<2>> vertices(24);
-  for (size_t i = 0; i < 24; ++i) {
-    vertices[i].position = {quadPositions[i].x, quadPositions[i].y};
+  std::vector<window::Vertex<2>> vertices(9);
+  for (size_t i = 0; i < 9; ++i) {
+    vertices[i].position = {gridPositions[i].x, gridPositions[i].y};
     vertices[i].color = {1.0f, 1.0f, 1.0f};
   }
 
-  std::vector<uint32_t> indices;
-  indices.reserve(24);
-  for (uint32_t i = 0; i < 24; ++i) {
-    indices.push_back(i);
-  }
+  std::vector<uint32_t> indices = {
+      // Face 0 (top-left quadrant, tri 0-1)
+      3,
+      4,
+      7,
+      3,
+      7,
+      6,
+      // Face 1 (top-right quadrant, tri 2-3)
+      4,
+      5,
+      8,
+      4,
+      8,
+      7,
+      // Face 2 (bottom-left quadrant, tri 4-5)
+      0,
+      1,
+      4,
+      0,
+      4,
+      3,
+      // Face 3 (bottom-right quadrant, tri 6-7)
+      1,
+      2,
+      5,
+      1,
+      5,
+      4,
+  };
 
   quad_ = std::make_unique<window::Object<2>>(
       QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
@@ -170,8 +185,9 @@ bool Quad2DScene::load(device::GPUDevice &device,
   pConfig.cullMode = vk::CullModeFlagBits::eNone;
   pConfig.depthTestEnable = false;
   pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
-  pConfig.pushConstantStages =
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
+                               vk::ShaderStageFlagBits::eFragment |
+                               vk::ShaderStageFlagBits::eCompute;
 
   if (!quad_->initialize(allocator, device, *material_,
                          renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,

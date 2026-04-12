@@ -1,19 +1,20 @@
 // object_base_2d.slang
 // Shader file for 2D objects with per-face material support.
 //
-// Uses per-face GPU data (FaceData SSBO at set 0 binding 1) to select
-// texture and effect per triangle.
-// Reads vertex positions from a per-object SSBO (set 0 binding 2).
-//
-// Descriptor set 0:
-//   binding 0: per-object UBO (model/view/proj 3×3 matrices, std140 padded)
-//   binding 1: FaceData[] SSBO (per-face material data)
-//   binding 2: VertexPosition[] SSBO (per-vertex 2D positions, stored as float4)
-// Descriptor set 1: global bindless set (from bindless_common.slang)
+// Uses indexed drawing (drawIndexed) with unique vertex positions.
+// The compute shader (object_update.slang) runs per-frame to displace
+// vertices based on per-face effects (wave, etc.) via adjacency scanning.
+// The vertex shader reads pre-displaced positions from binding 3.
+// The fragment shader reads per-face data via SV_PrimitiveID.
 //
 // No geometry shader — 2D objects do not need face-normal lighting.
 // Depth is hardcoded to 0.0 (front), w=1.0 for clip output.
-// Wave displacement is applied to flagged vertices using per-face params.
+//
+// Descriptor set 0:
+//   binding 0: per-object UBO (model/view/proj 3×3 matrices, std140 padded)
+//   binding 1: FaceData[] SSBO (per-face material data) — fragment only
+//   binding 3: Displaced VertexPosition[] SSBO (per-frame, compute-written)
+// Descriptor set 1: global bindless set (from bindless_common.slang)
 
 import bindless_common;
 import face_effects;
@@ -35,19 +36,20 @@ struct UniformBuffer2D {
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer2D> ubo;
 
 // ---------------------------------------------------------------------------
-// Per-face data SSBO (set 0, binding 1)
+// Per-face data SSBO (set 0, binding 1) — read by fragment shader
 // ---------------------------------------------------------------------------
 [[vk::binding(1, 0)]] StructuredBuffer<FaceData> faceDataBuffer;
 
 // ---------------------------------------------------------------------------
-// Per-vertex position SSBO (set 0, binding 2)
+// Displaced vertex position SSBO (set 0, binding 3)
+// Written by compute shader each frame.
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
-    float r, g, b;
-    uint flags;
+    float r, g, b, pad0;
+    float nx, ny, nz, npad;
 };
-[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> vertexPositions;
+[[vk::binding(3, 0)]] StructuredBuffer<VertexPosition> displacedPositions;
 
 // ---------------------------------------------------------------------------
 // Push constants
@@ -55,6 +57,8 @@ struct VertexPosition {
 struct PushData {
     float time;
     uint  objectId;
+    uint  vertexCount;
+    uint  indexCount;
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -64,11 +68,7 @@ struct PushData {
 struct VSOutput {
     float4 pos : SV_Position;
     float3 color;
-    float2 uv;
     float2 modelPos;
-    nointerpolation uint textureId;
-    nointerpolation uint effectFlags;
-    nointerpolation float params[2];
 };
 
 // ---------------------------------------------------------------------------
@@ -83,43 +83,16 @@ float3 mulMat3(Std140Mat3 m, float3 v) {
 }
 
 // ---------------------------------------------------------------------------
-// UV coordinates per vertex within a face (2 triangles per quad face)
-// ---------------------------------------------------------------------------
-static const float2 faceUVs[6] = {
-    float2(0.0, 1.0),
-    float2(1.0, 1.0),
-    float2(1.0, 0.0),
-    float2(0.0, 1.0),
-    float2(1.0, 0.0),
-    float2(0.0, 0.0),
-};
-
-// ---------------------------------------------------------------------------
-// Vertex shader
+// Vertex shader — reads pre-displaced positions, no per-face data access
 // ---------------------------------------------------------------------------
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
-    // Read 2D position from per-object SSBO
-    VertexPosition vp = vertexPositions[vertexID];
+    // Read 2D position from displaced per-object SSBO
+    VertexPosition vp = displacedPositions[vertexID];
     float2 pos = float2(vp.x, vp.y);
     output.modelPos = pos;
-
-    // Per-face data from SSBO
-    uint triIndex = vertexID / 3;
-    FaceData face = faceDataBuffer[triIndex];
-    output.textureId = face.textureId;
-    output.effectFlags = face.effectFlags;
-    output.params[0] = face.params[0];
-    output.params[1] = face.params[1];
-
-    // Apply 2D wave displacement only to flagged vertices.
-    // Wave parameters come from the per-face FaceData SSBO.
-    if (vp.flags & 0x01u) {
-        float2 disp = waveVertexDisplacement2D(pos, pc.time, face.params[0], face.params[1]);
-        pos += disp;
-    }
 
     // Transform through model → view → proj (all 3×3)
     float3 modelPos3 = mulMat3(ubo.model, float3(pos, 1.0));
@@ -129,31 +102,33 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     // 2D: depth=0 (front), w=1
     output.pos = float4(clipPos3.xy, 0.0, 1.0);
 
-    uint localIdx = vertexID % 6;
-    output.uv = faceUVs[localIdx];
-
     output.color = float3(vp.r, vp.g, vp.b);
 
     return output;
 }
 
 // ---------------------------------------------------------------------------
-// Fragment shader – selects rendering based on per-face data
+// Fragment shader — reads per-face data via SV_PrimitiveID
 // ---------------------------------------------------------------------------
 [shader("fragment")]
-float4 fragMain(VSOutput input) : SV_TARGET {
-    uint flags = input.effectFlags;
-    uint texId = input.textureId;
+float4 fragMain(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_TARGET {
+    FaceData face = faceDataBuffer[primitiveID];
+
+    uint flags = face.effectFlags;
+    uint texId = face.textureId;
+
+    // Generate UV from model position for 2D
+    float2 uv = input.modelPos * 0.5 + float2(0.5, 0.5);
 
     // If face has effects, dispatch them
     if (flags != 0) {
         float4 effectColor = dispatchFaceEffect(
-            flags, input.uv, input.modelPos, pc.time,
-            input.params[0], input.params[1], 1.0);
+            flags, uv, input.modelPos, pc.time,
+            face.params[0], face.params[1], 1.0);
 
         // If there's also a texture, blend it
         if (texId != 0xFFFFFFFF) {
-            float4 texColor = sampleBindlessTexture(texId, input.uv, pc.time);
+            float4 texColor = sampleBindlessTexture(texId, uv, pc.time);
             return lerp(texColor, effectColor, 0.5);
         }
         return effectColor;
@@ -161,7 +136,7 @@ float4 fragMain(VSOutput input) : SV_TARGET {
 
     // No effects — check for texture
     if (texId != 0xFFFFFFFF) {
-        return sampleBindlessTexture(texId, input.uv, pc.time);
+        return sampleBindlessTexture(texId, uv, pc.time);
     }
 
     // Plain colour fallback

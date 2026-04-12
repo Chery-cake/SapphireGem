@@ -54,6 +54,8 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   uniformBuffers_ = std::move(other.uniformBuffers_);
   faceDataBuffers_ = std::move(other.faceDataBuffers_);
   positionBuffers_ = std::move(other.positionBuffers_);
+  displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
+  indexBuffer_ = std::move(other.indexBuffer_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
@@ -81,6 +83,8 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     baseTextureId_ = other.baseTextureId_;
     faceMaterials_ = std::move(other.faceMaterials_);
     positionBuffers_ = std::move(other.positionBuffers_);
+    displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
+    indexBuffer_ = std::move(other.indexBuffer_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
@@ -171,30 +175,44 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   std::println("  [0] UBO ({}D, {}B)", Dim, sizeof(GPUUBO));
   std::println("  [1] FaceData SSBO ({} faces, {}B)", faces_.size(),
                faces_.size() * sizeof(device::GPUFaceData));
+  std::println("  [2] Base position SSBO (static)");
+  std::println("  [3] Displaced position SSBO (per-frame, compute-written)");
+  std::println("  [4] Index SSBO (topology, static)");
 
   // Create descriptor set layout (owned by this object)
   // Binding 0: UBO (uniform buffer)
   // Binding 1: FaceData SSBO (per-face materials)
-  // Binding 2: VertexPosition SSBO (per-vertex positions)
+  // Binding 2: Base VertexPosition SSBO (static undeformed positions)
+  // Binding 3: Displaced VertexPosition SSBO (per-frame, compute-written)
+  // Binding 4: Index buffer as SSBO (topology data for compute adjacency)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(3);
+  bindings.reserve(5);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
-          vk::ShaderStageFlagBits::eFragment};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(uboLayoutBinding);
 
   vk::DescriptorSetLayoutBinding faceDataLayoutBinding{
       1, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
-          vk::ShaderStageFlagBits::eFragment};
+      vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(faceDataLayoutBinding);
 
-  vk::DescriptorSetLayoutBinding positionLayoutBinding{
+  vk::DescriptorSetLayoutBinding basePositionLayoutBinding{
       2, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eVertex};
-  bindings.push_back(positionLayoutBinding);
+      vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(basePositionLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding displacedPositionLayoutBinding{
+      3, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(displacedPositionLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding indexLayoutBinding{
+      4, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(indexLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
       {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
@@ -258,6 +276,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Create vertex position storage buffers (one per frame in flight)
+  // These hold the STATIC base positions (undeformed) — compute shader reads
+  // them.
   const size_t vertCount = std::max(vertices_.size(), static_cast<size_t>(1));
   const vk::DeviceSize positionDataSize =
       vertCount * sizeof(device::GPUVertexPosition);
@@ -265,7 +285,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     auto ssbo = allocator.createHostVisibleStorageBuffer(
         positionDataSize,
-        std::string(name_) + "_positions_" + std::to_string(i));
+        std::string(name_) + "_basePositions_" + std::to_string(i));
     if (!ssbo.isValid()) {
       std::println(stderr,
                    "[Object] Failed to create position buffer {} for '{}'", i,
@@ -276,11 +296,52 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     positionBuffers_.push_back(std::move(ssbo));
   }
 
-  // Upload vertex positions, colors, and wave flags to all position buffers
+  // Create displaced position storage buffers (one per frame in flight)
+  // These are written by the compute shader each frame with displaced
+  // positions.
+  displacedPositionBuffers_.reserve(framesInFlight);
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
+        positionDataSize,
+        std::string(name_) + "_displaced_" + std::to_string(i));
+    if (!ssbo.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create displaced position buffer {} for "
+                   "'{}'",
+                   i, name_);
+      release();
+      return false;
+    }
+    displacedPositionBuffers_.push_back(std::move(ssbo));
+  }
+
+  // Create index+storage dual-use buffer (static topology data)
+  {
+    const size_t idxCount = std::max(indices_.size(), static_cast<size_t>(1));
+    const vk::DeviceSize indexDataSize = idxCount * sizeof(uint32_t);
+    indexBuffer_ = allocator.createIndexStorageBuffer(
+        indexDataSize, std::string(name_) + "_indices");
+    if (!indexBuffer_.isValid()) {
+      std::println(stderr, "[Object] Failed to create index buffer for '{}'",
+                   name_);
+      release();
+      return false;
+    }
+    // Upload index data
+    void *idxMapped = indexBuffer_.map();
+    if (idxMapped) {
+      std::memcpy(idxMapped, indices_.data(),
+                  indices_.size() * sizeof(uint32_t));
+      indexBuffer_.unmap();
+    }
+  }
+
+  // Upload vertex positions and colors to all base position buffers
+  // No wave-flag computation — effects are handled entirely by the compute
+  // shader.
   {
     std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
 
-    // Pass 1: copy positions and colors
     for (size_t vi = 0; vi < vertices_.size(); ++vi) {
       device::GPUVertexPosition gp;
       if constexpr (Dim >= 1)
@@ -293,64 +354,15 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       gp.r = vertices_[vi].color[0];
       gp.g = vertices_[vi].color[1];
       gp.b = vertices_[vi].color[2];
-      gp.flags = 0;
+      gp.pad0 = 0.0f;
+      // Default normal (up). Overwritten by object_compute.slang at load
+      // time with area-weighted smooth normals from the actual mesh
+      // topology.
+      gp.nx = 0.0f;
+      gp.ny = 1.0f;
+      gp.nz = 0.0f;
+      gp.npad = 0.0f;
       gpuPositions[vi] = gp;
-    }
-
-    // Pass 2: compute per-vertex wave flags.
-    // A vertex should be displaced if and only if it shares its position
-    // with at least one vertex belonging to a wave-effect face.
-    {
-      // Collect indices of vertices belonging to wave faces
-      std::vector<bool> isWaveVertex(vertices_.size(), false);
-      for (size_t fi = 0; fi < faceMaterials_.size(); ++fi) {
-        bool hasWave = false;
-        for (const auto &fx : faceMaterials_[fi].effects) {
-          if (fx.type == device::EffectType::eWave && fx.isActive()) {
-            hasWave = true;
-            break;
-          }
-        }
-        if (hasWave) {
-          size_t base = fi * 3;
-          for (size_t k = 0; k < 3 && (base + k) < vertices_.size(); ++k) {
-            isWaveVertex[base + k] = true;
-          }
-        }
-      }
-
-      // Propagate: flag any vertex that shares a position with a wave
-      // vertex. First collect all wave-vertex positions.
-      std::vector<std::array<float, Dim>> wavePositions;
-      for (size_t vi = 0; vi < vertices_.size(); ++vi) {
-        if (isWaveVertex[vi]) {
-          wavePositions.push_back(vertices_[vi].position);
-        }
-      }
-
-      // For each vertex, check if its position matches any wave-vertex
-      // position
-      constexpr float eps = 1e-6f;
-      for (size_t vi = 0; vi < vertices_.size(); ++vi) {
-        if (isWaveVertex[vi]) {
-          gpuPositions[vi].flags |= 0x01u; // already a wave vertex
-          continue;
-        }
-        const auto &pos = vertices_[vi].position;
-        for (const auto &wp : wavePositions) {
-          bool match = true;
-          for (uint32_t d = 0; d < Dim; ++d) {
-            if (std::abs(pos[d] - wp[d]) > eps) {
-              match = false;
-              break;
-            }
-          }
-          if (match) {
-            gpuPositions[vi].flags |= 0x01u;
-            break;
-          }
-        }
-      }
     }
 
     for (uint32_t i = 0; i < framesInFlight; ++i) {
@@ -360,14 +372,22 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                     vertCount * sizeof(device::GPUVertexPosition));
         positionBuffers_[i].unmap();
       }
+      // Also initialize displaced positions to base positions
+      void *dispMapped = displacedPositionBuffers_[i].map();
+      if (dispMapped) {
+        std::memcpy(dispMapped, gpuPositions.data(),
+                    vertCount * sizeof(device::GPUVertexPosition));
+        displacedPositionBuffers_[i].unmap();
+      }
     }
   }
 
-  // Create descriptor pool with room for UBO + face data SSBO + position SSBO
+  // Create descriptor pool with room for UBO + 4 SSBOs per frame
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
-  poolSizes.emplace_back(vk::DescriptorType::eStorageBuffer,
-                         framesInFlight * 2); // face data + positions
+  poolSizes.emplace_back(
+      vk::DescriptorType::eStorageBuffer,
+      framesInFlight * 4); // face data + base pos + displaced pos + indices
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -405,7 +425,9 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Update descriptor sets to point to uniform buffers, face data SSBOs,
-  // and position SSBOs
+  // base position SSBOs, displaced position SSBOs, and index SSBO
+  const vk::DeviceSize indexDataSize =
+      std::max(indices_.size(), static_cast<size_t>(1)) * sizeof(uint32_t);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
@@ -431,20 +453,47 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                          &faceDataInfo,
                                          nullptr};
 
-    vk::DescriptorBufferInfo positionInfo{positionBuffers_[i].getBuffer(), 0,
-                                          positionDataSize};
+    vk::DescriptorBufferInfo basePositionInfo{positionBuffers_[i].getBuffer(),
+                                              0, positionDataSize};
 
-    vk::WriteDescriptorSet positionWrite{*descriptorSets_[i],
-                                         2,
-                                         0,
-                                         1,
-                                         vk::DescriptorType::eStorageBuffer,
-                                         nullptr,
-                                         &positionInfo,
-                                         nullptr};
+    vk::WriteDescriptorSet basePositionWrite{*descriptorSets_[i],
+                                             2,
+                                             0,
+                                             1,
+                                             vk::DescriptorType::eStorageBuffer,
+                                             nullptr,
+                                             &basePositionInfo,
+                                             nullptr};
+
+    vk::DescriptorBufferInfo displacedPositionInfo{
+        displacedPositionBuffers_[i].getBuffer(), 0, positionDataSize};
+
+    vk::WriteDescriptorSet displacedPositionWrite{
+        *descriptorSets_[i],
+        3,
+        0,
+        1,
+        vk::DescriptorType::eStorageBuffer,
+        nullptr,
+        &displacedPositionInfo,
+        nullptr};
+
+    vk::DescriptorBufferInfo indexInfo{indexBuffer_.getBuffer(), 0,
+                                       indexDataSize};
+
+    vk::WriteDescriptorSet indexWrite{*descriptorSets_[i],
+                                      4,
+                                      0,
+                                      1,
+                                      vk::DescriptorType::eStorageBuffer,
+                                      nullptr,
+                                      &indexInfo,
+                                      nullptr};
 
     device.getRaiiDevice().updateDescriptorSets(
-        {uboWrite, faceDataWrite, positionWrite}, {});
+        {uboWrite, faceDataWrite, basePositionWrite, displacedPositionWrite,
+         indexWrite},
+        {});
   }
 
   // Upload initial face data to all frames
@@ -464,6 +513,8 @@ template <uint32_t Dim> void Object<Dim>::release() {
   uniformBuffers_.clear();
   faceDataBuffers_.clear();
   positionBuffers_.clear();
+  displacedPositionBuffers_.clear();
+  indexBuffer_ = {};
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -702,19 +753,21 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + objectId (bindless)
+  // Push constants: time + objectId + vertexCount + indexCount
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index};
+    device::BindlessPushConstants pushData(
+        time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
+        static_cast<uint32_t>(indices_.size()));
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
   }
 
-  // Single draw call for all vertices
-  uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
-  if (totalVertices > 0) {
-    cmd.draw(totalVertices, 1, 0, 0);
+  // Indexed draw call — uses the dual-use index+storage buffer
+  if (!indices_.empty()) {
+    cmd.bindIndexBuffer(indexBuffer_.getBuffer(), 0, vk::IndexType::eUint32);
+    cmd.drawIndexed(static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
   }
 }
 

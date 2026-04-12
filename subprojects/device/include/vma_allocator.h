@@ -200,6 +200,20 @@ public:
                                       const std::string &debugName = "");
 
   /**
+   * @brief Create a dual-use index+storage buffer (GPU-only)
+   *
+   * Can be bound both as a Vulkan index buffer (vkCmdBindIndexBuffer)
+   * and as a storage buffer (SSBO) so compute shaders can read the
+   * index data for adjacency scanning.
+   *
+   * @param size Buffer size
+   * @param debugName Optional debug name
+   * @return Created buffer with eIndexBuffer | eStorageBuffer | eTransferDst
+   */
+  AllocatedBuffer createIndexStorageBuffer(vk::DeviceSize size,
+                                           const std::string &debugName = "");
+
+  /**
    * @brief Create a host-visible storage buffer (CPU-writable every frame)
    *
    * Uses CpuToGpu memory with persistent mapping so the CPU can write

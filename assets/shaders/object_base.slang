@@ -1,22 +1,20 @@
 // object_base.slang
 // Primary shader file for 3D objects with per-face material support.
 //
-// Replaces cube_bindless.slang.
-// Uses per-face GPU data (FaceData SSBO at set 0 binding 1) to select
-// texture and effect per triangle.
-// Reads vertex positions from a per-object SSBO (set 0 binding 2) so that
-// each Object can supply its own geometry (cube, polytope, etc.).
+// Uses indexed drawing (drawIndexed) with unique vertex positions.
+// The compute shader (object_update.slang) runs per-frame to displace
+// vertices based on per-face effects (wave, etc.) via adjacency scanning.
+// The vertex shader reads pre-displaced positions from binding 3.
+// The fragment shader reads per-face data via SV_PrimitiveID.
+//
+// NO geometry shader — normals are pre-computed by the compute shader
+// (object_compute.slang) and stored in the vertex position buffer.
 //
 // Descriptor set 0:
 //   binding 0: per-object UBO (model/view/proj 4×4 matrices)
-//   binding 1: FaceData[] SSBO (per-face material data)
-//   binding 2: VertexPosition[] SSBO (per-vertex positions)
+//   binding 1: FaceData[] SSBO (per-face material data) — fragment only
+//   binding 3: Displaced VertexPosition[] SSBO (per-frame, compute-written)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
-//
-// Vertex displacement (wave) is applied to flagged vertices using
-// per-face wave parameters from the FaceData SSBO.  Shared vertex
-// positions receive displacement from whichever face they belong to,
-// ensuring the effect propagates correctly to adjacent faces.
 
 import bindless_common;
 import face_effects;
@@ -32,27 +30,29 @@ struct UniformBuffer {
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer> ubo;
 
 // ---------------------------------------------------------------------------
-// Per-face data SSBO (set 0, binding 1)
+// Per-face data SSBO (set 0, binding 1) — read by fragment shader
 // ---------------------------------------------------------------------------
 [[vk::binding(1, 0)]] StructuredBuffer<FaceData> faceDataBuffer;
 
 // ---------------------------------------------------------------------------
-// Per-vertex position SSBO (set 0, binding 2)
-// Positions are uploaded by the CPU for each Object — no hardcoded geometry.
+// Displaced vertex position SSBO (set 0, binding 3)
+// Written by compute shader each frame. Contains displaced positions + normals.
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
-    float r, g, b;
-    uint flags;
+    float r, g, b, pad0;
+    float nx, ny, nz, npad;
 };
-[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> vertexPositions;
+[[vk::binding(3, 0)]] StructuredBuffer<VertexPosition> displacedPositions;
 
 // ---------------------------------------------------------------------------
 // Push constants
 // ---------------------------------------------------------------------------
 struct PushData {
     float time;
-    uint  objectId;        // Object identifier
+    uint  objectId;
+    uint  vertexCount;
+    uint  indexCount;
 };
 [[vk::push_constant]] ConstantBuffer<PushData> pc;
 
@@ -60,135 +60,79 @@ struct PushData {
 // Shader I/O structs
 // ---------------------------------------------------------------------------
 struct VSOutput {
-    float4 pos : SV_Position;
+    float4 pos      : SV_Position;
+    float3 worldPos;
+    float3 normal;
     float3 color;
-    float2 uv;
-    float3 modelPos;
-    nointerpolation uint textureId;
-    nointerpolation uint effectFlags;
-    nointerpolation float params[2];
-};
-
-struct GSOutput {
-    float4 pos : SV_Position;
-    float3 color;
-    float2 uv;
-    float3 modelPos;
-    nointerpolation uint textureId;
-    nointerpolation uint effectFlags;
-    nointerpolation float params[2];
-};
-
-// UV coordinates per vertex within a face (2 triangles per quad face)
-static const float2 faceUVs[6] = {
-    float2(0.0, 1.0),
-    float2(1.0, 1.0),
-    float2(1.0, 0.0),
-    float2(0.0, 1.0),
-    float2(1.0, 0.0),
-    float2(0.0, 0.0),
 };
 
 // ---------------------------------------------------------------------------
-// Vertex shader
+// Box-map UV helper: projects world position onto the face with the
+// largest component of the normal.
+// Note: UVs use raw world-space coordinates which works well for
+// unit-scale objects (cube ±0.5, polytope ~±0.3). For larger objects,
+// the shader caller may want to fract() or scale these coordinates.
+// ---------------------------------------------------------------------------
+float2 boxMapUV(float3 worldPos, float3 normal) {
+    float3 absN = abs(normal);
+    if (absN.x >= absN.y && absN.x >= absN.z) return worldPos.yz;
+    if (absN.y >= absN.x && absN.y >= absN.z) return worldPos.xz;
+    return worldPos.xy;
+}
+
+// ---------------------------------------------------------------------------
+// Vertex shader — reads pre-displaced positions, no per-face data access
 // ---------------------------------------------------------------------------
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
-    // Read position from the per-object vertex position SSBO
-    VertexPosition vp = vertexPositions[vertexID];
-    float3 pos = float3(vp.x, vp.y, vp.z);
-    output.modelPos = pos;
+    VertexPosition vp = displacedPositions[vertexID];
+    float3 pos    = float3(vp.x, vp.y, vp.z);
+    float3 normal = float3(vp.nx, vp.ny, vp.nz);
 
-    // Per-face data from SSBO
-    uint triIndex = vertexID / 3;
-    FaceData face = faceDataBuffer[triIndex];
-    output.textureId = face.textureId;
-    output.effectFlags = face.effectFlags;
-    output.params[0] = face.params[0];
-    output.params[1] = face.params[1];
-
-    // Apply wave displacement only to vertices flagged for it.
-    // The flag is set on the CPU for any vertex that shares its position
-    // with at least one wave-effect face.  Wave parameters come from the
-    // per-face FaceData SSBO (params[0]=amplitude, params[1]=frequency),
-    // ensuring each face's effect is self-contained without push constants.
-    if (vp.flags & 0x01u) {
-        float3 disp = waveVertexDisplacement(pos, pc.time, face.params[0], face.params[1]);
-        pos += disp;
-    }
-
-    float4 worldPos = mul(ubo.model, float4(pos, 1.0));
-    float4 viewPos  = mul(ubo.view, worldPos);
-    output.pos = mul(ubo.proj, viewPos);
-
-    uint localIdx = vertexID % 6;
-    output.uv = faceUVs[localIdx];
-
-    output.color = float3(vp.r, vp.g, vp.b);
+    float4 worldPos4 = mul(ubo.model, float4(pos, 1.0));
+    output.worldPos = worldPos4.xyz;
+    output.normal   = normalize(mul((float3x3)ubo.model, normal));
+    output.pos      = mul(ubo.proj, mul(ubo.view, worldPos4));
+    output.color    = float3(vp.r, vp.g, vp.b);
 
     return output;
 }
 
 // ---------------------------------------------------------------------------
-// Geometry shader – compute face normal for lighting
-// ---------------------------------------------------------------------------
-[shader("geometry")]
-[maxvertexcount(3)]
-void geomMain(
-    triangle VSOutput input[3],
-    inout TriangleStream<GSOutput> outputStream
-) {
-    float3 edge1 = input[1].modelPos - input[0].modelPos;
-    float3 edge2 = input[2].modelPos - input[0].modelPos;
-    float3 faceNormal = normalize(cross(edge1, edge2));
-
-    float3 lightDir = normalize(float3(0.3, 1.0, 0.5));
-    float lightFactor = max(dot(faceNormal, lightDir), 0.3);
-
-    for (int i = 0; i < 3; i++) {
-        GSOutput output;
-        output.pos          = input[i].pos;
-        output.color        = input[i].color * lightFactor;
-        output.uv           = input[i].uv;
-        output.modelPos     = input[i].modelPos;
-        output.textureId    = input[i].textureId;
-        output.effectFlags  = input[i].effectFlags;
-        output.params[0]    = input[i].params[0];
-        output.params[1]    = input[i].params[1];
-        outputStream.Append(output);
-    }
-    outputStream.RestartStrip();
-}
-
-// ---------------------------------------------------------------------------
-// Fragment shader – selects rendering based on per-face data
+// Fragment shader — reads per-face data via SV_PrimitiveID
 // ---------------------------------------------------------------------------
 [shader("fragment")]
-float4 fragMain(GSOutput input) : SV_TARGET {
-    uint flags = input.effectFlags;
-    uint texId = input.textureId;
+float4 fragMain(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_TARGET {
+    FaceData face = faceDataBuffer[primitiveID];
 
-    // If face has effects, dispatch them
-    if (flags != 0) {
-        float4 effectColor = dispatchFaceEffect(
-            flags, input.uv, input.modelPos.xy, pc.time,
-            input.params[0], input.params[1], 1.0);
+    // Lighting from pre-computed normal
+    float3 lightDir    = normalize(float3(0.3, 1.0, 0.5));
+    float  lightFactor = max(dot(normalize(input.normal), lightDir), 0.3);
 
-        // If there's also a texture, blend it
-        if (texId != 0xFFFFFFFF) {
-            float4 texColor = sampleBindlessTexture(texId, input.uv, pc.time);
-            return lerp(texColor, effectColor, 0.5);
-        }
-        return effectColor;
-    }
+    // UV: box-mapped from world position and dominant normal axis
+    float2 uv = boxMapUV(input.worldPos, input.normal);
 
-    // No effects — check for texture
+    uint flags = face.effectFlags;
+    uint texId = face.textureId;
+
+    // Base colour: textured or vertex colour with lighting
+    float4 baseColor;
     if (texId != 0xFFFFFFFF) {
-        return sampleBindlessTexture(texId, input.uv, pc.time);
+        baseColor = sampleBindlessTexture(texId, uv, pc.time);
+    } else {
+        baseColor = float4(input.color * lightFactor, 1.0);
     }
 
-    // Plain colour fallback
-    return float4(input.color, 1.0);
+    // Apply per-face effects if any
+    if (flags != 0u) {
+        float4 fx = dispatchFaceEffect(flags, uv, input.worldPos.xy,
+                                       pc.time, face.params[0], face.params[1], 1.0);
+        if (texId != 0xFFFFFFFF)
+            return lerp(baseColor, fx, 0.5);
+        return fx * float4(float3(lightFactor, lightFactor, lightFactor), 1.0);
+    }
+
+    return baseColor;
 }

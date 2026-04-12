@@ -411,7 +411,12 @@ private:
   std::vector<device::AllocatedBuffer>
       faceDataBuffers_; ///< Per-frame face SSBO
   std::vector<device::AllocatedBuffer>
-      positionBuffers_; ///< Per-frame vertex position SSBO
+      positionBuffers_; ///< Base vertex position SSBO (static, one per frame)
+  std::vector<device::AllocatedBuffer>
+      displacedPositionBuffers_; ///< Displaced position SSBO
+                                 ///< (compute-written)
+  device::AllocatedBuffer
+      indexBuffer_; ///< Dual-use index+storage buffer (topology)
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
