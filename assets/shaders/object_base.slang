@@ -60,10 +60,12 @@ struct PushData {
 // Shader I/O structs
 // ---------------------------------------------------------------------------
 struct VSOutput {
-    float4 pos      : SV_Position;
+    float4 pos       : SV_Position;
     float3 worldPos;
     float3 normal;
     float3 color;
+    float3 modelPos;    // Object-space position for UV generation
+    float3 modelNormal; // Object-space normal for UV axis selection
 };
 
 // ---------------------------------------------------------------------------
@@ -92,10 +94,12 @@ VSOutput vertMain(uint vertexID : SV_VertexID) {
     float3 normal = float3(vp.nx, vp.ny, vp.nz);
 
     float4 worldPos4 = mul(ubo.model, float4(pos, 1.0));
-    output.worldPos = worldPos4.xyz;
-    output.normal   = normalize(mul((float3x3)ubo.model, normal));
-    output.pos      = mul(ubo.proj, mul(ubo.view, worldPos4));
-    output.color    = float3(vp.r, vp.g, vp.b);
+    output.worldPos    = worldPos4.xyz;
+    output.normal      = normalize(mul((float3x3)ubo.model, normal));
+    output.pos         = mul(ubo.proj, mul(ubo.view, worldPos4));
+    output.color       = float3(vp.r, vp.g, vp.b);
+    output.modelPos    = pos;    // Object-space position (fixed to the face)
+    output.modelNormal = normal; // Object-space normal (fixed to the face)
 
     return output;
 }
@@ -111,8 +115,10 @@ float4 fragMain(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_TARGET {
     float3 lightDir    = normalize(float3(0.3, 1.0, 0.5));
     float  lightFactor = max(dot(normalize(input.normal), lightDir), 0.3);
 
-    // UV: box-mapped from world position and dominant normal axis
-    float2 uv = boxMapUV(input.worldPos, input.normal);
+    // UV: box-mapped from object-space position and object-space normal.
+    // Using model-space coordinates ensures the texture stays fixed to the
+    // face regardless of the object's world-space position or rotation.
+    float2 uv = boxMapUV(input.modelPos, input.modelNormal);
 
     uint flags = face.effectFlags;
     uint texId = face.textureId;
