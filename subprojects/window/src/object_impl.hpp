@@ -46,7 +46,6 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
   objectPipeline_ = std::move(other.objectPipeline_);
-  computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
@@ -56,7 +55,6 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   uniformBuffers_ = std::move(other.uniformBuffers_);
   faceDataBuffers_ = std::move(other.faceDataBuffers_);
   positionBuffers_ = std::move(other.positionBuffers_);
-  displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
   indexBuffer_ = std::move(other.indexBuffer_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
@@ -80,13 +78,11 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
     objectPipeline_ = std::move(other.objectPipeline_);
-    computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
     faceMaterials_ = std::move(other.faceMaterials_);
     positionBuffers_ = std::move(other.positionBuffers_);
-    displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
     indexBuffer_ = std::move(other.indexBuffer_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -178,18 +174,16 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   std::println("  [0] UBO ({}D, {}B)", Dim, sizeof(GPUUBO));
   std::println("  [1] FaceData SSBO ({} faces, {}B)", faces_.size(),
                faces_.size() * sizeof(device::GPUFaceData));
-  std::println("  [2] Base position SSBO (static)");
-  std::println("  [3] Displaced position SSBO (per-frame, compute-written)");
-  std::println("  [4] Index SSBO (topology, static)");
+  std::println("  [2] Vertex position SSBO (base positions, vertex+compute)");
+  std::println("  [4] Index SSBO (topology, vertex+compute)");
 
   // Create descriptor set layout (owned by this object)
   // Binding 0: UBO (uniform buffer)
-  // Binding 1: FaceData SSBO (per-face materials)
-  // Binding 2: Base VertexPosition SSBO (static undeformed positions)
-  // Binding 3: Displaced VertexPosition SSBO (per-frame, compute-written)
-  // Binding 4: Index buffer as SSBO (topology data for compute adjacency)
+  // Binding 1: FaceData SSBO (per-face materials) — vertex + fragment
+  // Binding 2: VertexPosition SSBO (base positions) — vertex + compute
+  // Binding 4: Index buffer as SSBO (topology data) — vertex + compute
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(5);
+  bindings.reserve(4);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
@@ -199,22 +193,18 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
 
   vk::DescriptorSetLayoutBinding faceDataLayoutBinding{
       1, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(faceDataLayoutBinding);
 
   vk::DescriptorSetLayoutBinding basePositionLayoutBinding{
       2, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eCompute};
-  bindings.push_back(basePositionLayoutBinding);
-
-  vk::DescriptorSetLayoutBinding displacedPositionLayoutBinding{
-      3, vk::DescriptorType::eStorageBuffer, 1,
       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eCompute};
-  bindings.push_back(displacedPositionLayoutBinding);
+  bindings.push_back(basePositionLayoutBinding);
 
   vk::DescriptorSetLayoutBinding indexLayoutBinding{
       4, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eCompute};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(indexLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
@@ -299,25 +289,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     positionBuffers_.push_back(std::move(ssbo));
   }
 
-  // Create displaced position storage buffers (one per frame in flight)
-  // These are written by the compute shader each frame with displaced
-  // positions.
-  displacedPositionBuffers_.reserve(framesInFlight);
-  for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto ssbo = allocator.createHostVisibleStorageBuffer(
-        positionDataSize,
-        std::string(name_) + "_displaced_" + std::to_string(i));
-    if (!ssbo.isValid()) {
-      std::println(stderr,
-                   "[Object] Failed to create displaced position buffer {} for "
-                   "'{}'",
-                   i, name_);
-      release();
-      return false;
-    }
-    displacedPositionBuffers_.push_back(std::move(ssbo));
-  }
-
   // Create index+storage dual-use buffer (static topology data)
   {
     const size_t idxCount = std::max(indices_.size(), static_cast<size_t>(1));
@@ -339,9 +310,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     }
   }
 
-  // Upload vertex positions and colors to all base position buffers
-  // No wave-flag computation — effects are handled entirely by the compute
-  // shader.
+  // Upload vertex positions and colors to all position buffers.
+  // Effects (wave displacement) are applied inline in the vertex shader.
   {
     std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
 
@@ -375,22 +345,15 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                     vertCount * sizeof(device::GPUVertexPosition));
         positionBuffers_[i].unmap();
       }
-      // Also initialize displaced positions to base positions
-      void *dispMapped = displacedPositionBuffers_[i].map();
-      if (dispMapped) {
-        std::memcpy(dispMapped, gpuPositions.data(),
-                    vertCount * sizeof(device::GPUVertexPosition));
-        displacedPositionBuffers_[i].unmap();
-      }
     }
   }
 
-  // Create descriptor pool with room for UBO + 4 SSBOs per frame
+  // Create descriptor pool with room for UBO + 3 SSBOs per frame
   std::vector<vk::DescriptorPoolSize> poolSizes;
   poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
   poolSizes.emplace_back(
       vk::DescriptorType::eStorageBuffer,
-      framesInFlight * 4); // face data + base pos + displaced pos + indices
+      framesInFlight * 3); // face data + positions + indices
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -468,19 +431,6 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                              &basePositionInfo,
                                              nullptr};
 
-    vk::DescriptorBufferInfo displacedPositionInfo{
-        displacedPositionBuffers_[i].getBuffer(), 0, positionDataSize};
-
-    vk::WriteDescriptorSet displacedPositionWrite{
-        *descriptorSets_[i],
-        3,
-        0,
-        1,
-        vk::DescriptorType::eStorageBuffer,
-        nullptr,
-        &displacedPositionInfo,
-        nullptr};
-
     vk::DescriptorBufferInfo indexInfo{indexBuffer_.getBuffer(), 0,
                                        indexDataSize};
 
@@ -494,8 +444,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                       nullptr};
 
     device.getRaiiDevice().updateDescriptorSets(
-        {uboWrite, faceDataWrite, basePositionWrite, displacedPositionWrite,
-         indexWrite},
+        {uboWrite, faceDataWrite, basePositionWrite, indexWrite},
         {});
   }
 
@@ -516,9 +465,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   uniformBuffers_.clear();
   faceDataBuffers_.clear();
   positionBuffers_.clear();
-  displacedPositionBuffers_.clear();
   indexBuffer_ = {};
-  computeUpdatePipeline_.reset();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
@@ -875,13 +822,12 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
 }
 
 // ============================================================================
-// Compute pipeline initialization
+// Compute pipeline initialization (one-shot normal precomputation)
 // ============================================================================
 
 template <uint32_t Dim>
 bool Object<Dim>::initializeCompute(device::GPUDevice &device,
                                     device::ShaderManager &shaderManager,
-                                    const device::ShaderTag *computeUpdateTag,
                                     const device::ShaderTag *computeNormalTag) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
@@ -892,37 +838,9 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
     return false;
   }
 
-  // The compute pipelines share the same pipeline layout as the graphics
+  // The compute pipeline shares the same pipeline layout as the graphics
   // pipeline (same set 0 descriptor layout, same push constant range).
   vk::PipelineLayout sharedLayout = **objectPipeline_.pipelineLayout;
-
-  // ---- Create per-frame update compute pipeline (object_update.slang) ----
-  if (computeUpdateTag) {
-    auto result = shaderManager.acquire(computeUpdateTag);
-    if (!result.has_value() || !result.value() || !result.value()->compute ||
-        !result.value()->compute->isValid) {
-      std::println(stderr,
-                   "[Object] Failed to acquire compute update shader for '{}'",
-                   name_);
-    } else {
-      device::ShaderProgram *prog = result.value();
-      vk::PipelineShaderStageCreateInfo stageInfo =
-          prog->compute->getStageInfo();
-      vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
-      try {
-        computeUpdatePipeline_ = std::make_unique<vk::raii::Pipeline>(
-            device.getRaiiDevice(), nullptr, pipelineInfo);
-        std::println("[Object] Created compute update pipeline for '{}'",
-                     name_);
-      } catch (const vk::SystemError &e) {
-        std::println(stderr,
-                     "[Object] Failed to create compute update "
-                     "pipeline for '{}': {}",
-                     name_, e.what());
-      }
-      shaderManager.release(computeUpdateTag);
-    }
-  }
 
   // ---- One-shot normal precomputation dispatch (object_compute.slang) ----
   if (computeNormalTag && !vertices_.empty()) {
@@ -1008,59 +926,6 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
   }
 
   return true;
-}
-
-// ============================================================================
-// Pre-render compute dispatch (wave displacement)
-// ============================================================================
-
-template <uint32_t Dim>
-void Object<Dim>::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-
-  if (!initialized_ || !computeUpdatePipeline_) {
-    return;
-  }
-
-  if (frameIndex >= descriptorSets_.size()) {
-    return;
-  }
-
-  // Dispatch wave displacement compute shader
-  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **computeUpdatePipeline_);
-  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                         **objectPipeline_.pipelineLayout, 0,
-                         {*descriptorSets_[frameIndex]}, {});
-  if (bindlessDescriptorSet_) {
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                           **objectPipeline_.pipelineLayout, 1,
-                           {bindlessDescriptorSet_}, {});
-  }
-
-  device::BindlessPushConstants pushData(
-      time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
-      static_cast<uint32_t>(indices_.size()));
-  cmd.pushConstants(**objectPipeline_.pipelineLayout,
-                    pipelineConfig_.pushConstantStages, 0,
-                    sizeof(device::BindlessPushConstants), &pushData);
-
-  uint32_t groups = (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
-  cmd.dispatch(groups, 1, 1);
-
-  // Pipeline barrier: ensure compute writes to displacedPositions are visible
-  // to the subsequent vertex shader reads.
-  vk::BufferMemoryBarrier barrier{};
-  barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
-  barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-  barrier.buffer = displacedPositionBuffers_[frameIndex].getBuffer();
-  barrier.offset = 0;
-  barrier.size = VK_WHOLE_SIZE;
-
-  cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
-                      vk::PipelineStageFlagBits::eVertexShader, {}, {},
-                      {barrier}, {});
 }
 
 } // namespace window

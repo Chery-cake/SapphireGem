@@ -283,16 +283,12 @@ bool CubeScene3D::load(device::GPUDevice &device,
     return false;
   }
 
-  // Compute shader tags for wave displacement and normal precomputation
-  static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
-      "object_update", "object_update.slang", nullptr, nullptr,
-      nullptr,         "updateMain"};
+  // Compute shader tag for normal precomputation (one-shot at load time)
   static constexpr device::ShaderTag OBJECT_COMPUTE_SHADER_TAG{
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  cube_->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                           &OBJECT_COMPUTE_SHADER_TAG);
+  cube_->initializeCompute(device, shaderManager, &OBJECT_COMPUTE_SHADER_TAG);
 
   setLoaded(true);
   std::println("[{}] Cube scene loaded (bindless, textureId={}, "
@@ -316,12 +312,6 @@ void CubeScene3D::unload() {
 }
 
 void CubeScene3D::update(float deltaTime) { totalTime_ += deltaTime; }
-
-void CubeScene3D::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (cube_ && cube_->isInitialized()) {
-    cube_->preRender(cmd, frameIndex);
-  }
-}
 
 void CubeScene3D::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
   if (cube_ && cube_->isInitialized()) {

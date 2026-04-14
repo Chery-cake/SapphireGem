@@ -196,16 +196,12 @@ bool Quad2DScene::load(device::GPUDevice &device,
     return false;
   }
 
-  // Compute shader tags for wave displacement and normal precomputation
-  static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
-      "object_update", "object_update.slang", nullptr, nullptr,
-      nullptr,         "updateMain"};
+  // Compute shader tag for normal precomputation (one-shot at load time)
   static constexpr device::ShaderTag OBJECT_COMPUTE_SHADER_TAG{
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  quad_->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                           &OBJECT_COMPUTE_SHADER_TAG);
+  quad_->initializeCompute(device, shaderManager, &OBJECT_COMPUTE_SHADER_TAG);
 
   setLoaded(true);
   std::println("[{}] 2D scene loaded (bindless, textureId={})", getName(),
@@ -228,12 +224,6 @@ void Quad2DScene::unload() {
 }
 
 void Quad2DScene::update(float deltaTime) { totalTime_ += deltaTime; }
-
-void Quad2DScene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (quad_ && quad_->isInitialized()) {
-    quad_->preRender(cmd, frameIndex);
-  }
-}
 
 void Quad2DScene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
   if (quad_ && quad_->isInitialized()) {

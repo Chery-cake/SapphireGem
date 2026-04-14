@@ -2,9 +2,9 @@
 // Shader file for 2D objects with per-face material support.
 //
 // Uses indexed drawing (drawIndexed) with unique vertex positions.
-// The compute shader (object_update.slang) runs per-frame to displace
-// vertices based on per-face effects (wave, etc.) via adjacency scanning.
-// The vertex shader reads pre-displaced positions from binding 3.
+// Wave displacement is computed inline in the vertex shader via an
+// adjacency scan over the index buffer (binding 4), reading per-face
+// effect data (binding 1) and base positions (binding 2).
 // The fragment shader reads per-face data via SV_PrimitiveID.
 //
 // No geometry shader — 2D objects do not need face-normal lighting.
@@ -12,8 +12,9 @@
 //
 // Descriptor set 0:
 //   binding 0: per-object UBO (model/view/proj 3×3 matrices, std140 padded)
-//   binding 1: FaceData[] SSBO (per-face material data) — fragment only
-//   binding 3: Displaced VertexPosition[] SSBO (per-frame, compute-written)
+//   binding 1: FaceData[] SSBO (per-face material data) — vertex + fragment
+//   binding 2: VertexPosition[] SSBO (base positions, vertex + compute)
+//   binding 4: Index[] SSBO (topology for adjacency scan, vertex + compute)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
 
 import bindless_common;
@@ -36,20 +37,26 @@ struct UniformBuffer2D {
 [[vk::binding(0, 0)]] ConstantBuffer<UniformBuffer2D> ubo;
 
 // ---------------------------------------------------------------------------
-// Per-face data SSBO (set 0, binding 1) — read by fragment shader
+// Per-face data SSBO (set 0, binding 1) — read by vertex + fragment shaders
 // ---------------------------------------------------------------------------
 [[vk::binding(1, 0)]] StructuredBuffer<FaceData> faceDataBuffer;
 
 // ---------------------------------------------------------------------------
-// Displaced vertex position SSBO (set 0, binding 3)
-// Written by compute shader each frame.
+// Base vertex position SSBO (set 0, binding 2)
+// Static undeformed positions. Wave displacement is applied inline.
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
     float r, g, b, pad0;
     float nx, ny, nz, npad;
 };
-[[vk::binding(3, 0)]] StructuredBuffer<VertexPosition> displacedPositions;
+[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> basePositions;
+
+// ---------------------------------------------------------------------------
+// Index buffer as SSBO (set 0, binding 4)
+// Used for adjacency scanning in the vertex shader.
+// ---------------------------------------------------------------------------
+[[vk::binding(4, 0)]] StructuredBuffer<uint> indexBuffer;
 
 // ---------------------------------------------------------------------------
 // Push constants
@@ -83,15 +90,32 @@ float3 mulMat3(Std140Mat3 m, float3 v) {
 }
 
 // ---------------------------------------------------------------------------
-// Vertex shader — reads pre-displaced positions, no per-face data access
+// Vertex shader — reads base positions and applies wave displacement inline
 // ---------------------------------------------------------------------------
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
-    // Read 2D position from displaced per-object SSBO
-    VertexPosition vp = displacedPositions[vertexID];
+    // Read 2D position from per-object base position SSBO
+    VertexPosition vp = basePositions[vertexID];
     float2 pos = float2(vp.x, vp.y);
+
+    // Inline 2D wave displacement: adjacency scan over all faces.
+    float2 totalDisp = float2(0.0, 0.0);
+    uint faceCount = pc.indexCount / 3u;
+    for (uint fi = 0u; fi < faceCount; ++fi) {
+        uint i0 = indexBuffer[fi * 3u + 0u];
+        uint i1 = indexBuffer[fi * 3u + 1u];
+        uint i2 = indexBuffer[fi * 3u + 2u];
+        if (i0 != vertexID && i1 != vertexID && i2 != vertexID) continue;
+        FaceData face = faceDataBuffer[fi];
+        if ((face.effectFlags & EFFECT_WAVE) != 0u) {
+            totalDisp += waveVertexDisplacement2D(pos, pc.time,
+                                                  face.params[0], face.params[1]);
+        }
+    }
+    pos += totalDisp;
+
     output.modelPos = pos;
 
     // Transform through model → view → proj (all 3×3)
