@@ -50,4 +50,12 @@ target_compile_definitions(test_resource_registry PRIVATE
 )
 add_test(NAME core_resource_registry COMMAND test_resource_registry)
 
+# --- Signal Tests ---
+add_executable(test_signal test_signal.cpp)
+target_link_libraries(test_signal PRIVATE core)
+target_compile_definitions(test_signal PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME core_signal COMMAND test_signal)
+
 message(STATUS "Core tests configured")
