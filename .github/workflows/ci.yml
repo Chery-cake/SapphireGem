@@ -120,13 +120,13 @@ jobs:
           cache: true
           optional_components: com.lunarg.vulkan.vma
 
-      - name: Install vcpkg
+      - name: Install vcpkg (windows)
         if: runner.os == 'Windows'
         uses: microsoft/vcpkg-action@v7
         with:
             vcpkgArguments: 'tbb'
 
-        - name: Add vcpkg toolchain to CMakePreset (or manually pass with -DCMAKE_TOOLCHAIN_FILE)
+      - name: Add vcpkg toolchain to CMakePreset (Windows)
         if: runner.os == 'Windows'
         run: |
             echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
