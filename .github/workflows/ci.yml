@@ -84,7 +84,8 @@ jobs:
             libdbus-1-dev \
             libibus-1.0-dev \
             libsystemd-dev \
-            libudev-dev
+            libudev-dev \
+            libtbb-dev
 
       # ------------------------------------------------------------------
       # macOS Dependencies
@@ -92,7 +93,7 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install sccache vulkan-headers
+          brew install sccache vulkan-headers tbb
 
       # ------------------------------------------------------------------
       # Windows Dependencies
@@ -118,6 +119,10 @@ jobs:
           install_runtime: true
           cache: true
           optional_components: com.lunarg.vulkan.vma
+
+      - name: Install TBB via choco (Windows)
+        if: runner.os == 'Windows'
+        run: choco install tbb
 
       # ------------------------------------------------------------------
       # Cache
