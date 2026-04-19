@@ -55,7 +55,7 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
   faceDataBuffers_ = std::move(other.faceDataBuffers_);
-  positionBuffers_ = std::move(other.positionBuffers_);
+  positionBuffer_ = std::move(other.positionBuffer_);
   displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
   indexBuffer_ = std::move(other.indexBuffer_);
   descriptorPool_ = std::move(other.descriptorPool_);
@@ -85,7 +85,7 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
     faceMaterials_ = std::move(other.faceMaterials_);
-    positionBuffers_ = std::move(other.positionBuffers_);
+    positionBuffer_ = std::move(other.positionBuffer_);
     displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
     indexBuffer_ = std::move(other.indexBuffer_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
@@ -204,7 +204,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
 
   vk::DescriptorSetLayoutBinding basePositionLayoutBinding{
       2, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eCompute};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(basePositionLayoutBinding);
 
   vk::DescriptorSetLayoutBinding displacedPositionLayoutBinding{
@@ -214,7 +215,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
 
   vk::DescriptorSetLayoutBinding indexLayoutBinding{
       4, vk::DescriptorType::eStorageBuffer, 1,
-      vk::ShaderStageFlagBits::eCompute};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(indexLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
@@ -278,25 +280,23 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     faceDataBuffers_.push_back(std::move(ssbo));
   }
 
-  // Create vertex position storage buffers (one per frame in flight)
-  // These hold the STATIC base positions (undeformed) — compute shader reads
-  // them.
+  // Create a single vertex position storage buffer (static, shared by all
+  // frames). Holds the STATIC base positions (undeformed) — compute shader
+  // reads them. Only one buffer is needed because base positions are written
+  // once at load time (including the one-shot normal precomputation) and
+  // never change per-frame.
   const size_t vertCount = std::max(vertices_.size(), static_cast<size_t>(1));
   const vk::DeviceSize positionDataSize =
       vertCount * sizeof(device::GPUVertexPosition);
-  positionBuffers_.reserve(framesInFlight);
-  for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto ssbo = allocator.createHostVisibleStorageBuffer(
-        positionDataSize,
-        std::string(name_) + "_basePositions_" + std::to_string(i));
-    if (!ssbo.isValid()) {
-      std::println(stderr,
-                   "[Object] Failed to create position buffer {} for '{}'", i,
+  {
+    positionBuffer_ = allocator.createHostVisibleStorageBuffer(
+        positionDataSize, std::string(name_) + "_basePositions");
+    if (!positionBuffer_.isValid()) {
+      std::println(stderr, "[Object] Failed to create position buffer for '{}'",
                    name_);
       release();
       return false;
     }
-    positionBuffers_.push_back(std::move(ssbo));
   }
 
   // Create displaced position storage buffers (one per frame in flight)
@@ -339,7 +339,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     }
   }
 
-  // Upload vertex positions and colors to all base position buffers
+  // Upload vertex positions and colors to the shared base position buffer.
   // No wave-flag computation — effects are handled entirely by the compute
   // shader.
   {
@@ -368,14 +368,16 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       gpuPositions[vi] = gp;
     }
 
+    // Upload base positions to the single shared buffer
+    void *mapped = positionBuffer_.map();
+    if (mapped) {
+      std::memcpy(mapped, gpuPositions.data(),
+                  vertCount * sizeof(device::GPUVertexPosition));
+      positionBuffer_.unmap();
+    }
+
+    // Initialize displaced positions to base positions for all frames
     for (uint32_t i = 0; i < framesInFlight; ++i) {
-      void *mapped = positionBuffers_[i].map();
-      if (mapped) {
-        std::memcpy(mapped, gpuPositions.data(),
-                    vertCount * sizeof(device::GPUVertexPosition));
-        positionBuffers_[i].unmap();
-      }
-      // Also initialize displaced positions to base positions
       void *dispMapped = displacedPositionBuffers_[i].map();
       if (dispMapped) {
         std::memcpy(dispMapped, gpuPositions.data(),
@@ -456,8 +458,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                          &faceDataInfo,
                                          nullptr};
 
-    vk::DescriptorBufferInfo basePositionInfo{positionBuffers_[i].getBuffer(),
-                                              0, positionDataSize};
+    vk::DescriptorBufferInfo basePositionInfo{positionBuffer_.getBuffer(), 0,
+                                              positionDataSize};
 
     vk::WriteDescriptorSet basePositionWrite{*descriptorSets_[i],
                                              2,
@@ -515,7 +517,7 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorPool_.reset();
   uniformBuffers_.clear();
   faceDataBuffers_.clear();
-  positionBuffers_.clear();
+  positionBuffer_ = {};
   displacedPositionBuffers_.clear();
   indexBuffer_ = {};
   computeUpdatePipeline_.reset();

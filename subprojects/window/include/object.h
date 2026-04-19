@@ -452,8 +452,9 @@ private:
   std::vector<device::AllocatedBuffer> uniformBuffers_;
   std::vector<device::AllocatedBuffer>
       faceDataBuffers_; ///< Per-frame face SSBO
-  std::vector<device::AllocatedBuffer>
-      positionBuffers_; ///< Base vertex position SSBO (static, one per frame)
+  device::AllocatedBuffer
+      positionBuffer_; ///< Base vertex position SSBO (static, shared by all
+                       ///< frames)
   std::vector<device::AllocatedBuffer>
       displacedPositionBuffers_; ///< Displaced position SSBO
                                  ///< (compute-written)

@@ -4,7 +4,10 @@
 // Uses indexed drawing (drawIndexed) with unique vertex positions.
 // The compute shader (object_update.slang) runs per-frame to displace
 // vertices based on per-face effects (wave, etc.) via adjacency scanning.
-// The vertex shader reads pre-displaced positions from binding 3.
+// The vertex shader reads pre-displaced positions from binding 3 for
+// rendering, and base (undisplaced) positions from binding 2 for UV
+// generation — this keeps texture mapping stable even when adjacent
+// faces apply wave displacement to shared vertices.
 // The fragment shader reads per-face data via SV_PrimitiveID.
 //
 // NO geometry shader — normals are pre-computed by the compute shader
@@ -13,6 +16,7 @@
 // Descriptor set 0:
 //   binding 0: per-object UBO (model/view/proj 4×4 matrices)
 //   binding 1: FaceData[] SSBO (per-face material data) — fragment only
+//   binding 2: Base VertexPosition[] SSBO (static, undeformed) — vertex reads for UV
 //   binding 3: Displaced VertexPosition[] SSBO (per-frame, compute-written)
 // Descriptor set 1: global bindless set (from bindless_common.slang)
 
@@ -35,15 +39,29 @@ struct UniformBuffer {
 [[vk::binding(1, 0)]] StructuredBuffer<FaceData> faceDataBuffer;
 
 // ---------------------------------------------------------------------------
-// Displaced vertex position SSBO (set 0, binding 3)
-// Written by compute shader each frame. Contains displaced positions + normals.
+// Base vertex position SSBO (set 0, binding 2)
+// Static, undeformed positions. Used by the vertex shader for UV generation
+// so that textures stay fixed to faces even when wave displacement moves
+// shared vertices.
 // ---------------------------------------------------------------------------
 struct VertexPosition {
     float x, y, z, w;
     float r, g, b, pad0;
     float nx, ny, nz, npad;
 };
+[[vk::binding(2, 0)]] StructuredBuffer<VertexPosition> basePositions;
+
+// ---------------------------------------------------------------------------
+// Displaced vertex position SSBO (set 0, binding 3)
+// Written by compute shader each frame. Contains displaced positions + normals.
+// Used for the actual rendering position (clip space).
+// ---------------------------------------------------------------------------
 [[vk::binding(3, 0)]] StructuredBuffer<VertexPosition> displacedPositions;
+
+// ---------------------------------------------------------------------------
+// Index buffer SSBO (set 0, binding 4) – stores uint32 indices
+// ---------------------------------------------------------------------------
+[[vk::binding(4, 0)]] StructuredBuffer<uint> indexBuffer;
 
 // ---------------------------------------------------------------------------
 // Push constants
@@ -64,61 +82,76 @@ struct VSOutput {
     float3 worldPos;
     float3 normal;
     float3 color;
-    float3 modelPos;    // Object-space position for UV generation
-    float3 modelNormal; // Object-space normal for UV axis selection
+    float3 modelPos;    // Base (undisplaced) object-space position for UV
 };
 
 // ---------------------------------------------------------------------------
-// Box-map UV helper: projects world position onto the face with the
-// largest component of the normal.
-// Note: UVs use raw world-space coordinates which works well for
-// unit-scale objects (cube ±0.5, polytope ~±0.3). For larger objects,
-// the shader caller may want to fract() or scale these coordinates.
+// Box-map UV helper: projects position onto the plane perpendicular to
+// the dominant component of the normal.
+// Returns coordinates in model space; the caller adds +0.5 to remap
+// from [-0.5, 0.5] (unit cube) to texture-space [0, 1].
 // ---------------------------------------------------------------------------
-float2 boxMapUV(float3 worldPos, float3 normal) {
+float2 boxMapUV(float3 pos, float3 normal) {
     float3 absN = abs(normal);
-    if (absN.x >= absN.y && absN.x >= absN.z) return worldPos.yz;
-    if (absN.y >= absN.x && absN.y >= absN.z) return worldPos.xz;
-    return worldPos.xy;
+    if (absN.x >= absN.y && absN.x >= absN.z) return pos.yz;
+    if (absN.y >= absN.x && absN.y >= absN.z) return pos.xz;
+    return pos.xy;
 }
 
 // ---------------------------------------------------------------------------
-// Vertex shader — reads pre-displaced positions, no per-face data access
+// Vertex shader — reads displaced positions for rendering, base positions
+// for UV generation
 // ---------------------------------------------------------------------------
 [shader("vertex")]
 VSOutput vertMain(uint vertexID : SV_VertexID) {
     VSOutput output;
 
-    VertexPosition vp = displacedPositions[vertexID];
-    float3 pos    = float3(vp.x, vp.y, vp.z);
-    float3 normal = float3(vp.nx, vp.ny, vp.nz);
+    // Displaced position for rendering (includes wave displacement)
+    VertexPosition dvp = displacedPositions[vertexID];
+    float3 dispPos = float3(dvp.x, dvp.y, dvp.z);
+    float3 normal  = float3(dvp.nx, dvp.ny, dvp.nz);
 
-    float4 worldPos4 = mul(ubo.model, float4(pos, 1.0));
+    // Base (undisplaced) position for stable UV generation
+    VertexPosition bvp = basePositions[vertexID];
+    float3 basePos = float3(bvp.x, bvp.y, bvp.z);
+
+    float4 worldPos4 = mul(ubo.model, float4(dispPos, 1.0));
     output.worldPos    = worldPos4.xyz;
     output.normal      = normalize(mul((float3x3)ubo.model, normal));
     output.pos         = mul(ubo.proj, mul(ubo.view, worldPos4));
-    output.color       = float3(vp.r, vp.g, vp.b);
-    output.modelPos    = pos;    // Object-space position (fixed to the face)
-    output.modelNormal = normal; // Object-space normal (fixed to the face)
+    output.color       = float3(dvp.r, dvp.g, dvp.b);
+    output.modelPos    = basePos;  // Undisplaced — fixed to the mesh
 
     return output;
 }
 
 // ---------------------------------------------------------------------------
-// Fragment shader — reads per-face data via SV_PrimitiveID
+// Fragment shader – uses geometric face normal from index buffer
 // ---------------------------------------------------------------------------
 [shader("fragment")]
 float4 fragMain(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_TARGET {
     FaceData face = faceDataBuffer[primitiveID];
 
-    // Lighting from pre-computed normal
+    // ---- Compute true geometric face normal from the three vertices ----
+    uint baseIndex = primitiveID * 3;
+    uint i0 = indexBuffer[baseIndex + 0];
+    uint i1 = indexBuffer[baseIndex + 1];
+    uint i2 = indexBuffer[baseIndex + 2];
+
+    float3 p0 = float3(basePositions[i0].x, basePositions[i0].y, basePositions[i0].z);
+    float3 p1 = float3(basePositions[i1].x, basePositions[i1].y, basePositions[i1].z);
+    float3 p2 = float3(basePositions[i2].x, basePositions[i2].y, basePositions[i2].z);
+
+    float3 faceNormal = normalize(cross(p1 - p0, p2 - p0));
+    // Ensure the normal points outward (optional, depends on your geometry)
+    // faceNormal = dot(faceNormal, p0) < 0 ? -faceNormal : faceNormal;
+
+    // ---- Lighting from smooth vertex normal ----
     float3 lightDir    = normalize(float3(0.3, 1.0, 0.5));
     float  lightFactor = max(dot(normalize(input.normal), lightDir), 0.3);
 
-    // UV: box-mapped from object-space position and object-space normal.
-    // Using model-space coordinates ensures the texture stays fixed to the
-    // face regardless of the object's world-space position or rotation.
-    float2 uv = boxMapUV(input.modelPos, input.modelNormal);
+    // UV: box‑mapped from base object‑space position using the geometric face normal
+    float2 uv = boxMapUV(input.modelPos, faceNormal) + float2(0.5, 0.5);
 
     uint flags = face.effectFlags;
     uint texId = face.textureId;
@@ -131,7 +164,7 @@ float4 fragMain(VSOutput input, uint primitiveID : SV_PrimitiveID) : SV_TARGET {
         baseColor = float4(input.color * lightFactor, 1.0);
     }
 
-    // Apply per-face effects if any
+    // Apply per‑face effects if any
     if (flags != 0u) {
         float4 fx = dispatchFaceEffect(flags, uv, input.worldPos.xy,
                                        pc.time, face.params[0], face.params[1], 1.0);
