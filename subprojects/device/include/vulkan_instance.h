@@ -21,13 +21,11 @@ public:
   VulkanInstance();
   ~VulkanInstance();
 
-  // Disable copy
+  // Disable copy & move
   VulkanInstance(const VulkanInstance &) = delete;
   VulkanInstance &operator=(const VulkanInstance &) = delete;
-
-  // Enable move
-  VulkanInstance(VulkanInstance &&other) noexcept;
-  VulkanInstance &operator=(VulkanInstance &&other) noexcept;
+  VulkanInstance(VulkanInstance &&other) = delete;
+  VulkanInstance &operator=(VulkanInstance &&other) = delete;
 
   /**
    * @brief Initialize the Vulkan instance

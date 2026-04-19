@@ -4,6 +4,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
+#include "shader_manager.h"
 #include "texture.h"
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
@@ -261,6 +262,43 @@ public:
    */
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
+  /**
+   * @brief Initialize the per-frame compute update pipeline and run the
+   *        one-time normal-precomputation dispatch.
+   *
+   * Must be called after initialize().  Creates a compute pipeline from
+   * @p computeUpdateTag (object_update.slang) for per-frame wave
+   * displacement, and immediately dispatches @p computeNormalTag
+   * (object_compute.slang) once to pre-compute smooth vertex normals into
+   * the base-position buffer.
+   *
+   * @param device            GPU device
+   * @param shaderManager     Shader manager used to compile shaders
+   * @param computeUpdateTag  ShaderTag for the per-frame update shader
+   * @param computeNormalTag  ShaderTag for the one-shot normal shader
+   * @return true if the compute pipeline was created successfully
+   */
+  bool initializeCompute(device::GPUDevice &device,
+                         device::ShaderManager &shaderManager,
+                         const device::ShaderTag *computeUpdateTag,
+                         const device::ShaderTag *computeNormalTag);
+
+  /**
+   * @brief Dispatch the per-frame vertex-displacement compute shader.
+   *
+   * Must be called OUTSIDE an active render pass (i.e. before
+   * beginRenderPass) once per frame.  Issues a compute dispatch
+   * followed by a pipeline barrier that makes the written
+   * displacedPositions visible to the subsequent vertex shader.
+   *
+   * Does nothing if initializeCompute() has not been called or if the
+   * compute pipeline is not valid.
+   *
+   * @param cmd        Command buffer to record compute commands into
+   * @param frameIndex Current frame-in-flight index
+   */
+  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+
   // =========================================================================
   // Bindless texture ID support
   // =========================================================================
@@ -277,38 +315,32 @@ public:
   void setTextureId(device::TextureId id);
 
   /**
-   * @brief Set the atlas TextureId for the object
-   *
-   * Used by shaders that need a second texture record (e.g. for
-   * layered atlas faces on the cube).  Passed via push constants.
-   *
-   * @param id  TextureId (index into TextureRecord[])
-   */
-  void setAtlasTextureId(device::TextureId id);
-
-  /**
-   * @brief Override the TextureId for a specific submesh / face range
-   *
-   * If set, this override takes priority over the base TextureId
-   * during draw for the given face index.
-   *
-   * @param faceIndex  Face (triangle) index
-   * @param id         Overriding TextureId
-   */
-  void setSubmeshTextureOverride(uint32_t faceIndex, device::TextureId id);
-
-  /**
-   * @brief Get the effective TextureId for a face
-   *
-   * Returns the submesh override if present, otherwise the base id.
-   */
-  [[nodiscard]] device::TextureId
-  getEffectiveTextureId(uint32_t faceIndex) const;
-
-  /**
    * @brief Get the base TextureId
    */
   [[nodiscard]] device::TextureId getTextureId() const;
+
+  // =========================================================================
+  // Per-face material system
+  // =========================================================================
+
+  /**
+   * @brief Set the material description for a specific face
+   *
+   * Each face can have its own texture, effect flags, and parameters.
+   * The face SSBO is marked dirty and will be re-uploaded on the next
+   * draw or explicit upload call.
+   *
+   * @param faceIndex  Face (triangle) index
+   * @param desc       Face material description
+   */
+  void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterial &desc);
+
+  /**
+   * @brief Get the material description for a face
+   * @param faceIndex  Face (triangle) index
+   * @return Face material description (default if not set)
+   */
+  [[nodiscard]] device::FaceMaterial getFaceMaterial(uint32_t faceIndex) const;
 
   /**
    * @brief Set the global bindless descriptor set to bind at draw time
@@ -319,6 +351,18 @@ public:
    * @param set  Descriptor set from ImageArrayRegistry
    */
   void setBindlessDescriptorSet(vk::DescriptorSet set);
+
+  /**
+   * @brief Upload face data SSBO for the specified frame
+   *
+   * Converts each FaceMaterial to GPUFaceData and writes the array
+   * into the per-frame storage buffer. Called unconditionally by
+   * draw() since the buffer is persistently mapped and the memcpy
+   * is cheap.
+   *
+   * @param frameIndex  Frame in flight index
+   */
+  void uploadFaceData(uint32_t frameIndex) const;
 
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
@@ -387,6 +431,10 @@ private:
   // Per-object pipeline (created by material, owned by object)
   ObjectPipeline objectPipeline_;
 
+  // Compute pipeline for per-frame wave displacement (object_update.slang).
+  // Shares the same pipeline layout as the graphics pipeline.
+  std::unique_ptr<vk::raii::Pipeline> computeUpdatePipeline_;
+
   // Pipeline config (for push constants)
   PipelineConfig pipelineConfig_;
 
@@ -395,19 +443,30 @@ private:
 
   // Bindless texture ID (index into TextureRecord SSBO)
   device::TextureId baseTextureId_;
-  device::TextureId atlasTextureId_;
-  // Per-face texture ID overrides (submesh overrides)
-  std::unordered_map<uint32_t, device::TextureId> submeshTextureOverrides_;
+  // Per-face material descriptions
+  std::vector<device::FaceMaterial> faceMaterials_;
   // Global bindless descriptor set (set 1), set externally
   vk::DescriptorSet bindlessDescriptorSet_;
 
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
+  std::vector<device::AllocatedBuffer>
+      faceDataBuffers_; ///< Per-frame face SSBO
+  device::AllocatedBuffer
+      positionBuffer_; ///< Base vertex position SSBO (static, shared by all
+                       ///< frames)
+  std::vector<device::AllocatedBuffer>
+      displacedPositionBuffers_; ///< Displaced position SSBO
+                                 ///< (compute-written)
+  device::AllocatedBuffer
+      indexBuffer_; ///< Dual-use index+storage buffer (topology)
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
   bool initialized_ = false;
+  // True when geometry topology has changed and GPU resources must be rebuilt
+  bool geometryDirty_ = true;
   mutable std::mutex objectMutex_;
 };
 

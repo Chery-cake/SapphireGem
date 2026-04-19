@@ -1,7 +1,11 @@
 #include "image_array_registry.h"
 #include "vma_allocator.h"
 #include "vulkan_device.h"
+#include <algorithm>
+#include <cstdint>
+#include <execution>
 #include <print>
+#include <ranges>
 
 namespace device {
 
@@ -56,8 +60,8 @@ bool ImageArrayRegistry::initialize(GPUDevice &device) {
       {vk::DescriptorType::eSampledImage, kKindCount * maxImagesPerKind},
       // 1 sampler
       {vk::DescriptorType::eSampler, 1},
-      // 2 SSBOs (records + layers)
-      {vk::DescriptorType::eStorageBuffer, 2},
+      // 4 SSBOs (records + layers + effect records + effect params)
+      {vk::DescriptorType::eStorageBuffer, 4},
   };
 
   vk::DescriptorPoolCreateInfo poolInfo{
@@ -109,9 +113,12 @@ void ImageArrayRegistry::shutdown() {
   descriptorSets_.clear();
   descriptorPool_.reset();
   descriptorSetLayout_.reset();
-  for (auto &arr : imageArrays_) {
-    arr.clear();
-  }
+
+  std::for_each(std::execution::unseq, imageArrays_.begin(), imageArrays_.end(),
+                [](auto &arr) { arr.clear(); });
+  std::for_each(std::execution::unseq, freeLists_.begin(), freeLists_.end(),
+                [](auto &fl) { fl.clear(); });
+
   initialized_ = false;
 }
 
@@ -130,11 +137,12 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
   }
 
   auto &arr = imageArrays_[kindIdx];
+  auto &freeList = freeLists_[kindIdx];
 
   // Deduplicate: return existing handle if the same view is already
-  // registered
+  // registered (skip tombstone)
   for (uint32_t i = 0; i < static_cast<uint32_t>(arr.size()); ++i) {
-    if (arr[i].view == view) {
+    if (!arr[i].tombstone && arr[i].view == view) {
       ImageHandle handle;
       handle.index = i;
       return handle;
@@ -142,19 +150,75 @@ ImageHandle ImageArrayRegistry::registerImage(ImageKind kind,
   }
 
   ImageHandle handle;
-  handle.index = static_cast<uint32_t>(arr.size());
-  arr.push_back({view, false});
+
+  // Prefer reusing freed slots from the free list
+  if (!freeList.empty()) {
+    uint32_t freeIdx = freeList.back();
+    freeList.pop_back();
+    arr[freeIdx] = {
+        .view = view, .committed = false, .dirty = true, .tombstone = false};
+    handle.index = freeIdx;
+  } else {
+    handle.index = static_cast<uint32_t>(arr.size());
+    arr.push_back(
+        {.view = view, .committed = false, .dirty = true, .tombstone = false});
+  }
+
   return handle;
+}
+
+// ============================================================================
+// Image removal
+// ============================================================================
+
+void ImageArrayRegistry::removeImage(ImageKind kind, ImageHandle handle) {
+  std::lock_guard<std::mutex> lock(registryMutex_);
+
+  uint32_t kindIdx = static_cast<uint32_t>(kind);
+  if (kindIdx >= kKindCount) {
+    std::println(stderr,
+                 "[ImageArrayRegistry] removeImage: Invalid ImageKind {}",
+                 kindIdx);
+    return;
+  }
+
+  auto &arr = imageArrays_[kindIdx];
+  auto &freeList = freeLists_[kindIdx];
+
+  if (!handle.isValid() || handle.index >= static_cast<uint32_t>(arr.size())) {
+    std::println(stderr,
+                 "[ImageArrayRegistry] removeImage: Invalid handle index {}",
+                 handle.index);
+    return;
+  }
+
+  auto &entry = arr[handle.index];
+  if (entry.tombstone) {
+    std::println(stderr,
+                 "[ImageArrayRegistry] removeImage: Slot {} already freed",
+                 handle.index);
+    return;
+  }
+
+  entry.view = vk::ImageView{};
+  entry.tombstone = true;
+  entry.dirty = true;
+  entry.committed = false;
+  freeList.push_back(handle.index);
+
+  std::println("[ImageArrayRegistry] Removed image at kind={}, index={}",
+               kindIdx, handle.index);
 }
 
 // ============================================================================
 // Descriptor commit
 // ============================================================================
 
-void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
-                                           vk::Sampler sampler,
-                                           const AllocatedBuffer *recordBuffer,
-                                           const AllocatedBuffer *layerBuffer) {
+void ImageArrayRegistry::commitDescriptors(
+    GPUDevice &device, vk::Sampler sampler, const AllocatedBuffer *recordBuffer,
+    const AllocatedBuffer *layerBuffer,
+    const AllocatedBuffer *effectRecordBuffer,
+    const AllocatedBuffer *effectParamBuffer) {
   std::lock_guard<std::mutex> lock(registryMutex_);
 
   if (!initialized_ || descriptorSets_.empty()) {
@@ -162,50 +226,52 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
   }
 
   std::vector<vk::WriteDescriptorSet> writes;
-  // We need to keep imageInfos alive until updateDescriptorSets
-  std::vector<std::vector<vk::DescriptorImageInfo>> allImageInfos(kKindCount);
+  // Keep imageInfos alive until updateDescriptorSets
+  // Use per-write storage to support incremental updates
+  std::vector<std::vector<vk::DescriptorImageInfo>> allImageInfos;
 
-  // --- Image array bindings (bindings kBindingImages2D, kBindingAtlases,
-  //     kBindingMaps – i.e. 3, 4, 5) ---
-  for (uint32_t k = 0; k < kKindCount; ++k) {
+  // --- Incremental image array bindings (bindings 3, 4, 5) ---
+
+  auto indices =
+      std::views::iota(uint32_t{0}, uint32_t{kKindCount}) |
+      std::views::filter([&](uint32_t k) { return !imageArrays_[k].empty(); });
+
+  std::ranges::for_each(indices, [&](uint32_t k) {
     auto &arr = imageArrays_[k];
-    if (arr.empty()) {
-      continue;
-    }
 
-    // Check if any entries are uncommitted (dirty)
-    bool hasPending = false;
-    for (auto &entry : arr) {
-      if (!entry.committed) {
-        hasPending = true;
-        break;
-      }
-    }
+    // Find dirty entries and write only those
+    auto indices_arr =
+        std::views::iota(uint32_t{0}, static_cast<uint32_t>(arr.size())) |
+        std::views::filter([&arr](uint32_t i) {
+          const auto &entry = arr[i];
+          return entry.dirty || !entry.committed;
+        });
 
-    if (!hasPending) {
-      continue;
-    }
+    std::ranges::for_each(indices_arr, [&](uint32_t i) {
+      auto &entry = arr[i];
 
-    // Build image info for all entries (full overwrite)
-    auto &infos = allImageInfos[k];
-    infos.reserve(arr.size());
-    for (auto &entry : arr) {
+      // Create a single-element descriptor write for this slot
+      allImageInfos.emplace_back();
+      auto &infos = allImageInfos.back();
+
       vk::DescriptorImageInfo imgInfo;
-      imgInfo.imageView = entry.view;
+      imgInfo.imageView = entry.view; // null for tombstones
       imgInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
       infos.push_back(imgInfo);
-      entry.committed = true;
-    }
 
-    vk::WriteDescriptorSet w{};
-    w.dstSet = *descriptorSets_[0];
-    w.dstBinding = kBindingImages2D + k; // binding 3/4/5 for each kind
-    w.dstArrayElement = 0;
-    w.descriptorCount = static_cast<uint32_t>(infos.size());
-    w.descriptorType = vk::DescriptorType::eSampledImage;
-    w.pImageInfo = infos.data();
-    writes.push_back(w);
-  }
+      vk::WriteDescriptorSet w{};
+      w.dstSet = *descriptorSets_[0];
+      w.dstBinding = kBindingImages2D + k;
+      w.dstArrayElement = i;
+      w.descriptorCount = 1;
+      w.descriptorType = vk::DescriptorType::eSampledImage;
+      w.pImageInfo = infos.data();
+      writes.push_back(w);
+
+      entry.committed = true;
+      entry.dirty = false;
+    });
+  });
 
   // --- Sampler binding (binding 0) ---
   vk::DescriptorImageInfo samplerInfo;
@@ -254,6 +320,40 @@ void ImageArrayRegistry::commitDescriptors(GPUDevice &device,
     writes.push_back(w);
   }
 
+  // --- FaceEffectRecord SSBO binding ---
+  vk::DescriptorBufferInfo fxRecBufInfo{};
+  if (effectRecordBuffer && effectRecordBuffer->isValid()) {
+    fxRecBufInfo.buffer = effectRecordBuffer->getBuffer();
+    fxRecBufInfo.offset = 0;
+    fxRecBufInfo.range = VK_WHOLE_SIZE;
+
+    vk::WriteDescriptorSet w{};
+    w.dstSet = *descriptorSets_[0];
+    w.dstBinding = kBindingFaceEffectRecords;
+    w.dstArrayElement = 0;
+    w.descriptorCount = 1;
+    w.descriptorType = vk::DescriptorType::eStorageBuffer;
+    w.pBufferInfo = &fxRecBufInfo;
+    writes.push_back(w);
+  }
+
+  // --- FaceEffectParam SSBO binding ---
+  vk::DescriptorBufferInfo fxParBufInfo{};
+  if (effectParamBuffer && effectParamBuffer->isValid()) {
+    fxParBufInfo.buffer = effectParamBuffer->getBuffer();
+    fxParBufInfo.offset = 0;
+    fxParBufInfo.range = VK_WHOLE_SIZE;
+
+    vk::WriteDescriptorSet w{};
+    w.dstSet = *descriptorSets_[0];
+    w.dstBinding = kBindingFaceEffectParams;
+    w.dstArrayElement = 0;
+    w.descriptorCount = 1;
+    w.descriptorType = vk::DescriptorType::eStorageBuffer;
+    w.pBufferInfo = &fxParBufInfo;
+    writes.push_back(w);
+  }
+
   if (!writes.empty()) {
     device.getRaiiDevice().updateDescriptorSets(writes, {});
   }
@@ -286,7 +386,10 @@ uint32_t ImageArrayRegistry::getImageCount(ImageKind kind) const {
   if (k >= kKindCount) {
     return 0;
   }
-  return static_cast<uint32_t>(imageArrays_[k].size());
+
+  uint32_t count = std::ranges::count_if(
+      imageArrays_[k], [](const auto &entry) { return !entry.tombstone; });
+  return count;
 }
 
 // ============================================================================
@@ -351,7 +454,23 @@ ImageArrayRegistry::createBindlessSetLayout(GPUDevice &device,
        vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute});
   bindingFlags.push_back(imageFlags);
 
-  // Binding 5: maps[] – last image array, highest binding number.
+  // Binding 5: FaceEffectRecord SSBO
+  bindings.push_back(
+      {kBindingFaceEffectRecords, vk::DescriptorType::eStorageBuffer, 1,
+       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+           vk::ShaderStageFlagBits::eFragment |
+           vk::ShaderStageFlagBits::eCompute});
+  bindingFlags.push_back(noFlags);
+
+  // Binding 6: FaceEffectParam SSBO
+  bindings.push_back(
+      {kBindingFaceEffectParams, vk::DescriptorType::eStorageBuffer, 1,
+       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
+           vk::ShaderStageFlagBits::eFragment |
+           vk::ShaderStageFlagBits::eCompute});
+  bindingFlags.push_back(noFlags);
+
+  // Binding 7: maps[] – last image array, highest binding number.
   // VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT must only be
   // set on the binding with the highest binding number in the layout
   // (VUID-VkDescriptorSetLayoutBindingFlagsCreateInfo-pBindingFlags-03004).

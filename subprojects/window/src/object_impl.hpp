@@ -1,6 +1,8 @@
 #pragma once
+#include "bindless_types.h"
 #include "glm/ext/matrix_transform.hpp"
 #include "object.h"
+#include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
 
@@ -22,6 +24,9 @@ Object<Dim>::Object(const ObjectTag &tag, std::vector<VertexType> vertices,
 
   // Auto-calculate faces from indices
   calculateFaces();
+
+  // Initialize per-face material array
+  faceMaterials_.resize(faces_.size());
 }
 
 template <uint32_t Dim> Object<Dim>::~Object() { release(); }
@@ -41,18 +46,23 @@ template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
   indices_ = std::move(other.indices_);
   faces_ = std::move(other.faces_);
   objectPipeline_ = std::move(other.objectPipeline_);
+  computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
   pipelineConfig_ = other.pipelineConfig_;
   time_ = other.time_;
   baseTextureId_ = other.baseTextureId_;
-  submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
-  atlasTextureId_ = other.atlasTextureId_;
+  faceMaterials_ = std::move(other.faceMaterials_);
   bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
   uniformBuffers_ = std::move(other.uniformBuffers_);
+  faceDataBuffers_ = std::move(other.faceDataBuffers_);
+  positionBuffer_ = std::move(other.positionBuffer_);
+  displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
+  indexBuffer_ = std::move(other.indexBuffer_);
   descriptorPool_ = std::move(other.descriptorPool_);
   descriptorSets_ = std::move(other.descriptorSets_);
   descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
   initialized_ = other.initialized_;
+  geometryDirty_ = other.geometryDirty_;
   other.initialized_ = false;
 }
 
@@ -70,18 +80,23 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
     indices_ = std::move(other.indices_);
     faces_ = std::move(other.faces_);
     objectPipeline_ = std::move(other.objectPipeline_);
+    computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
     pipelineConfig_ = other.pipelineConfig_;
     time_ = other.time_;
     baseTextureId_ = other.baseTextureId_;
-    submeshTextureOverrides_ = std::move(other.submeshTextureOverrides_);
-    atlasTextureId_ = other.atlasTextureId_;
+    faceMaterials_ = std::move(other.faceMaterials_);
+    positionBuffer_ = std::move(other.positionBuffer_);
+    displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
+    indexBuffer_ = std::move(other.indexBuffer_);
     bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
     other.bindlessDescriptorSet_ = vk::DescriptorSet{};
     uniformBuffers_ = std::move(other.uniformBuffers_);
+    faceDataBuffers_ = std::move(other.faceDataBuffers_);
     descriptorPool_ = std::move(other.descriptorPool_);
     descriptorSets_ = std::move(other.descriptorSets_);
     descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
     initialized_ = other.initialized_;
+    geometryDirty_ = other.geometryDirty_;
     other.initialized_ = false;
   }
   return *this;
@@ -139,7 +154,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  if (!baseMaterialTag_) {
+  if (baseMaterialTag_ == nullptr) {
     std::println(stderr, "[Object] No base material tag set for object: {}",
                  name_);
     return false;
@@ -161,18 +176,48 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   // Log binding table for this object's pipeline
   std::println("[Object] Binding table for '{}':", name_);
   std::println("  [0] UBO ({}D, {}B)", Dim, sizeof(GPUUBO));
+  std::println("  [1] FaceData SSBO ({} faces, {}B)", faces_.size(),
+               faces_.size() * sizeof(device::GPUFaceData));
+  std::println("  [2] Base position SSBO (static)");
+  std::println("  [3] Displaced position SSBO (per-frame, compute-written)");
+  std::println("  [4] Index SSBO (topology, static)");
 
   // Create descriptor set layout (owned by this object)
-  // Binding 0: UBO (uniform buffer) — textures are accessed via bindless (set
-  // 1)
+  // Binding 0: UBO (uniform buffer)
+  // Binding 1: FaceData SSBO (per-face materials)
+  // Binding 2: Base VertexPosition SSBO (static undeformed positions)
+  // Binding 3: Displaced VertexPosition SSBO (per-frame, compute-written)
+  // Binding 4: Index buffer as SSBO (topology data for compute adjacency)
   std::vector<vk::DescriptorSetLayoutBinding> bindings;
-  bindings.reserve(1);
+  bindings.reserve(5);
 
   vk::DescriptorSetLayoutBinding uboLayoutBinding{
       0, vk::DescriptorType::eUniformBuffer, 1,
-      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eGeometry |
-          vk::ShaderStageFlagBits::eFragment};
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
   bindings.push_back(uboLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding faceDataLayoutBinding{
+      1, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(faceDataLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding basePositionLayoutBinding{
+      2, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(basePositionLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding displacedPositionLayoutBinding{
+      3, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(displacedPositionLayoutBinding);
+
+  vk::DescriptorSetLayoutBinding indexLayoutBinding{
+      4, vk::DescriptorType::eStorageBuffer, 1,
+      vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
+          vk::ShaderStageFlagBits::eCompute};
+  bindings.push_back(indexLayoutBinding);
 
   vk::DescriptorSetLayoutCreateInfo layoutCreateInfo{
       {}, static_cast<uint32_t>(bindings.size()), bindings.data()};
@@ -217,9 +262,137 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     uniformBuffers_.push_back(std::move(ubo));
   }
 
-  // Create descriptor pool with enough room for UBO only
+  // Create face data storage buffers (one per frame in flight)
+  const vk::DeviceSize faceDataSize =
+      std::max(faces_.size(), static_cast<size_t>(1)) *
+      sizeof(device::GPUFaceData);
+  faceDataBuffers_.reserve(framesInFlight);
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
+        faceDataSize, std::string(name_) + "_facedata_" + std::to_string(i));
+    if (!ssbo.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create face data buffer {} for '{}'", i,
+                   name_);
+      release();
+      return false;
+    }
+    faceDataBuffers_.push_back(std::move(ssbo));
+  }
+
+  // Create a single vertex position storage buffer (static, shared by all
+  // frames). Holds the STATIC base positions (undeformed) — compute shader
+  // reads them. Only one buffer is needed because base positions are written
+  // once at load time (including the one-shot normal precomputation) and
+  // never change per-frame.
+  const size_t vertCount = std::max(vertices_.size(), static_cast<size_t>(1));
+  const vk::DeviceSize positionDataSize =
+      vertCount * sizeof(device::GPUVertexPosition);
+  {
+    positionBuffer_ = allocator.createHostVisibleStorageBuffer(
+        positionDataSize, std::string(name_) + "_basePositions");
+    if (!positionBuffer_.isValid()) {
+      std::println(stderr, "[Object] Failed to create position buffer for '{}'",
+                   name_);
+      release();
+      return false;
+    }
+  }
+
+  // Create displaced position storage buffers (one per frame in flight)
+  // These are written by the compute shader each frame with displaced
+  // positions.
+  displacedPositionBuffers_.reserve(framesInFlight);
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    auto ssbo = allocator.createHostVisibleStorageBuffer(
+        positionDataSize,
+        std::string(name_) + "_displaced_" + std::to_string(i));
+    if (!ssbo.isValid()) {
+      std::println(stderr,
+                   "[Object] Failed to create displaced position buffer {} for "
+                   "'{}'",
+                   i, name_);
+      release();
+      return false;
+    }
+    displacedPositionBuffers_.push_back(std::move(ssbo));
+  }
+
+  // Create index+storage dual-use buffer (static topology data)
+  {
+    const size_t idxCount = std::max(indices_.size(), static_cast<size_t>(1));
+    const vk::DeviceSize indexDataSize = idxCount * sizeof(uint32_t);
+    indexBuffer_ = allocator.createIndexStorageBuffer(
+        indexDataSize, std::string(name_) + "_indices");
+    if (!indexBuffer_.isValid()) {
+      std::println(stderr, "[Object] Failed to create index buffer for '{}'",
+                   name_);
+      release();
+      return false;
+    }
+    // Upload index data
+    void *idxMapped = indexBuffer_.map();
+    if (idxMapped) {
+      std::memcpy(idxMapped, indices_.data(),
+                  indices_.size() * sizeof(uint32_t));
+      indexBuffer_.unmap();
+    }
+  }
+
+  // Upload vertex positions and colors to the shared base position buffer.
+  // No wave-flag computation — effects are handled entirely by the compute
+  // shader.
+  {
+    std::vector<device::GPUVertexPosition> gpuPositions(vertCount);
+
+    for (size_t vi = 0; vi < vertices_.size(); ++vi) {
+      device::GPUVertexPosition gp;
+      if constexpr (Dim >= 1)
+        gp.x = vertices_[vi].position[0];
+      if constexpr (Dim >= 2)
+        gp.y = vertices_[vi].position[1];
+      if constexpr (Dim >= 3)
+        gp.z = vertices_[vi].position[2];
+      gp.w = 1.0f;
+      gp.r = vertices_[vi].color[0];
+      gp.g = vertices_[vi].color[1];
+      gp.b = vertices_[vi].color[2];
+      gp.pad0 = 0.0f;
+      // Default normal (up). Overwritten by object_compute.slang at load
+      // time with area-weighted smooth normals from the actual mesh
+      // topology.
+      gp.nx = 0.0f;
+      gp.ny = 1.0f;
+      gp.nz = 0.0f;
+      gp.npad = 0.0f;
+      gpuPositions[vi] = gp;
+    }
+
+    // Upload base positions to the single shared buffer
+    void *mapped = positionBuffer_.map();
+    if (mapped) {
+      std::memcpy(mapped, gpuPositions.data(),
+                  vertCount * sizeof(device::GPUVertexPosition));
+      positionBuffer_.unmap();
+    }
+
+    // Initialize displaced positions to base positions for all frames
+    for (uint32_t i = 0; i < framesInFlight; ++i) {
+      void *dispMapped = displacedPositionBuffers_[i].map();
+      if (dispMapped) {
+        std::memcpy(dispMapped, gpuPositions.data(),
+                    vertCount * sizeof(device::GPUVertexPosition));
+        displacedPositionBuffers_[i].unmap();
+      }
+    }
+  }
+
+  // Create descriptor pool with room for UBO + 4 SSBOs per frame
   std::vector<vk::DescriptorPoolSize> poolSizes;
-  poolSizes.push_back({vk::DescriptorType::eUniformBuffer, framesInFlight});
+  poolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, framesInFlight);
+  poolSizes.emplace_back(
+      vk::DescriptorType::eStorageBuffer,
+      framesInFlight * 4); // face data + base pos + displaced pos + indices
 
   vk::DescriptorPoolCreateInfo poolInfo{
       vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
@@ -256,7 +429,10 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // Update descriptor sets to point to uniform buffers (UBO only)
+  // Update descriptor sets to point to uniform buffers, face data SSBOs,
+  // base position SSBOs, displaced position SSBOs, and index SSBO
+  const vk::DeviceSize indexDataSize =
+      std::max(indices_.size(), static_cast<size_t>(1)) * sizeof(uint32_t);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     vk::DescriptorBufferInfo bufferInfo{uniformBuffers_[i].getBuffer(), 0,
                                         uboSize};
@@ -270,7 +446,64 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
                                     &bufferInfo,
                                     nullptr};
 
-    device.getRaiiDevice().updateDescriptorSets({uboWrite}, {});
+    vk::DescriptorBufferInfo faceDataInfo{faceDataBuffers_[i].getBuffer(), 0,
+                                          faceDataSize};
+
+    vk::WriteDescriptorSet faceDataWrite{*descriptorSets_[i],
+                                         1,
+                                         0,
+                                         1,
+                                         vk::DescriptorType::eStorageBuffer,
+                                         nullptr,
+                                         &faceDataInfo,
+                                         nullptr};
+
+    vk::DescriptorBufferInfo basePositionInfo{positionBuffer_.getBuffer(), 0,
+                                              positionDataSize};
+
+    vk::WriteDescriptorSet basePositionWrite{*descriptorSets_[i],
+                                             2,
+                                             0,
+                                             1,
+                                             vk::DescriptorType::eStorageBuffer,
+                                             nullptr,
+                                             &basePositionInfo,
+                                             nullptr};
+
+    vk::DescriptorBufferInfo displacedPositionInfo{
+        displacedPositionBuffers_[i].getBuffer(), 0, positionDataSize};
+
+    vk::WriteDescriptorSet displacedPositionWrite{
+        *descriptorSets_[i],
+        3,
+        0,
+        1,
+        vk::DescriptorType::eStorageBuffer,
+        nullptr,
+        &displacedPositionInfo,
+        nullptr};
+
+    vk::DescriptorBufferInfo indexInfo{indexBuffer_.getBuffer(), 0,
+                                       indexDataSize};
+
+    vk::WriteDescriptorSet indexWrite{*descriptorSets_[i],
+                                      4,
+                                      0,
+                                      1,
+                                      vk::DescriptorType::eStorageBuffer,
+                                      nullptr,
+                                      &indexInfo,
+                                      nullptr};
+
+    device.getRaiiDevice().updateDescriptorSets(
+        {uboWrite, faceDataWrite, basePositionWrite, displacedPositionWrite,
+         indexWrite},
+        {});
+  }
+
+  // Upload initial face data to all frames
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    uploadFaceData(i);
   }
 
   initialized_ = true;
@@ -283,9 +516,15 @@ template <uint32_t Dim> void Object<Dim>::release() {
   descriptorSets_.clear();
   descriptorPool_.reset();
   uniformBuffers_.clear();
+  faceDataBuffers_.clear();
+  positionBuffer_ = {};
+  displacedPositionBuffers_.clear();
+  indexBuffer_ = {};
+  computeUpdatePipeline_.reset();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
+  geometryDirty_ = true;
   initialized_ = false;
 }
 
@@ -307,33 +546,6 @@ template <uint32_t Dim> void Object<Dim>::setTextureId(device::TextureId id) {
   baseTextureId_ = id;
 }
 
-template <uint32_t Dim>
-void Object<Dim>::setAtlasTextureId(device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  atlasTextureId_ = id;
-}
-
-template <uint32_t Dim>
-void Object<Dim>::setSubmeshTextureOverride(uint32_t faceIndex,
-                                            device::TextureId id) {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  if (id.isValid()) {
-    submeshTextureOverrides_[faceIndex] = id;
-  } else {
-    submeshTextureOverrides_.erase(faceIndex);
-  }
-}
-
-template <uint32_t Dim>
-device::TextureId Object<Dim>::getEffectiveTextureId(uint32_t faceIndex) const {
-  std::lock_guard<std::mutex> lock(objectMutex_);
-  auto it = submeshTextureOverrides_.find(faceIndex);
-  if (it != submeshTextureOverrides_.end()) {
-    return it->second;
-  }
-  return baseTextureId_;
-}
-
 template <uint32_t Dim> device::TextureId Object<Dim>::getTextureId() const {
   std::lock_guard<std::mutex> lock(objectMutex_);
   return baseTextureId_;
@@ -343,6 +555,49 @@ template <uint32_t Dim>
 void Object<Dim>::setBindlessDescriptorSet(vk::DescriptorSet set) {
   std::lock_guard<std::mutex> lock(objectMutex_);
   bindlessDescriptorSet_ = set;
+}
+
+// ============================================================================
+// Per-face material system
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::setFaceMaterial(uint32_t faceIndex,
+                                  const device::FaceMaterial &desc) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  // Validate face index against actual face count when faces are known
+  if (!faces_.empty() && faceIndex >= static_cast<uint32_t>(faces_.size())) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} out of range "
+                 "(object '{}' has {} faces)",
+                 faceIndex, name_, faces_.size());
+    return;
+  }
+
+  // When faces_ is empty (pre-init), allow but cap to prevent unbounded
+  // growth
+  if (faces_.empty() && faceIndex > 1024) {
+    std::println(stderr,
+                 "[Object] setFaceMaterial: face index {} too large "
+                 "(object '{}' has no faces yet)",
+                 faceIndex, name_);
+    return;
+  }
+
+  if (faceMaterials_.size() <= faceIndex) {
+    faceMaterials_.resize(faceIndex + 1);
+  }
+  faceMaterials_[faceIndex] = desc;
+}
+
+template <uint32_t Dim>
+device::FaceMaterial Object<Dim>::getFaceMaterial(uint32_t faceIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+  if (faceIndex < static_cast<uint32_t>(faceMaterials_.size())) {
+    return faceMaterials_[faceIndex];
+  }
+  return {};
 }
 
 // ============================================================================
@@ -428,6 +683,40 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
 }
 
 // ============================================================================
+// Face data SSBO upload
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::uploadFaceData(uint32_t frameIndex) const {
+  if (!initialized_ || faceDataBuffers_.empty()) {
+    return;
+  }
+
+  if (frameIndex >= faceDataBuffers_.size()) {
+    return;
+  }
+
+  // Build GPUFaceData array from faceMaterials_
+  const size_t faceCount = std::max(faces_.size(), static_cast<size_t>(1));
+  std::vector<device::GPUFaceData> gpuData(faceCount);
+
+  for (size_t i = 0; i < faceCount; ++i) {
+    if (i < faceMaterials_.size()) {
+      gpuData[i] = device::GPUFaceData::fromFaceMaterial(faceMaterials_[i]);
+    } else {
+      gpuData[i] = device::GPUFaceData::fromFaceMaterial({});
+    }
+  }
+
+  void *mapped = faceDataBuffers_[frameIndex].map();
+  if (mapped) {
+    std::memcpy(mapped, gpuData.data(),
+                faceCount * sizeof(device::GPUFaceData));
+    faceDataBuffers_[frameIndex].unmap();
+  }
+}
+
+// ============================================================================
 // Draw
 // ============================================================================
 
@@ -451,6 +740,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     return;
   }
 
+  // Upload face data SSBO for this frame (cheap memcpy to persistently mapped
+  // buffer)
+  uploadFaceData(frameIndex);
+
   // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
                    **objectPipeline_.pipeline);
@@ -466,20 +759,21 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                            {bindlessDescriptorSet_}, {});
   }
 
-  // Push constants: time + textureId + atlasTextureId (bindless)
+  // Push constants: time + objectId + vertexCount + indexCount
   if (pipelineConfig_.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pushData{time_, baseTextureId_.index,
-                                           atlasTextureId_.index};
+    device::BindlessPushConstants pushData(
+        time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
+        static_cast<uint32_t>(indices_.size()));
     cmd.pushConstants(**objectPipeline_.pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
   }
 
-  // Single draw call for all vertices
-  uint32_t totalVertices = static_cast<uint32_t>(vertices_.size());
-  if (totalVertices > 0) {
-    cmd.draw(totalVertices, 1, 0, 0);
+  // Indexed draw call — uses the dual-use index+storage buffer
+  if (!indices_.empty()) {
+    cmd.bindIndexBuffer(indexBuffer_.getBuffer(), 0, vk::IndexType::eUint32);
+    cmd.drawIndexed(static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
   }
 }
 
@@ -580,6 +874,195 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
   }
 
   return result;
+}
+
+// ============================================================================
+// Compute pipeline initialization
+// ============================================================================
+
+template <uint32_t Dim>
+bool Object<Dim>::initializeCompute(device::GPUDevice &device,
+                                    device::ShaderManager &shaderManager,
+                                    const device::ShaderTag *computeUpdateTag,
+                                    const device::ShaderTag *computeNormalTag) {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  if (!initialized_ || !objectPipeline_.isValid()) {
+    std::println(stderr,
+                 "[Object] initializeCompute: '{}' must be initialized first",
+                 name_);
+    return false;
+  }
+
+  // The compute pipelines share the same pipeline layout as the graphics
+  // pipeline (same set 0 descriptor layout, same push constant range).
+  vk::PipelineLayout sharedLayout = **objectPipeline_.pipelineLayout;
+
+  // ---- Create per-frame update compute pipeline (object_update.slang) ----
+  if (computeUpdateTag) {
+    auto result = shaderManager.acquire(computeUpdateTag);
+    if (!result.has_value() || !result.value() || !result.value()->compute ||
+        !result.value()->compute->isValid) {
+      std::println(stderr,
+                   "[Object] Failed to acquire compute update shader for '{}'",
+                   name_);
+    } else {
+      device::ShaderProgram *prog = result.value();
+      vk::PipelineShaderStageCreateInfo stageInfo =
+          prog->compute->getStageInfo();
+      vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
+      try {
+        computeUpdatePipeline_ = std::make_unique<vk::raii::Pipeline>(
+            device.getRaiiDevice(), nullptr, pipelineInfo);
+        std::println("[Object] Created compute update pipeline for '{}'",
+                     name_);
+      } catch (const vk::SystemError &e) {
+        std::println(stderr,
+                     "[Object] Failed to create compute update "
+                     "pipeline for '{}': {}",
+                     name_, e.what());
+      }
+      shaderManager.release(computeUpdateTag);
+    }
+  }
+
+  // ---- One-shot normal precomputation dispatch (object_compute.slang) ----
+  if (computeNormalTag && !vertices_.empty()) {
+    auto result = shaderManager.acquire(computeNormalTag);
+    if (!result.has_value() || !result.value() || !result.value()->compute ||
+        !result.value()->compute->isValid) {
+      std::println(stderr,
+                   "[Object] Failed to acquire compute normal shader for '{}'",
+                   name_);
+    } else {
+      device::ShaderProgram *prog = result.value();
+      vk::PipelineShaderStageCreateInfo stageInfo =
+          prog->compute->getStageInfo();
+      vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
+
+      std::unique_ptr<vk::raii::Pipeline> normalPipeline;
+      try {
+        normalPipeline = std::make_unique<vk::raii::Pipeline>(
+            device.getRaiiDevice(), nullptr, pipelineInfo);
+      } catch (const vk::SystemError &e) {
+        std::println(stderr,
+                     "[Object] Failed to create normal compute "
+                     "pipeline for '{}': {}",
+                     name_, e.what());
+      }
+
+      if (normalPipeline) {
+        // One-shot command buffer on the graphics queue
+        auto qf = device.getQueueFamilies();
+        uint32_t queueFamily =
+            qf.graphicsFamily.value_or(qf.computeFamily.value_or(0u));
+
+        try {
+          vk::CommandPoolCreateInfo poolInfo{
+              vk::CommandPoolCreateFlagBits::eTransient, queueFamily};
+          vk::raii::CommandPool cmdPool(device.getRaiiDevice(), poolInfo);
+
+          vk::CommandBufferAllocateInfo cmdAlloc{
+              *cmdPool, vk::CommandBufferLevel::ePrimary, 1};
+          auto cmdBufs =
+              vk::raii::CommandBuffers(device.getRaiiDevice(), cmdAlloc);
+          auto &cmd = cmdBufs[0];
+
+          cmd.begin({vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+          cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **normalPipeline);
+          cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, sharedLayout,
+                                 0, {*descriptorSets_[0]}, {});
+          if (bindlessDescriptorSet_) {
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                   sharedLayout, 1, {bindlessDescriptorSet_},
+                                   {});
+          }
+
+          device::BindlessPushConstants pushData(
+              0.0f, baseTextureId_.index,
+              static_cast<uint32_t>(vertices_.size()),
+              static_cast<uint32_t>(indices_.size()));
+          cmd.pushConstants(
+              sharedLayout, pipelineConfig_.pushConstantStages, 0u,
+              vk::ArrayProxy<const device::BindlessPushConstants>(pushData));
+
+          uint32_t groups =
+              (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
+          cmd.dispatch(groups, 1, 1);
+          cmd.end();
+
+          vk::SubmitInfo submit{};
+          submit.setCommandBuffers(*cmd);
+          device.getGraphicsQueue().submit(submit);
+          device.getGraphicsQueue().waitIdle();
+          std::println("[Object] Normal precomputation dispatched for '{}'",
+                       name_);
+        } catch (const vk::SystemError &e) {
+          std::println(stderr,
+                       "[Object] Failed to dispatch normal "
+                       "precomputation for '{}': {}",
+                       name_, e.what());
+        }
+      }
+
+      shaderManager.release(computeNormalTag);
+    }
+  }
+
+  return true;
+}
+
+// ============================================================================
+// Pre-render compute dispatch (wave displacement)
+// ============================================================================
+
+template <uint32_t Dim>
+void Object<Dim>::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const {
+  std::lock_guard<std::mutex> lock(objectMutex_);
+
+  if (!initialized_ || !computeUpdatePipeline_) {
+    return;
+  }
+
+  if (frameIndex >= descriptorSets_.size()) {
+    return;
+  }
+
+  // Dispatch wave displacement compute shader
+  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **computeUpdatePipeline_);
+  cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                         **objectPipeline_.pipelineLayout, 0,
+                         {*descriptorSets_[frameIndex]}, {});
+  if (bindlessDescriptorSet_) {
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                           **objectPipeline_.pipelineLayout, 1,
+                           {bindlessDescriptorSet_}, {});
+  }
+
+  device::BindlessPushConstants pushData(
+      time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
+      static_cast<uint32_t>(indices_.size()));
+  cmd.pushConstants(**objectPipeline_.pipelineLayout,
+                    pipelineConfig_.pushConstantStages, 0,
+                    sizeof(device::BindlessPushConstants), &pushData);
+
+  uint32_t groups = (static_cast<uint32_t>(vertices_.size()) + 63u) / 64u;
+  cmd.dispatch(groups, 1, 1);
+
+  // Pipeline barrier: ensure compute writes to displacedPositions are visible
+  // to the subsequent vertex shader reads.
+  vk::BufferMemoryBarrier barrier{};
+  barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+  barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = displacedPositionBuffers_[frameIndex].getBuffer();
+  barrier.offset = 0;
+  barrier.size = VK_WHOLE_SIZE;
+
+  cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
+                      vk::PipelineStageFlagBits::eVertexShader, {}, {},
+                      {barrier}, {});
 }
 
 } // namespace window

@@ -108,7 +108,7 @@ struct DEVICE_API ImageCreateInfo {
   vk::ImageTiling tiling = vk::ImageTiling::eOptimal;
   vk::ImageUsageFlags usage;
   vma::MemoryUsage memoryUsage = vma::MemoryUsage::eAuto;
-  vma::AllocationCreateFlags flags = {};
+  vma::AllocationCreateFlags flags;
   std::string debugName;
 };
 
@@ -123,13 +123,11 @@ public:
   VMAAllocator();
   ~VMAAllocator();
 
-  // Disable copy
+  // Disable copy & move
   VMAAllocator(const VMAAllocator &) = delete;
   VMAAllocator &operator=(const VMAAllocator &) = delete;
-
-  // Enable move
-  VMAAllocator(VMAAllocator &&other) noexcept;
-  VMAAllocator &operator=(VMAAllocator &&other) noexcept;
+  VMAAllocator(VMAAllocator &&other) = delete;
+  VMAAllocator &operator=(VMAAllocator &&other) = delete;
 
   /**
    * @brief Initialize the allocator for a device
@@ -193,13 +191,42 @@ public:
                                       const std::string &debugName = "");
 
   /**
-   * @brief Create a storage buffer
+   * @brief Create a storage buffer (GPU-only, for transfer-destination use)
    * @param size Buffer size
    * @param debugName Optional debug name
    * @return Created storage buffer
    */
   AllocatedBuffer createStorageBuffer(vk::DeviceSize size,
                                       const std::string &debugName = "");
+
+  /**
+   * @brief Create a dual-use index+storage buffer (GPU-only)
+   *
+   * Can be bound both as a Vulkan index buffer (vkCmdBindIndexBuffer)
+   * and as a storage buffer (SSBO) so compute shaders can read the
+   * index data for adjacency scanning.
+   *
+   * @param size Buffer size
+   * @param debugName Optional debug name
+   * @return Created buffer with eIndexBuffer | eStorageBuffer | eTransferDst
+   */
+  AllocatedBuffer createIndexStorageBuffer(vk::DeviceSize size,
+                                           const std::string &debugName = "");
+
+  /**
+   * @brief Create a host-visible storage buffer (CPU-writable every frame)
+   *
+   * Uses CpuToGpu memory with persistent mapping so the CPU can write
+   * directly without staging. Ideal for per-frame SSBOs that change
+   * frequently (e.g. per-face material data).
+   *
+   * @param size Buffer size
+   * @param debugName Optional debug name
+   * @return Created storage buffer
+   */
+  AllocatedBuffer
+  createHostVisibleStorageBuffer(vk::DeviceSize size,
+                                 const std::string &debugName = "");
 
   // ========== Image Operations ==========
 

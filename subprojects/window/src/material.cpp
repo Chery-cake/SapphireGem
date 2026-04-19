@@ -51,16 +51,24 @@ bool Material::initialize(device::ShaderManager &shaderManager) {
     return false;
   }
 
-  if (!shaderTag_) {
+  if (shaderTag_ == nullptr) {
     std::println(stderr, "[Material] No shader tag set for material: {}",
                  name_);
     return false;
   }
 
   // Acquire shader program (compiles if needed, increments ref count)
-  shaderProgram_ = shaderManager.acquire(shaderTag_);
-  if (!shaderProgram_ || !shaderProgram_->compiled) {
-    std::println(stderr, "[Material] Failed to acquire shader program for: {}",
+  auto acquireResult = shaderManager.acquire(shaderTag_);
+  if (!acquireResult.has_value()) {
+    std::println(stderr,
+                 "[Material] Failed to acquire shader program for: {} - {}",
+                 name_, acquireResult.error().message);
+    return false;
+  }
+  shaderProgram_ = acquireResult.value();
+
+  if (shaderProgram_ == nullptr || !shaderProgram_->compiled) {
+    std::println(stderr, "[Material] Shader program not compiled for: {}",
                  name_);
     return false;
   }

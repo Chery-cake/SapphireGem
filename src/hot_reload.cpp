@@ -1,9 +1,15 @@
+#include <exception>
+#include <filesystem>
+#include <shared_mutex>
 #ifdef ENGINE_DEBUG
 
 #include "hot_reload.h"
+#include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <execution>
 #include <fstream>
+#include <mutex>
 #include <print>
 #include <string>
 
@@ -105,28 +111,22 @@ bool HotReload::reload() {
   return success;
 }
 
-#ifdef _WIN32
-#include <windows.h>
 inline std::time_t HotReload::getFileModTime() {
-  WIN32_FILE_ATTRIBUTE_DATA fad;
-  if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &fad))
+  std::filesystem::path p(path);
+
+  try {
+    auto fileTime = std::filesystem::last_write_time(p);
+    auto timeDiff =
+        std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            fileTime - std::filesystem::file_time_type::clock::now() +
+            std::chrono::system_clock::now());
+    return std::chrono::system_clock::to_time_t(timeDiff);
+  } catch (std::exception &e) {
+    std::println("[HotReload] Couldn't get the write time from library {} with error: {}",
+                 name, e.what());
     return 0;
-  FILETIME ft = fad.ftLastWriteTime;
-  ULARGE_INTEGER ull;
-  ull.LowPart = ft.dwLowDateTime;
-  ull.HighPart = ft.dwHighDateTime;
-  return static_cast<std::time_t>((ull.QuadPart / 10000000ULL) -
-                                  11644473600ULL);
+  }
 }
-#else
-#include <sys/stat.h>
-inline std::time_t HotReload::getFileModTime() {
-  struct stat result;
-  if (stat(path.c_str(), &result) == 0)
-    return result.st_mtime;
-  return 0;
-}
-#endif
 
 bool HotReload::checkAndReloadIfNeeded() {
   std::time_t modTime = getFileModTime();
@@ -235,15 +235,16 @@ void HotReload::registerDestroyCallback(const std::string &name,
 }
 
 void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
-  for (auto &entry : callbacks) {
-    try {
-      entry.callback(data);
-      std::print("[HotReload] Executed callback: '{}'\n", entry.name);
-    } catch (const std::exception &e) {
-      std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
-                 entry.name, e.what());
-    }
-  }
+  std::ranges::for_each(
+      callbacks.begin(), callbacks.end(), [this](auto &entry) {
+        try {
+          entry.callback(data, dataMutex_);
+          std::print("[HotReload] Executed callback: '{}'\n", entry.name);
+        } catch (const std::exception &e) {
+          std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
+                     entry.name, e.what());
+        }
+      });
 }
 
 #endif // ENGINE_DEBUG

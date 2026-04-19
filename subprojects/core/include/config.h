@@ -5,16 +5,16 @@
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace core {
 
-/**
- * @brief Configuration callback type for when configuration changes
- */
-using ConfigChangeCallback = std::function<void()>;
+// Forward Declaration
+class VulkanConfig;
+class ThreadsConfig;
 
 /**
  *@brief Application specific configuration settings
@@ -31,103 +31,6 @@ struct CORE_API ApplicationConfig {
   bool operator!=(const ApplicationConfig &other) const {
     return !(*this == other);
   }
-};
-
-/**
- * @brief Vulkan-specific configuration settings
- */
-struct CORE_API VulkanConfig {
-  std::vector<std::string> instanceExtensions;
-  std::vector<std::string> deviceExtensions;
-  std::vector<std::string> instanceLayers;
-
-  // TODO check functions to add and remove optional extensions and layer work
-  // properly
-  std::vector<std::string> optionalInstanceExtensions;
-  std::vector<std::string> optionalDeviceExtensions;
-  std::vector<std::string> optionalInstanceLayers;
-
-  std::string engineName = "SapphireEngine";
-  uint32_t engineVersion = VK_MAKE_VERSION(0, 1, 0);
-  uint32_t minApiVersion = VK_API_VERSION_1_3;
-
-  bool operator==(const VulkanConfig &other) const {
-    return instanceExtensions == other.instanceExtensions &&
-           deviceExtensions == other.deviceExtensions &&
-           instanceLayers == other.instanceLayers &&
-           optionalInstanceExtensions == other.optionalInstanceExtensions &&
-           optionalDeviceExtensions == other.optionalDeviceExtensions &&
-           optionalInstanceLayers == other.optionalInstanceLayers &&
-           engineName == other.engineName &&
-           engineVersion == other.engineVersion &&
-           minApiVersion == other.minApiVersion;
-  }
-
-  bool operator!=(const VulkanConfig &other) const { return !(*this == other); }
-};
-
-/**
- * @brief Thread pool allocation configuration
- *
- * Specifies how many threads should be dedicated to each type of pool,
- * adjusting for the number of loops and GPUs.
- *
- * @note loopThreads and gpuThreads are "per loop" and "per GPU" values.
- *       When calling getEffectiveThreadAllocation(), these values are
- *       multiplied by mainLoopCount and gpuCount respectively to get
- *       the total thread counts.
- */
-struct CORE_API ThreadPoolAllocation {
-  uint32_t workerThreads = 0; // 0 = auto-detect based on hardware
-  uint32_t loopThreads =
-      1; // Threads per main loop (multiplied by mainLoopCount)
-  uint32_t gpuThreads =
-      1; // Threads per GPU (multiplied by gpuCount if multi-GPU enabled)
-
-  bool operator==(const ThreadPoolAllocation &other) const {
-    return workerThreads == other.workerThreads &&
-           loopThreads == other.loopThreads && gpuThreads == other.gpuThreads;
-  }
-
-  bool operator!=(const ThreadPoolAllocation &other) const {
-    return !(*this == other);
-  }
-};
-
-/**
- * @brief GPU configuration settings
- */
-struct CORE_API GPUConfig {
-  uint32_t gpuCount = 1;          // Number of GPUs to use
-  uint32_t preferredGPUIndex = 0; // Preferred GPU index for primary rendering
-  bool enableMultiGPU = false;    // Enable multi-GPU rendering
-
-  bool operator==(const GPUConfig &other) const {
-    return gpuCount == other.gpuCount &&
-           preferredGPUIndex == other.preferredGPUIndex &&
-           enableMultiGPU == other.enableMultiGPU;
-  }
-
-  bool operator!=(const GPUConfig &other) const { return !(*this == other); }
-};
-
-/**
- * @brief Loop configuration settings
- */
-struct CORE_API LoopConfig {
-  uint32_t mainLoopCount = 1; // Number of main loops (e.g., for multi-window)
-  uint32_t targetFrameRate = 60;  // Target frame rate (0 = unlimited)
-  bool enableVSync = true;        // Enable vertical sync
-  uint32_t maxFramesInFlight = 2; // Maximum frames that can be in flight
-
-  bool operator==(const LoopConfig &other) const {
-    return mainLoopCount == other.mainLoopCount &&
-           targetFrameRate == other.targetFrameRate &&
-           enableVSync == other.enableVSync &&
-           maxFramesInFlight == other.maxFramesInFlight;
-  }
-
-  bool operator!=(const LoopConfig &other) const { return !(*this == other); }
 };
 
 /**
@@ -170,6 +73,8 @@ inline bool hasFlag(ConfigSection flags, ConfigSection flag) {
  */
 class CORE_API Config {
 public:
+  using ConfigChangeCallback = std::function<void()>;
+
   // Singleton access
   static Config &instance();
 
@@ -179,7 +84,7 @@ public:
   Config(Config &&) = delete;
   Config &operator=(Config &&) = delete;
 
-  // ========== Vulkan Configuration ==========
+  // ========== Application Configuration ==========
 
   /**
    * @brief Set Application configuration
@@ -207,139 +112,23 @@ public:
    * @brief Get current Vulkan configuration
    * @return Current Vulkan configuration
    */
-  const VulkanConfig &getVulkanConfig() const;
+  VulkanConfig &getVulkanConfig();
+
+  // ========== Threads Configuration ==========
 
   /**
-   * @brief Add a Vulkan instance extension
-   * @param extension Extension name to add
-   */
-  void addInstanceExtension(const std::string &extension);
-
-  /**
-   * @brief Add a Vulkan device extension
-   * @param extension Extension name to add
-   */
-  void addDeviceExtension(const std::string &extension);
-
-  /**
-   * @brief Add a Vulkan instance layer
-   * @param layer Layer name to add
-   */
-  void addInstanceLayer(const std::string &layer);
-
-  /**
-   * @brief Remove a Vulkan instance extension
-   * @param extension Extension name to remove
-   * @return true if extension was removed
-   */
-  bool removeInstanceExtension(const std::string &extension);
-
-  /**
-   * @brief Remove a Vulkan device extension
-   * @param extension Extension name to remove
-   * @return true if extension was removed
-   */
-  bool removeDeviceExtension(const std::string &extension);
-
-  /**
-   * @brief Remove a Vulkan instance layer
-   * @param layer Layer name to remove
-   * @return true if layer was removed
-   */
-  bool removeInstanceLayer(const std::string &layer);
-
-  /**
-   * @brief Add a optional Vulkan instance extension
-   * @param extension Extension name to add
-   */
-  void addOptionalInstanceExtension(const std::string &extension);
-
-  /**
-   * @brief Add a optional Vulkan device extension
-   * @param extension Extension name to add
-   */
-  void addOptionalDeviceExtension(const std::string &extension);
-
-  /**
-   * @brief Add a optional Vulkan instance layer
-   * @param layer Layer name to add
-   */
-  void addOptionalInstanceLayer(const std::string &layer);
-
-  /**
-   * @brief Remove a optional Vulkan instance extension
-   * @param extension Extension name to remove
-   * @return true if extension was removed
-   */
-  bool removeOptionalInstanceExtension(const std::string &extension);
-
-  /**
-   * @brief Remove a optional Vulkan device extension
-   * @param extension Extension name to remove
-   * @return true if extension was removed
-   */
-  bool removeOptionalDeviceExtension(const std::string &extension);
-
-  /**
-   * @brief Remove a optional Vulkan instance layer
-   * @param layer Layer name to remove
-   * @return true if layer was removed
-   */
-  bool removeOptionalInstanceLayer(const std::string &layer);
-
-  // ========== Thread Pool Configuration ==========
-
-  /**
-   * @brief Set thread pool allocation
-   * @param allocation New thread pool allocation
+   * @brief Set Threads configuration
+   * @param config New Threads configuration
    *
-   * Triggers thread pool configuration change callbacks if values differ.
+   * Triggers Threads configuration change callbacks if values differ.
    */
-  void setThreadPoolAllocation(const ThreadPoolAllocation &allocation);
+  void setThreadsConfig(const ThreadsConfig &config);
 
   /**
-   * @brief Get current thread pool allocation
-   * @return Current thread pool allocation
+   * @brief Get current Threads configuration
+   * @return Current Threads configuration
    */
-  ThreadPoolAllocation getThreadPoolAllocation() const;
-
-  /**
-   * @brief Calculate effective thread counts based on GPUs and loops
-   * @return Calculated thread counts considering hardware
-   */
-  ThreadPoolAllocation getEffectiveThreadAllocation() const;
-
-  // ========== GPU Configuration ==========
-
-  /**
-   * @brief Set GPU configuration
-   * @param config New GPU configuration
-   *
-   * Triggers GPU configuration change callbacks if values differ.
-   */
-  void setGPUConfig(const GPUConfig &config);
-
-  /**
-   * @brief Get current GPU configuration
-   * @return Current GPU configuration
-   */
-  GPUConfig getGPUConfig() const;
-
-  // ========== Loop Configuration ==========
-
-  /**
-   * @brief Set loop configuration
-   * @param config New loop configuration
-   *
-   * Triggers loop configuration change callbacks if values differ.
-   */
-  void setLoopConfig(const LoopConfig &config);
-
-  /**
-   * @brief Get current loop configuration
-   * @return Current loop configuration
-   */
-  LoopConfig getLoopConfig() const;
+  ThreadsConfig &getThreadsConfig();
 
   // ========== Change Callbacks ==========
 
@@ -398,6 +187,15 @@ public:
    */
   void resetToDefaults();
 
+  /**
+   * @brief Callback entry with monitored sections
+   */
+  struct CallbackEntry {
+    std::string name;
+    ConfigSection sections;
+    ConfigChangeCallback callback;
+  };
+
 #ifdef ENGINE_DEBUG
   // Hot reload support: set/get the singleton instance
   static void setInstance(Config *inst);
@@ -410,7 +208,6 @@ private:
   Config();
   ~Config();
 #endif
-
 private:
   /**
    * @brief Notify callbacks about configuration changes
@@ -418,19 +215,10 @@ private:
    */
   void notifyCallbacks(ConfigSection changedSections);
 
-  // Callback entry with monitored sections
-  struct CallbackEntry {
-    std::string name;
-    ConfigSection sections;
-    ConfigChangeCallback callback;
-  };
-
   // Configuration data
   ApplicationConfig applicationConfig_;
-  VulkanConfig vulkanConfig_;
-  ThreadPoolAllocation threadPoolAllocation_;
-  GPUConfig gpuConfig_;
-  LoopConfig loopConfig_;
+  std::unique_ptr<VulkanConfig> vulkanConfig_;
+  std::unique_ptr<ThreadsConfig> threadsConfig_;
 
   // Callbacks
   std::vector<CallbackEntry> callbacks_;

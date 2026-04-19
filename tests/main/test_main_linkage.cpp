@@ -5,9 +5,8 @@
  * together and that their basic APIs are accessible from a single executable.
  */
 
-#include "bump_allocator.h"
 #include "config.h"
-#include "memory_manager.h"
+#include "memory_allocator.h"
 #include "resource_registry.h"
 #include "thread_manager.h"
 #include "vulkan_device.h"
@@ -41,16 +40,12 @@ void test_core_linkage() {
   auto &config = core::Config::instance();
   (void)config.getApplicationConfig();
 
-  // MemoryManager singleton
-  auto &memMgr = core::MemoryManager::instance();
-  (void)memMgr.getPersistentAllocatorNames();
-
   // ThreadManager singleton
   auto &threadMgr = core::ThreadManager::instance();
   (void)threadMgr.getPoolNames();
 
   // BumpAllocator
-  BumpAllocator alloc(256);
+  core::BumpAllocator<256> alloc;
   assert(alloc.capacity() == 256);
 
   PASS();

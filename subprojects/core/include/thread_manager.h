@@ -3,12 +3,14 @@
 
 #include "core_export.h"
 #include <BS_thread_pool.hpp>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
 #include <sys/types.h>
+#include <type_traits>
 #include <vector>
 
 namespace core {
@@ -18,7 +20,7 @@ namespace core {
  */
 enum class PoolType : uint8_t {
   Worker, // General worker pool for tasks
-  Loop,   // Pool for loop callbacks (SDL, Steamworks, draw frame)
+  Loop,   // Pool for loop callbacks (Steamworks, draw frame)
   GPU     // Pool reserved for GPU operations
 };
 
@@ -30,7 +32,7 @@ struct CORE_API ThreadPoolConfig {
   PoolType type = PoolType::Worker;
   uint32_t threadCount = 1;
 
-  // Optional callback when pool is reconfigured (for GPU implementations)
+  // Optional callback when pool is reconfigured
   std::function<void(uint32_t newThreadCount)> onReconfigure = nullptr;
 };
 
@@ -45,7 +47,7 @@ struct CORE_API ThreadPoolConfig {
 struct CORE_API ThreadManagerConfig {
   uint32_t totalThreads = 0; // 0 = auto-detect
   uint32_t loopThreads = 1;  // Thread budget for loop pools
-  uint32_t gpuThreads = 0;   // Thread budget for GPU operation pools
+  uint32_t gpuThreads = 1;   // Thread budget for GPU operation pools
 };
 
 /**
@@ -116,6 +118,7 @@ public:
 
   /**
    * @brief Submit a task to a named pool
+   * @template F function type to be called
    * @param name Pool name
    * @param task The task to execute
    * @param priority Task priority
@@ -124,7 +127,7 @@ public:
   template <typename F>
   auto submitTo(const std::string &name, F &&task,
                 BS::priority_t priority = BS::pr::normal)
-      -> std::future<decltype(task())> {
+      -> std::future<std::invoke_result_t<F>> {
     std::lock_guard<std::mutex> lock(threadMutex_);
     auto it = threadPools_.find(name);
     if (it == threadPools_.end()) {
@@ -135,15 +138,16 @@ public:
 
   /**
    * @brief Submit bulk of tasks to a named pool
+   * @param F function type to be called
    * @param name Pool name
    * @param bulk of tasks to execute
    * @param priority Task priority
-   * @return Future for bulk completion
+   * @return Vector of futures for bulk completion
    */
-  template <typename F, typename R>
+  template <typename F>
   auto submitBulkTo(const std::string &name, const std::vector<F> &bulk,
                     BS::priority_t priority = BS::pr::normal)
-      -> BS::multi_future<R> {
+      -> BS::multi_future<std::invoke_result_t<F>> {
     std::lock_guard<std::mutex> lock(threadMutex_);
     auto it = threadPools_.find(name);
     if (it == threadPools_.end()) {
@@ -156,12 +160,12 @@ public:
    * @brief Wait for all pending tasks in a named pool
    * @param name Pool name
    */
-  void waitAll(const std::string &name);
+  void wait(const std::string &name);
 
   /**
    * @brief Wait for all pools to complete their tasks
    */
-  void waitAllPools();
+  void waitAll();
 
   /**
    * @brief Get list of all pool names
@@ -217,7 +221,7 @@ public:
    *@brief Check if the thread should continue running
    *@return Bool
    */
-  [[nodiscard]] const bool &run() const { return running_; }
+  [[nodiscard]] bool run() const { return running_.load(); }
 
 #ifdef ENGINE_DEBUG
   // Hot reload support: set/get the singleton instance
@@ -241,7 +245,7 @@ private:
 
   // Named pools registry
   std::unordered_map<std::string, PoolEntry> threadPools_;
-  bool running_ = true;
+  std::atomic<bool> running_ = true;
 
   // Current configuration
   ThreadManagerConfig currentConfig_;

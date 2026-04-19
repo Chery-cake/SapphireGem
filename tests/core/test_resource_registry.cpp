@@ -1,6 +1,8 @@
 #include "resource_registry.h"
 #include <cassert>
 #include <cstdio>
+#include <exception>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,7 +26,7 @@ static int tests_passed = 0;
 
 struct TestTag {
   const char *name;
-  int value;
+  const int value;
 
   constexpr TestTag(const char *n, int v) : name(n), value(v) {}
 };
@@ -180,9 +182,9 @@ void test_set() {
   bool wasNew = reg.set(&TAG_A, std::make_unique<TestAsset>(TAG_A));
   assert(wasNew);
 
-  // Replace with different value by creating a new asset with extra constructor
-  bool wasReplace =
-      reg.set(&TAG_A, std::make_unique<TestAsset>(TAG_A, 100));
+  // Replace with different value by creating a new asset with extra
+  // constructor
+  bool wasReplace = reg.set(&TAG_A, std::make_unique<TestAsset>(TAG_A, 100));
   assert(!wasReplace); // false = replaced existing
 
   auto *asset = reg.get(&TAG_A);
@@ -294,16 +296,22 @@ void test_add_callback() {
 
   bool callbackFired = false;
   const TestTag *receivedTag = nullptr;
+  TestAsset *testAsset = nullptr;
 
-  reg.onAdd(
-      [&callbackFired, &receivedTag](const TestTag *tag, TestAsset *) {
-        callbackFired = true;
-        receivedTag = tag;
-      });
+  reg.onAdd([&callbackFired, &receivedTag, &testAsset](const TestTag *tag,
+                                                       TestAsset *asset) {
+    callbackFired = true;
+    receivedTag = tag;
+    testAsset = asset;
+  });
 
   reg.add(&TAG_A, std::make_unique<TestAsset>(TAG_A));
   assert(callbackFired);
   assert(receivedTag == &TAG_A);
+
+  assert(testAsset != nullptr);
+  assert(testAsset->name() == "alpha");
+  assert(testAsset->value() == 1);
 
   PASS();
 }
@@ -317,12 +325,21 @@ void test_remove_callback() {
   core::ResourceRegistry<TestTag, TestAsset> reg;
 
   bool callbackFired = false;
+  const TestTag *receivedTag = nullptr;
+
   reg.onRemove(
-      [&callbackFired](const TestTag *, TestAsset *) { callbackFired = true; });
+      [&callbackFired, &receivedTag](const TestTag *tag, TestAsset *asset) {
+        callbackFired = true;
+        receivedTag = tag;
+
+        assert(asset->name() == "alpha");
+        assert(asset->value() == 1);
+      });
 
   reg.add(&TAG_A, std::make_unique<TestAsset>(TAG_A));
   reg.remove(&TAG_A);
   assert(callbackFired);
+  assert(receivedTag == &TAG_A);
 
   PASS();
 }
@@ -337,10 +354,12 @@ void test_clear_callbacks() {
 
   int addCount = 0;
   reg.onAdd([&addCount](const TestTag *, TestAsset *) { addCount++; });
+  reg.onRemove([&addCount](const TestTag *, TestAsset *) { addCount++; });
 
   reg.clearCallbacks();
 
   reg.add(&TAG_A, std::make_unique<TestAsset>(TAG_A));
+  reg.remove(&TAG_A);
   assert(addCount == 0); // Callback was cleared
 
   PASS();
@@ -376,6 +395,15 @@ void test_multiple_items() {
   assert(reg.get(&TAG_B)->value() == 2);
   assert(reg.get(&TAG_C)->value() == 3);
   assert(reg.get(&TAG_D)->value() == 4);
+
+  reg.set(&TAG_A, std::make_unique<TestAsset>(TAG_A, 100));
+  reg.set(&TAG_D, std::make_unique<TestAsset>(TAG_D, 100));
+
+  assert(reg.size() == 4);
+  assert(reg.get(&TAG_A)->value() == 101);
+  assert(reg.get(&TAG_B)->value() == 2);
+  assert(reg.get(&TAG_C)->value() == 3);
+  assert(reg.get(&TAG_D)->value() == 104);
 
   PASS();
 }

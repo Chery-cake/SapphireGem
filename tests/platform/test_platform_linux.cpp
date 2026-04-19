@@ -8,6 +8,7 @@
  */
 
 #include "config.h"
+#include "config_vulkan.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -73,8 +74,7 @@ void test_pthread_available() {
 
   pthread_t thread;
   int result = pthread_create(
-      &thread, nullptr,
-      [](void *) -> void * { return nullptr; }, nullptr);
+      &thread, nullptr, [](void *) -> void * { return nullptr; }, nullptr);
   assert(result == 0);
   pthread_join(thread, nullptr);
 
@@ -134,7 +134,7 @@ void test_config_linux_extensions() {
 
   // Surface extension should be in the config
   bool hasSurface = false;
-  for (const auto &ext : vkCfg.instanceExtensions) {
+  for (const auto &ext : vkCfg.getInstanceExtensions()) {
     if (ext == "VK_KHR_surface") {
       hasSurface = true;
     }

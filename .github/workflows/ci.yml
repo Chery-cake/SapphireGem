@@ -84,7 +84,8 @@ jobs:
             libdbus-1-dev \
             libibus-1.0-dev \
             libsystemd-dev \
-            libudev-dev
+            libudev-dev \
+            libtbb-dev
 
       # ------------------------------------------------------------------
       # macOS Dependencies
@@ -92,7 +93,7 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install sccache vulkan-headers
+          brew install sccache vulkan-headers tbb
 
       # ------------------------------------------------------------------
       # Windows Dependencies
@@ -118,6 +119,17 @@ jobs:
           install_runtime: true
           cache: true
           optional_components: com.lunarg.vulkan.vma
+
+      - name: Install vcpkg
+        if: runner.os == 'Windows'
+        uses: microsoft/vcpkg-action@v7
+        with:
+            vcpkgArguments: 'tbb'
+
+        - name: Add vcpkg toolchain to CMakePreset (or manually pass with -DCMAKE_TOOLCHAIN_FILE)
+        if: runner.os == 'Windows'
+        run: |
+            echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Cache
@@ -188,6 +200,7 @@ jobs:
           -DENGINE_HEADLESS=ON
           -DENABLE_TESTS=ON
           -DENGINE_ENABLE_SANITIZERS=OFF
+          ${{ runner.os == 'Windows' && format('-DCMAKE_TOOLCHAIN_FILE={0}/vcpkg/scripts/buildsystems/vcpkg.cmake', github.workspace) || '' }}
 
       # ------------------------------------------------------------------
       # Build
