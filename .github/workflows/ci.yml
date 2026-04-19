@@ -122,7 +122,7 @@ jobs:
 
       - name: Install vcpkg (windows)
         if: runner.os == 'Windows'
-        uses: microsoft/vcpkg-action@v7
+        uses: microsoft/vcpkg@latest
         with:
             vcpkgArguments: 'tbb'
 
