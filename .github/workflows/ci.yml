@@ -120,16 +120,20 @@ jobs:
           cache: true
           optional_components: com.lunarg.vulkan.vma
 
-      - name: Install vcpkg (windows)
-        if: runner.os == 'Windows'
-        uses: lukka/run-vcpkg@v11
-        with:
-            vcpkgArguments: 'tbb'
-
-      - name: Add vcpkg toolchain to CMakePreset (Windows)
+      - name: Checkout vcpkg (Windows)
         if: runner.os == 'Windows'
         run: |
-            echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
+            git clone https://github.com/microsoft/vcpkg.git
+            .\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Install TBB with vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+            .\vcpkg\vcpkg.exe install tbb
+
+      - name: Set VCPKG_ROOT environment variable (Windows)
+        if: runner.os == 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Cache
