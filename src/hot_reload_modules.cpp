@@ -115,7 +115,7 @@ void ModuleReloadManager::startMonitoring() {
 
 void ModuleReloadManager::shutdown() {
   stopRequested_.store(true);
-  std::for_each(std::execution::unseq, monitorThreads_.begin(),
+  std::for_each(std::execution::par_unseq, monitorThreads_.begin(),
                 monitorThreads_.end(), [](auto &t) { t.join(); });
   monitorThreads_.clear();
 

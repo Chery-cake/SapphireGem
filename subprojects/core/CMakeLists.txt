@@ -44,7 +44,7 @@ target_link_libraries(${PROJECT_NAME}
         nlohmann_json::nlohmann_json
         thread_pool
         vulkan
-        tbb
+        tbb_engine
 )
 
 # ==============================================================================
@@ -59,6 +59,7 @@ target_compile_definitions(${PROJECT_NAME}
     PRIVATE
         CORE_EXPORTS
         $<$<CONFIG:Debug>:ENGINE_DEBUG>
+        $<$<PLATFORM_ID:Darwin>:_LIBCPP_HAS_PARALLEL_ALGORITHMS=1>
 )
 
 # ==============================================================================
