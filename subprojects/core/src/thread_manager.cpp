@@ -55,7 +55,7 @@ void ThreadManager::shutdown() {
   auto waitQueu = threadPools_ | std::views::filter([](const auto &thread) {
                     return thread.second.pool != nullptr;
                   });
-  std::for_each(std::execution::unseq, waitQueu.begin(), waitQueu.end(),
+  std::for_each(std::execution::par_unseq, waitQueu.begin(), waitQueu.end(),
                 [](auto &thread) {
                   thread.second.pool->wait();
                   thread.second.pool.reset();
@@ -171,7 +171,7 @@ void ThreadManager::wait(const std::string &name) {
 void ThreadManager::waitAll() {
   std::lock_guard<std::mutex> lock(threadMutex_);
 
-  std::for_each(std::execution::unseq, threadPools_.begin(), threadPools_.end(),
+  std::for_each(std::execution::par_unseq, threadPools_.begin(), threadPools_.end(),
                 [](auto &pair) {
                   if (pair.second.pool) {
                     pair.second.pool->wait();

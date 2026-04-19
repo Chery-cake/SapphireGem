@@ -114,9 +114,9 @@ void ImageArrayRegistry::shutdown() {
   descriptorPool_.reset();
   descriptorSetLayout_.reset();
 
-  std::for_each(std::execution::unseq, imageArrays_.begin(), imageArrays_.end(),
+  std::for_each(std::execution::par_unseq, imageArrays_.begin(), imageArrays_.end(),
                 [](auto &arr) { arr.clear(); });
-  std::for_each(std::execution::unseq, freeLists_.begin(), freeLists_.end(),
+  std::for_each(std::execution::par_unseq, freeLists_.begin(), freeLists_.end(),
                 [](auto &fl) { fl.clear(); });
 
   initialized_ = false;

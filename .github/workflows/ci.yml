@@ -25,8 +25,8 @@ jobs:
           - os: ubuntu-latest
             name: Linux
             cmake_generator: "Ninja"
-            c_compiler: clang
-            cxx_compiler: clang++
+            c_compiler: clang-18
+            cxx_compiler: clang++-18
           - os: windows-latest
             name: Windows
             cmake_generator: "Ninja"
@@ -87,6 +87,16 @@ jobs:
             libudev-dev \
             libtbb-dev
 
+      - name: Install modern Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+            sudo apt-get update
+            sudo apt-get install -y clang-18 libc++-18-dev libc++abi-18-dev
+            sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100
+            sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+
       # ------------------------------------------------------------------
       # macOS Dependencies
       # ------------------------------------------------------------------
@@ -94,6 +104,15 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install sccache vulkan-headers tbb
+
+      - name: Install LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+            brew install llvm@18
+            LLVM_PREFIX=$(brew --prefix llvm@18)
+            echo "$LLVM_PREFIX/bin" >> $GITHUB_PATH
+            echo "CC=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
+            echo "CXX=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Windows Dependencies
@@ -120,16 +139,20 @@ jobs:
           cache: true
           optional_components: com.lunarg.vulkan.vma
 
-      - name: Install vcpkg
-        if: runner.os == 'Windows'
-        uses: microsoft/vcpkg-action@v7
-        with:
-            vcpkgArguments: 'tbb'
-
-        - name: Add vcpkg toolchain to CMakePreset (or manually pass with -DCMAKE_TOOLCHAIN_FILE)
+      - name: Checkout vcpkg (Windows)
         if: runner.os == 'Windows'
         run: |
-            echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
+            git clone https://github.com/microsoft/vcpkg.git
+            .\vcpkg\bootstrap-vcpkg.bat
+
+      - name: Install TBB with vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+            .\vcpkg\vcpkg.exe install tbb
+
+      - name: Set VCPKG_ROOT environment variable (Windows)
+        if: runner.os == 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Cache
@@ -165,14 +188,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.SCCACHE_DIR }}
-          key: ${{ runner.os }}-sccache-${{ github.ref_name }}-${{ github.run_id }}
+          key: ${{ runner.os }}-sccache-${{ github.ref_name }}
           restore-keys: |
-            ${{ runner.os }}-sccache-${{ github.ref_name }}-
+            ${{ runner.os }}-sccache-${{ github.ref_name }}
             ${{ runner.os }}-sccache-
 
       - name: Start sccache server
         shell: bash
         run: sccache --start-server || true
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            vcpkg/
+            !vcpkg/buildtrees
+            !vcpkg/packages
+            !vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ github.ref_name }}
 
       # ------------------------------------------------------------------
       # Configure Environment

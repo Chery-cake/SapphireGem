@@ -149,7 +149,7 @@ template <typename Tag, typename Asset>
 template <typename Func>
 void ResourceRegistry<Tag, Asset>::forEach(Func &&func) const {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::for_each(std::execution::unseq, assets_.begin(), assets_.end(),
+  std::for_each(std::execution::par_unseq, assets_.begin(), assets_.end(),
                 [&](const auto &pair) { func(pair.first, pair.second.get()); });
 }
 
@@ -177,7 +177,7 @@ void ResourceRegistry<Tag, Asset>::clear() {
     assets_.clear();
   }
 
-  std::for_each(std::execution::unseq, entries.begin(), entries.end(),
+  std::for_each(std::execution::par_unseq, entries.begin(), entries.end(),
                 [&](const Entry &entry) {
                   std::ranges::for_each(removeCallbacks_.begin(),
                                         removeCallbacks_.end(),
