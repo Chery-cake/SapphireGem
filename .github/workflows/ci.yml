@@ -120,9 +120,16 @@ jobs:
           cache: true
           optional_components: com.lunarg.vulkan.vma
 
-      - name: Install TBB via choco (Windows)
+      - name: Install vcpkg
         if: runner.os == 'Windows'
-        run: choco install tbb
+        uses: microsoft/vcpkg-action@v7
+        with:
+            vcpkgArguments: 'tbb'
+
+        - name: Add vcpkg toolchain to CMakePreset (or manually pass with -DCMAKE_TOOLCHAIN_FILE)
+        if: runner.os == 'Windows'
+        run: |
+            echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
       # ------------------------------------------------------------------
       # Cache
@@ -193,6 +200,7 @@ jobs:
           -DENGINE_HEADLESS=ON
           -DENABLE_TESTS=ON
           -DENGINE_ENABLE_SANITIZERS=OFF
+          ${{ runner.os == 'Windows' && format('-DCMAKE_TOOLCHAIN_FILE={0}/vcpkg/scripts/buildsystems/vcpkg.cmake', github.workspace) || '' }}
 
       # ------------------------------------------------------------------
       # Build
