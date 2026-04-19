@@ -2,8 +2,13 @@
 # Modular C++ Engine - Root CMakeLists.txt
 # ==============================================================================
 
-cmake_minimum_required(VERSION 3.30)
-set(CMAKE_POLICY_VERSION_MINIMUM 3.30)
+cmake_minimum_required(VERSION 3.22)
+
+# Allow older third-party projects to be processed by CMake >= 4.0
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "")
+endif()
+
 enable_testing()
 
 project(SapphireEngine
