@@ -57,9 +57,10 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
-        DEVICE_EXPORTS
         $<$<CONFIG:Debug>:ENGINE_DEBUG>
 )
+
+add_engine_module(${PROJECT_NAME})
 
 # ==============================================================================
 # Version and Library Properties

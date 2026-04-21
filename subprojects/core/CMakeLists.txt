@@ -57,10 +57,11 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE
-        CORE_EXPORTS
         $<$<CONFIG:Debug>:ENGINE_DEBUG>
         $<$<PLATFORM_ID:Darwin>:_LIBCPP_HAS_PARALLEL_ALGORITHMS=1>
 )
+
+add_engine_module(${PROJECT_NAME})
 
 # ==============================================================================
 # Version and Library Properties

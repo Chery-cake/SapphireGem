@@ -96,6 +96,7 @@ include(CompilerWarnings)
 include(BuildConfiguration)
 include(CrossCompiling)
 include(HeadlessMode)
+include(AddEngineModule)
 
 # ==============================================================================
 # Dependencies
