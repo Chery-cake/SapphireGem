@@ -262,6 +262,15 @@ void test_dynamic_storage() {
   assert(*label == "treasure");
   e.get<ecs::component::DynamicStorage>().remove<std::string>();
   assert(!e.get<ecs::component::DynamicStorage>().has<std::string>());
+
+  e.get<ecs::component::DynamicStorage>().add<std::string>("treasure");
+  e.get<ecs::component::DynamicStorage>().add<std::string>("treasure2");
+  assert(e.get<ecs::component::DynamicStorage>().has<std::string>());
+  label = e.get<ecs::component::DynamicStorage>().get<std::string>();
+  assert(*label == "treasure2");
+  e.get<ecs::component::DynamicStorage>().remove<std::string>();
+  assert(!e.get<ecs::component::DynamicStorage>().has<std::string>());
+
   PASS();
 }
 

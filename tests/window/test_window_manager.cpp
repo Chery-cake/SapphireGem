@@ -2,7 +2,6 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
-#include <string>
 
 static int tests_run = 0;
 static int tests_passed = 0;

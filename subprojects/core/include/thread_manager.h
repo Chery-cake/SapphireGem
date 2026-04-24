@@ -2,10 +2,11 @@
 #define THREAD_MANAGER_H_
 
 #include "core_export.h"
+#include "signal.hpp"
 #include <BS_thread_pool.hpp>
 #include <atomic>
 #include <cstdint>
-#include <functional>
+#include <flat_map>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -32,8 +33,9 @@ struct CORE_API ThreadPoolConfig {
   PoolType type = PoolType::Worker;
   uint32_t threadCount = 1;
 
-  // Optional callback when pool is reconfigured
-  std::function<void(uint32_t newThreadCount)> onReconfigure = nullptr;
+  // Optional signal when pool is reconfigured
+  static signal::Signal<void(const std::string &, uint32_t newThreadCount)>
+      onReconfigure;
 };
 
 /**
@@ -244,7 +246,7 @@ private:
   };
 
   // Named pools registry
-  std::unordered_map<std::string, PoolEntry> threadPools_;
+  std::flat_map<std::string, PoolEntry> threadPools_;
   std::atomic<bool> running_ = true;
 
   // Current configuration

@@ -5,7 +5,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include <iostream>
 #include <string>
 #include <thread>
 
@@ -289,54 +288,48 @@ void test_change_callbacks() {
 
   uint32_t callbackInvoked = 0;
 
-  config.registerChangeCallback("test_callback_1", core::ConfigSection::Vulkan,
-                                [&callbackInvoked]() { callbackInvoked++; });
-  config.registerChangeCallback("test_callback_2",
-                                core::ConfigSection::ThreadPool,
-                                [&callbackInvoked]() { callbackInvoked++; });
-  config.registerChangeCallback("test_callback_3", core::ConfigSection::GPU,
-                                [&callbackInvoked]() { callbackInvoked++; });
-  config.registerChangeCallback("test_callback_4", core::ConfigSection::Loop,
-                                [&callbackInvoked]() { callbackInvoked++; });
-  config.registerChangeCallback("test_callback_5", core::ConfigSection::All,
-                                [&callbackInvoked]() { callbackInvoked++; });
+  auto res =
+      config.vulkanChanged.connect([&callbackInvoked]() { callbackInvoked++; });
+  res = config.threadPoolChanged.connect(
+      [&callbackInvoked]() { callbackInvoked++; });
+  res = config.gpuChanged.connect([&callbackInvoked]() { callbackInvoked++; });
+  res = config.loopChanged.connect([&callbackInvoked]() { callbackInvoked++; });
 
   config.getVulkanConfig().addInstanceExtension("VK_TEST_device_ext");
-  assert(callbackInvoked == 2);
+  assert(callbackInvoked == 1);
   config.getVulkanConfig().addInstanceExtension("VK_TEST_device_ext");
-  assert(callbackInvoked == 2);
+  assert(callbackInvoked == 1);
 
   core::ThreadPoolAllocation threadPool;
   threadPool.workerThreads = 6;
   config.getThreadsConfig().setThreadPoolAllocation(threadPool);
-  assert(callbackInvoked == 4);
+  assert(callbackInvoked == 2);
   config.getThreadsConfig().setThreadPoolAllocation(threadPool);
-  assert(callbackInvoked == 4);
+  assert(callbackInvoked == 2);
 
   core::GPUConfig gpuCfg;
   gpuCfg.gpuCount = 4;
   config.getThreadsConfig().setGPUConfig(gpuCfg);
-  assert(callbackInvoked == 6);
+  assert(callbackInvoked == 3);
   config.getThreadsConfig().setGPUConfig(gpuCfg);
-  assert(callbackInvoked == 6);
+  assert(callbackInvoked == 3);
 
   core::LoopConfig loopCfg;
   loopCfg.targetFrameRate = 30;
   config.getThreadsConfig().setLoopConfig(loopCfg);
-  assert(callbackInvoked == 8);
+  assert(callbackInvoked == 4);
   config.getThreadsConfig().setLoopConfig(loopCfg);
-  assert(callbackInvoked == 8);
+  assert(callbackInvoked == 4);
 
   config.getVulkanConfig().removeInstanceExtension("VK_TEST_device_ext");
-  assert(callbackInvoked == 10);
+  assert(callbackInvoked == 5);
   config.getVulkanConfig().removeInstanceExtension("VK_TEST_device_ext");
-  assert(callbackInvoked == 10);
+  assert(callbackInvoked == 5);
 
-  config.unregisterChangeCallback("test_callback_1");
-  config.unregisterChangeCallback("test_callback_2");
-  config.unregisterChangeCallback("test_callback_3");
-  config.unregisterChangeCallback("test_callback_4");
-  config.unregisterChangeCallback("test_callback_5");
+  config.vulkanChanged.clear();
+  config.threadPoolChanged.clear();
+  config.gpuChanged.clear();
+  config.loopChanged.clear();
 
   PASS();
 }
@@ -353,8 +346,7 @@ void test_batched_mode() {
   assert(!config.isImmediateMode());
 
   bool callbackInvoked = false;
-  config.registerChangeCallback(
-      "batch_callback", core::ConfigSection::Loop,
+  auto res = config.loopChanged.connect(
       [&callbackInvoked]() { callbackInvoked = true; });
 
   core::LoopConfig loopCfg;
@@ -367,7 +359,7 @@ void test_batched_mode() {
   config.applyPendingChanges();
   assert(callbackInvoked);
 
-  config.unregisterChangeCallback("batch_callback");
+  config.loopChanged.clear();
   config.setImmediateMode(true);
 
   PASS();
@@ -390,42 +382,6 @@ void test_reset_to_defaults() {
   auto retrieved = config.getThreadsConfig().getGPUConfig();
   assert(retrieved.gpuCount == 1);
   assert(retrieved.enableMultiGPU == false);
-
-  PASS();
-}
-
-// ---------------------------------------------------------------------------
-// Test: Get callback names
-// ---------------------------------------------------------------------------
-void test_callback_names() {
-  TEST(callback_names);
-
-  auto &config = core::Config::instance();
-  config.resetToDefaults();
-
-  assert(config.registerChangeCallback("cb_alpha", core::ConfigSection::Vulkan,
-                                       []() {}));
-  assert(!config.registerChangeCallback("cb_alpha", core::ConfigSection::Vulkan,
-                                        []() {}));
-
-  config.registerChangeCallback("cb_beta", core::ConfigSection::GPU, []() {});
-
-  auto names = config.getCallbackNames();
-  assert(names.size() >= 2);
-
-  bool foundAlpha = false, foundBeta = false;
-  for (const auto &n : names) {
-    if (n == "cb_alpha")
-      foundAlpha = true;
-    if (n == "cb_beta")
-      foundBeta = true;
-  }
-  assert(foundAlpha);
-  assert(foundBeta);
-
-  assert(config.unregisterChangeCallback("cb_alpha"));
-  assert(config.unregisterChangeCallback("cb_beta"));
-  assert(!config.unregisterChangeCallback("cb_gama"));
 
   PASS();
 }
@@ -499,7 +455,6 @@ int main() {
   test_change_callbacks();
   test_batched_mode();
   test_reset_to_defaults();
-  test_callback_names();
   test_config_section_flags();
   test_struct_equality();
 

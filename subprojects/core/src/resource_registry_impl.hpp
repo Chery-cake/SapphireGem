@@ -1,9 +1,11 @@
+#pragma once
 #include "resource_registry.h"
+#include "signal_fwd.h"
 #include <algorithm>
-#include <execution>
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace core {
 
@@ -11,24 +13,19 @@ template <typename Tag, typename Asset>
 bool ResourceRegistry<Tag, Asset>::add(const Tag *tag,
                                        std::unique_ptr<Asset> asset) {
   Asset *assetPtr = nullptr;
-  bool inserted = false;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto [it, ins] = assets_.try_emplace(tag, std::move(asset));
-    inserted = ins;
-    if (inserted) {
-      assetPtr = it->second.get();
+    if (!ins) {
+      return false;
     }
+    assetPtr = it->second.get();
   }
 
-  // Invoke callbacks outside the lock
-  if (inserted) {
-    std::ranges::for_each(
-        addCallbacks_, [&](const auto &callback) { callback(tag, assetPtr); });
-  }
+  assetAdded_.emit(tag, assetPtr);
 
-  return inserted;
+  return true;
 }
 
 template <typename Tag, typename Asset>
@@ -40,35 +37,31 @@ bool ResourceRegistry<Tag, Asset>::emplace(const Tag *tag, Args &&...args) {
 template <typename Tag, typename Asset>
 bool ResourceRegistry<Tag, Asset>::set(const Tag *tag,
                                        std::unique_ptr<Asset> asset) {
-  Asset *assetPtr = nullptr;
+  Asset *oldPtr = nullptr;
+  Asset *newPtr = nullptr;
   bool wasNew = false;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = assets_.find(tag);
-    wasNew = (it == assets_.end());
+    if (it != assets_.end()) {
+      oldPtr = it->second.get();
+
+    } else {
+      wasNew = true;
+    }
+
+    assets_[tag] = std::move(asset);
+    newPtr = assets_[tag].get();
   }
 
   // Invoke remove callbacks first if replacing
-  if (!wasNew) {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      assetPtr = assets_[tag].get();
-    }
-    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
-      callback(tag, assetPtr);
-    });
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    assets_[tag] = std::move(asset);
-    assetPtr = assets_[tag].get();
+  if (oldPtr) {
+    assetRemoved_.emit(tag, oldPtr);
   }
 
   // Then invoke add callbacks
-  std::ranges::for_each(addCallbacks_,
-                        [&](const auto &callback) { callback(tag, assetPtr); });
+  assetAdded_.emit(tag, newPtr);
 
   return wasNew;
 }
@@ -99,26 +92,21 @@ bool ResourceRegistry<Tag, Asset>::contains(const Tag *tag) const {
 
 template <typename Tag, typename Asset>
 bool ResourceRegistry<Tag, Asset>::remove(const Tag *tag) {
-  std::unique_ptr<Asset> assetPtr = nullptr;
-  bool removed = false;
+  std::unique_ptr<Asset> extracted;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = assets_.find(tag);
-    if (it != assets_.end()) {
-      assetPtr = std::move(it->second);
-      assets_.erase(it);
-      removed = true;
+    if (it == assets_.end()) {
+      return false;
     }
+    extracted = std::move(it->second);
+    assets_.erase(it);
   }
 
-  if (removed) {
-    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
-      callback(tag, assetPtr.get());
-    });
-  }
+  assetRemoved_.emit(tag, extracted.get());
 
-  return removed;
+  return true;
 }
 
 template <typename Tag, typename Asset>
@@ -137,9 +125,7 @@ std::unique_ptr<Asset> ResourceRegistry<Tag, Asset>::extract(const Tag *tag) {
   }
 
   if (result) {
-    std::ranges::for_each(removeCallbacks_, [&](const auto &callback) {
-      callback(tag, assetPtr);
-    });
+    assetRemoved_.emit(tag, assetPtr);
   }
 
   return result;
@@ -149,8 +135,9 @@ template <typename Tag, typename Asset>
 template <typename Func>
 void ResourceRegistry<Tag, Asset>::forEach(Func &&func) const {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::for_each(std::execution::par_unseq, assets_.begin(), assets_.end(),
-                [&](const auto &pair) { func(pair.first, pair.second.get()); });
+  std::ranges::for_each(assets_, [&func](const auto &pair) {
+    func(pair.first, pair.second.get());
+  });
 }
 
 template <typename Tag, typename Asset>
@@ -167,24 +154,16 @@ ResourceRegistry<Tag, Asset>::getAll() const {
 
 template <typename Tag, typename Asset>
 void ResourceRegistry<Tag, Asset>::clear() {
-  std::vector<Entry> entries;
+  decltype(assets_) localAssets;
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    std::ranges::transform(
-        assets_, std::back_inserter(entries),
-        [](const auto &pair) { return Entry{pair.first, pair.second.get()}; });
-    assets_.clear();
+    localAssets.swap(assets_);
   }
 
-  std::for_each(std::execution::par_unseq, entries.begin(), entries.end(),
-                [&](const Entry &entry) {
-                  std::ranges::for_each(removeCallbacks_.begin(),
-                                        removeCallbacks_.end(),
-                                        [entry](const auto &callback) {
-                                          callback(entry.tag, entry.asset);
-                                        });
-                });
+  std::ranges::for_each(localAssets, [&](const auto &pair) {
+    assetRemoved_.emit(pair.first, pair.second.get());
+  });
 }
 
 template <typename Tag, typename Asset>
@@ -200,22 +179,22 @@ bool ResourceRegistry<Tag, Asset>::empty() const {
 }
 
 template <typename Tag, typename Asset>
-void ResourceRegistry<Tag, Asset>::onAdd(AssetCallback callback) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  addCallbacks_.push_back(std::move(callback));
+signal::Signal<typename ResourceRegistry<Tag, Asset>::SignalCall>::ConnectResult
+ResourceRegistry<Tag, Asset>::onAdd(SignalSlot signalSlot) {
+  return assetAdded_.connect(std::move(signalSlot));
 }
 
 template <typename Tag, typename Asset>
-void ResourceRegistry<Tag, Asset>::onRemove(AssetCallback callback) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  removeCallbacks_.push_back(std::move(callback));
+signal::Signal<typename ResourceRegistry<Tag, Asset>::SignalCall>::ConnectResult
+ResourceRegistry<Tag, Asset>::onRemove(SignalSlot signalSlot) {
+  return assetRemoved_.connect(std::move(signalSlot));
 }
 
 template <typename Tag, typename Asset>
 void ResourceRegistry<Tag, Asset>::clearCallbacks() {
   std::lock_guard<std::mutex> lock(mutex_);
-  addCallbacks_.clear();
-  removeCallbacks_.clear();
+  assetAdded_.clear();
+  assetRemoved_.clear();
 }
 
 } // namespace core

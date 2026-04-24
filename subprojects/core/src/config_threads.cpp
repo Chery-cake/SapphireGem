@@ -8,10 +8,13 @@
 namespace core {
 
 ThreadsConfig::ThreadsConfig(ConfigSection &pendingChanges, bool &immediateMode,
-                             std::vector<Config::CallbackEntry> &callbacks,
+                             signal::Signal<void()> &threadPoolChanged,
+                             signal::Signal<void()> &gpuChanged,
+                             signal::Signal<void()> &loopChanged,
                              std::mutex &configMutex)
     : pendingChanges(pendingChanges), immediateMode(immediateMode),
-      callbacks(callbacks), configMutex(configMutex) {
+      threadPoolChanged(threadPoolChanged), gpuChanged(gpuChanged),
+      loopChanged(loopChanged), configMutex(configMutex) {
   // Auto-detect thread count
   threadPoolAllocation_.workerThreads =
       0; // Will be calculated based on hardware
@@ -44,7 +47,6 @@ void ThreadsConfig::resetToDefaults() {
 void ThreadsConfig::setThreadPoolAllocation(
     const ThreadPoolAllocation &allocation) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(conigThreadsMutex_);
@@ -52,13 +54,7 @@ void ThreadsConfig::setThreadPoolAllocation(
       threadPoolAllocation_ = allocation;
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::ThreadPool);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::ThreadPool;
       }
@@ -66,8 +62,7 @@ void ThreadsConfig::setThreadPoolAllocation(
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    threadPoolChanged.emit();
   }
 }
 
@@ -113,7 +108,6 @@ ThreadPoolAllocation ThreadsConfig::getEffectiveThreadAllocation() const {
 
 void ThreadsConfig::setGPUConfig(const GPUConfig &config) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(conigThreadsMutex_);
@@ -121,13 +115,7 @@ void ThreadsConfig::setGPUConfig(const GPUConfig &config) {
       gpuConfig_ = config;
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::GPU);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::GPU;
       }
@@ -135,8 +123,7 @@ void ThreadsConfig::setGPUConfig(const GPUConfig &config) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    gpuChanged.emit();
   }
 }
 
@@ -149,7 +136,6 @@ GPUConfig ThreadsConfig::getGPUConfig() const {
 
 void ThreadsConfig::setLoopConfig(const LoopConfig &config) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(conigThreadsMutex_);
@@ -157,13 +143,7 @@ void ThreadsConfig::setLoopConfig(const LoopConfig &config) {
       loopConfig_ = config;
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Loop);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Loop;
       }
@@ -171,8 +151,7 @@ void ThreadsConfig::setLoopConfig(const LoopConfig &config) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    loopChanged.emit();
   }
 }
 

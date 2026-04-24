@@ -2,13 +2,13 @@
 #define CONFIG_H_
 
 #include "core_export.h"
+#include "signal.hpp"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 namespace core {
 
@@ -73,8 +73,6 @@ inline bool hasFlag(ConfigSection flags, ConfigSection flag) {
  */
 class CORE_API Config {
 public:
-  using ConfigChangeCallback = std::function<void()>;
-
   // Singleton access
   static Config &instance();
 
@@ -133,29 +131,6 @@ public:
   // ========== Change Callbacks ==========
 
   /**
-   * @brief Register a callback for configuration changes
-   * @param name Unique name for the callback
-   * @param sections Which configuration sections to monitor
-   * @param callback Function to call when monitored sections change
-   * @return true if callback was registered
-   */
-  bool registerChangeCallback(const std::string &name, ConfigSection sections,
-                              ConfigChangeCallback callback);
-
-  /**
-   * @brief Unregister a configuration change callback
-   * @param name Name of the callback to remove
-   * @return true if callback was removed
-   */
-  bool unregisterChangeCallback(const std::string &name);
-
-  /**
-   * @brief Get list of all registered callback names
-   * @return Vector of callback names
-   */
-  std::vector<std::string> getCallbackNames() const;
-
-  /**
    * @brief Apply all pending configuration changes
    *
    * Call this after making multiple configuration changes to trigger
@@ -187,14 +162,11 @@ public:
    */
   void resetToDefaults();
 
-  /**
-   * @brief Callback entry with monitored sections
-   */
-  struct CallbackEntry {
-    std::string name;
-    ConfigSection sections;
-    ConfigChangeCallback callback;
-  };
+  // Signals
+  signal::Signal<void()> vulkanChanged;
+  signal::Signal<void()> threadPoolChanged;
+  signal::Signal<void()> gpuChanged;
+  signal::Signal<void()> loopChanged;
 
 #ifdef ENGINE_DEBUG
   // Hot reload support: set/get the singleton instance
@@ -220,16 +192,12 @@ private:
   std::unique_ptr<VulkanConfig> vulkanConfig_;
   std::unique_ptr<ThreadsConfig> threadsConfig_;
 
-  // Callbacks
-  std::vector<CallbackEntry> callbacks_;
-
   // Pending changes tracking
   ConfigSection pendingChanges_ = ConfigSection::None;
   bool immediateMode_ = true;
 
   mutable std::mutex configMutex_;
 };
-
 } // namespace core
 
 #endif // CONFIG_H_

@@ -1,6 +1,7 @@
 #ifndef RESOURCE_REGISTRY_H_
 #define RESOURCE_REGISTRY_H_
 
+#include "signal.hpp"
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -87,12 +88,12 @@ namespace core {
  */
 template <typename Tag, typename Asset> class ResourceRegistry {
 private:
-  // Callback type
-  using AssetCallback = std::function<void(const Tag *, Asset *)>;
+  using SignalCall = void(const Tag *, Asset *);
+  using SignalSlot = std::move_only_function<SignalCall>;
 
   std::unordered_map<const Tag *, std::unique_ptr<Asset>> assets_;
-  std::vector<AssetCallback> addCallbacks_;
-  std::vector<AssetCallback> removeCallbacks_;
+  signal::Signal<SignalCall> assetAdded_;
+  signal::Signal<SignalCall> assetRemoved_;
   mutable std::mutex mutex_;
 
 public:
@@ -217,13 +218,13 @@ public:
    * @brief Register a callback for when assets are added
    * @param callback Function to call: void(const Tag*, Asset*)
    */
-  void onAdd(AssetCallback callback);
+  signal::Signal<SignalCall>::ConnectResult onAdd(SignalSlot signalSlot);
 
   /**
    * @brief Register a callback for when assets are removed
    * @param callback Function to call: void(const Tag*)
    */
-  void onRemove(AssetCallback callback);
+  signal::Signal<SignalCall>::ConnectResult onRemove(SignalSlot signalSlot);
 
   /**
    * @brief Clear all callbacks

@@ -69,7 +69,7 @@ public:
   using DisconnectFunc = std::move_only_function<void()>;
 
   SignalHub() = default;
-  ~SignalHub();
+  inline ~SignalHub();
 
   // No move & copy
   SignalHub(SignalHub &&) = delete;
@@ -87,15 +87,15 @@ public:
   /**
    * Manually add a disconnector function.
    */
-  void add_disconnector(DisconnectFunc &&func);
+  inline void add_disconnector(DisconnectFunc &&func);
 
   /**
    * Disconnect all tracked connections immediately.
    */
-  void clear();
+  inline void clear();
 
-  [[nodiscard]] size_t size() const;
-  [[nodiscard]] bool empty() const;
+  [[nodiscard]] inline size_t size() const;
+  [[nodiscard]] inline bool empty() const;
 
 private:
   mutable std::shared_mutex mutex_;

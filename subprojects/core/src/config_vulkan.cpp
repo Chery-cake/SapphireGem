@@ -1,17 +1,17 @@
 #include "config_vulkan.h"
 #include "config.h"
+#include "signal.hpp"
 #include "vulkan/vulkan.hpp"
 #include <algorithm>
-#include <iterator>
 #include <mutex>
 
 namespace core {
 
 VulkanConfig::VulkanConfig(ConfigSection &pendingChanges, bool &immediateMode,
-                           std::vector<Config::CallbackEntry> &callbacks,
+                           signal::Signal<void()> &vulkanChanged,
                            std::mutex &configMutex)
     : pendingChanges(pendingChanges), immediateMode(immediateMode),
-      callbacks(callbacks), configMutex(configMutex) {
+      vulkanChanged(vulkanChanged), configMutex(configMutex) {
 
   // Initialize with sensible defaults
 #ifdef ENGINE_DEBUG
@@ -39,7 +39,7 @@ VulkanConfig::~VulkanConfig() {}
 void VulkanConfig::resetToDefaults() {
   std::lock_guard<std::mutex> lock(configVulkanMutex_);
 
-  instanceLayers.clear();
+  instanceExtensions.clear();
   deviceExtensions.clear();
   instanceLayers.clear();
   optionalInstanceExtensions.clear();
@@ -69,7 +69,6 @@ void VulkanConfig::resetToDefaults() {
 
 void VulkanConfig::addInstanceExtension(const std::string &extension) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -78,13 +77,7 @@ void VulkanConfig::addInstanceExtension(const std::string &extension) {
     if (it == instanceExtensions.end()) {
       instanceExtensions.push_back(extension);
       changed = true;
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -92,14 +85,12 @@ void VulkanConfig::addInstanceExtension(const std::string &extension) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 void VulkanConfig::addDeviceExtension(const std::string &extension) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -108,13 +99,7 @@ void VulkanConfig::addDeviceExtension(const std::string &extension) {
     if (it == deviceExtensions.end()) {
       deviceExtensions.push_back(extension);
       changed = true;
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -122,14 +107,12 @@ void VulkanConfig::addDeviceExtension(const std::string &extension) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 void VulkanConfig::addInstanceLayer(const std::string &layer) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -139,13 +122,7 @@ void VulkanConfig::addInstanceLayer(const std::string &layer) {
       instanceLayers.push_back(layer);
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -153,14 +130,12 @@ void VulkanConfig::addInstanceLayer(const std::string &layer) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 bool VulkanConfig::removeInstanceExtension(const std::string &extension) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -170,13 +145,7 @@ bool VulkanConfig::removeInstanceExtension(const std::string &extension) {
       instanceExtensions.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -184,8 +153,7 @@ bool VulkanConfig::removeInstanceExtension(const std::string &extension) {
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;
@@ -193,7 +161,6 @@ bool VulkanConfig::removeInstanceExtension(const std::string &extension) {
 
 bool VulkanConfig::removeDeviceExtension(const std::string &extension) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -203,13 +170,7 @@ bool VulkanConfig::removeDeviceExtension(const std::string &extension) {
       deviceExtensions.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -217,8 +178,7 @@ bool VulkanConfig::removeDeviceExtension(const std::string &extension) {
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;
@@ -226,7 +186,6 @@ bool VulkanConfig::removeDeviceExtension(const std::string &extension) {
 
 bool VulkanConfig::removeInstanceLayer(const std::string &layer) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -236,13 +195,7 @@ bool VulkanConfig::removeInstanceLayer(const std::string &layer) {
       instanceLayers.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -250,8 +203,7 @@ bool VulkanConfig::removeInstanceLayer(const std::string &layer) {
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;
@@ -259,7 +211,6 @@ bool VulkanConfig::removeInstanceLayer(const std::string &layer) {
 
 void VulkanConfig::addOptionalInstanceExtension(const std::string &extension) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -269,13 +220,7 @@ void VulkanConfig::addOptionalInstanceExtension(const std::string &extension) {
       optionalInstanceExtensions.push_back(extension);
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -283,14 +228,12 @@ void VulkanConfig::addOptionalInstanceExtension(const std::string &extension) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 void VulkanConfig::addOptionalDeviceExtension(const std::string &extension) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -300,13 +243,7 @@ void VulkanConfig::addOptionalDeviceExtension(const std::string &extension) {
       optionalDeviceExtensions.push_back(extension);
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -314,14 +251,12 @@ void VulkanConfig::addOptionalDeviceExtension(const std::string &extension) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 void VulkanConfig::addOptionalInstanceLayer(const std::string &layer) {
   bool changed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -331,13 +266,7 @@ void VulkanConfig::addOptionalInstanceLayer(const std::string &layer) {
       optionalInstanceLayers.push_back(layer);
       changed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -345,15 +274,13 @@ void VulkanConfig::addOptionalInstanceLayer(const std::string &layer) {
   }
 
   if (changed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 }
 
 bool VulkanConfig::removeOptionalInstanceExtension(
     const std::string &extension) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -363,13 +290,7 @@ bool VulkanConfig::removeOptionalInstanceExtension(
       optionalInstanceExtensions.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -377,8 +298,7 @@ bool VulkanConfig::removeOptionalInstanceExtension(
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;
@@ -386,7 +306,6 @@ bool VulkanConfig::removeOptionalInstanceExtension(
 
 bool VulkanConfig::removeOptionalDeviceExtension(const std::string &extension) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -396,13 +315,7 @@ bool VulkanConfig::removeOptionalDeviceExtension(const std::string &extension) {
       optionalDeviceExtensions.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -410,8 +323,7 @@ bool VulkanConfig::removeOptionalDeviceExtension(const std::string &extension) {
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;
@@ -419,7 +331,6 @@ bool VulkanConfig::removeOptionalDeviceExtension(const std::string &extension) {
 
 bool VulkanConfig::removeOptionalInstanceLayer(const std::string &layer) {
   bool removed = false;
-  std::vector<Config::CallbackEntry> callbacksToNotify;
 
   {
     std::lock_guard<std::mutex> lock(configVulkanMutex_);
@@ -429,13 +340,7 @@ bool VulkanConfig::removeOptionalInstanceLayer(const std::string &layer) {
       optionalInstanceLayers.erase(it);
       removed = true;
 
-      if (immediateMode) {
-        std::ranges::copy_if(callbacks, std::back_inserter(callbacksToNotify),
-                             [](const auto &entry) {
-                               return hasFlag(entry.sections,
-                                              ConfigSection::Vulkan);
-                             });
-      } else {
+      if (!immediateMode) {
         std::lock_guard<std::mutex> lock(configMutex);
         pendingChanges = pendingChanges | ConfigSection::Vulkan;
       }
@@ -443,8 +348,7 @@ bool VulkanConfig::removeOptionalInstanceLayer(const std::string &layer) {
   }
 
   if (removed && immediateMode) {
-    std::ranges::for_each(callbacksToNotify,
-                          [](const auto &entry) { entry.callback(); });
+    vulkanChanged.emit();
   }
 
   return removed;

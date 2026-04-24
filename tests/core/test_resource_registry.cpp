@@ -298,8 +298,8 @@ void test_add_callback() {
   const TestTag *receivedTag = nullptr;
   TestAsset *testAsset = nullptr;
 
-  reg.onAdd([&callbackFired, &receivedTag, &testAsset](const TestTag *tag,
-                                                       TestAsset *asset) {
+  auto res = reg.onAdd([&callbackFired, &receivedTag,
+                        &testAsset](const TestTag *tag, TestAsset *asset) {
     callbackFired = true;
     receivedTag = tag;
     testAsset = asset;
@@ -327,7 +327,7 @@ void test_remove_callback() {
   bool callbackFired = false;
   const TestTag *receivedTag = nullptr;
 
-  reg.onRemove(
+  auto res = reg.onRemove(
       [&callbackFired, &receivedTag](const TestTag *tag, TestAsset *asset) {
         callbackFired = true;
         receivedTag = tag;

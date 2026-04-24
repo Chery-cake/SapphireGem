@@ -17,6 +17,10 @@ function(add_engine_module TARGET_NAME)
         EXPORT_FILE_NAME ${EXPORT_HEADER_NAME}
     )
 
+    # Ensure every module sees the <MODULE>_EXPORTS definition
+    # that its manual export header expects (e.g. WINDOW_EXPORTS).
+    target_compile_definitions(${TARGET_NAME} PRIVATE ${BASE_NAME_UPPER}_EXPORTS)
+
     # Ensure the binary directory is in the include path for this target
     # Add binary dir ONLY for build interface
     target_include_directories(${TARGET_NAME} PUBLIC

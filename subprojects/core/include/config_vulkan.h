@@ -176,7 +176,7 @@ public:
   }
 
   explicit VulkanConfig(ConfigSection &pendingChanges, bool &immediateMode,
-                        std::vector<Config::CallbackEntry> &callbacks,
+                        signal::Signal<void()> &vulkanChanged,
                         std::mutex &configMutex);
   ~VulkanConfig();
 
@@ -185,7 +185,7 @@ public:
 private:
   ConfigSection &pendingChanges;
   bool &immediateMode;
-  std::vector<Config::CallbackEntry> &callbacks;
+  signal::Signal<void()> &vulkanChanged;
   std::mutex &configMutex;
 
   std::vector<std::string> instanceExtensions;

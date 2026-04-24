@@ -53,8 +53,7 @@ T *BumpAllocator<size>::allocate(size_t alignment) {
   }
 
   offset_ += padding;
-  T *result =
-      reinterpret_cast<T *>(const_cast<uint8_t *>(this->memory()) + offset_);
+  T *result = reinterpret_cast<T *>(this->memory() + offset_);
   offset_ += allocation;
 
   return result;
@@ -121,7 +120,7 @@ PoolAllocator<T, poolSize>::PoolAllocator()
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
 
   // initialize freeList
-  uint8_t *raw_mem = const_cast<uint8_t *>(this->memory());
+  uint8_t *raw_mem = this->memory();
   uintptr_t base_mem = reinterpret_cast<uintptr_t>(raw_mem);
 
   constexpr size_t NodeAlignment = alignof(Node);
@@ -156,9 +155,6 @@ T *PoolAllocator<T, poolSize>::allocate() {
 template <typename T, size_t poolSize>
 void PoolAllocator<T, poolSize>::deallocate(T *&ptr) {
   std::lock_guard<std::mutex> lock(this->memoryMutex_);
-
-  if (ptr != nullptr)
-    ptr->~T();
 
   Node *node = reinterpret_cast<Node *>(ptr);
   node->next = freeList;

@@ -168,7 +168,9 @@ public:
   }
 
   explicit ThreadsConfig(ConfigSection &pendingChanges, bool &immediateMode,
-                         std::vector<Config::CallbackEntry> &callbacks,
+                         signal::Signal<void()> &threadPoolChanged,
+                         signal::Signal<void()> &gpuChanged,
+                         signal::Signal<void()> &loopChanged,
                          std::mutex &configMutex);
   ~ThreadsConfig();
 
@@ -177,7 +179,9 @@ public:
 private:
   ConfigSection &pendingChanges;
   bool &immediateMode;
-  std::vector<Config::CallbackEntry> &callbacks;
+  signal::Signal<void()> &threadPoolChanged;
+  signal::Signal<void()> &gpuChanged;
+  signal::Signal<void()> &loopChanged;
   std::mutex &configMutex;
 
   ThreadPoolAllocation threadPoolAllocation_;

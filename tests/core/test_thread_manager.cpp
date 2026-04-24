@@ -352,7 +352,8 @@ void test_resize_pool() {
   core::ThreadPoolConfig cfg;
   cfg.name = "resize_test";
   cfg.threadCount = 2;
-  cfg.onReconfigure = [&called](uint32_t t) { called = true; };
+  auto res = cfg.onReconfigure.connect(
+      [&called](const std::string &, uint32_t) { called = true; });
   mgr.createPool(cfg);
 
   assert(mgr.getPoolThreadCount("resize_test") == 2);
