@@ -8,7 +8,7 @@
 #include <memory>
 #include <shared_mutex>
 
-namespace core {
+namespace core::signal {
 
 template <typename R, typename... Args> class Signal<R(Args...)> {
 public:
@@ -126,7 +126,20 @@ private:
   ConnectionId id_ = 0;
 };
 
-} // namespace core
+} // namespace core::signal
+
+namespace ecs::component {
+struct SignalHub {
+  core::signal::SignalHub hub;
+
+  // Convenience method to connect a slot to an external signal
+  template <typename Signature, typename Slot>
+  core::signal::ScopedConnection<Signature>
+  connect(core::signal::Signal<Signature> &signal, Slot &&slot) {
+    return hub.connect(signal, std::forward<Slot>(slot));
+  }
+};
+} // namespace ecs::component
 
 // Include implementation details
 #include "../src/signal_impl.hpp"

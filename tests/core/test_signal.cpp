@@ -25,8 +25,8 @@ static int tests_passed = 0;
 void test_constructor() {
   TEST(constructor);
 
-  core::Signal<void()> sig;
-  core::SignalHub hub;
+  core::signal::Signal<void()> sig;
+  core::signal::SignalHub hub;
 
   assert(sig.empty());
   assert(sig.size() == 0);
@@ -41,12 +41,12 @@ void test_constructor() {
 // ---------------------------------------------------------------------------
 void test_connect_and_emit() {
   TEST(connect_and_emit);
-  core::Signal<void(int)> sig;
+  core::signal::Signal<void(int)> sig;
   int counter = 0;
 
   auto result = sig.connect([&counter](int x) { counter += x; });
   assert(result.has_value());
-  core::ConnectionId id = *result;
+  core::signal::ConnectionId id = *result;
   assert(id != 0);
 
   assert(!sig.empty());
@@ -66,10 +66,11 @@ void test_connect_and_emit() {
 // ---------------------------------------------------------------------------
 void test_connect_null_slot() {
   TEST(connect_null_slot);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   auto result = sig.connect(nullptr);
   assert(!result.has_value());
-  assert(result.error() == core::Signal<void()>::ConnectError::NullSlot);
+  assert(result.error() ==
+         core::signal::Signal<void()>::ConnectError::NullSlot);
   assert(sig.empty());
   PASS();
 }
@@ -79,7 +80,7 @@ void test_connect_null_slot() {
 // ---------------------------------------------------------------------------
 void test_disconnect() {
   TEST(disconnect);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   int count = 0;
   auto id1 = *sig.connect([&count] { ++count; });
   auto id2 = *sig.connect([&count] { ++count; });
@@ -108,7 +109,7 @@ void test_disconnect() {
 // ---------------------------------------------------------------------------
 void test_clear() {
   TEST(clear);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   auto r = sig.connect([] {});
   r = sig.connect([] {});
   assert(sig.size() == 2);
@@ -122,7 +123,7 @@ void test_clear() {
 // ---------------------------------------------------------------------------
 void test_emit_until() {
   TEST(emit_until);
-  core::Signal<bool(int)> sig;
+  core::signal::Signal<bool(int)> sig;
   int call_count = 0;
   auto r1 = sig.connect([&call_count](int x) -> bool {
     call_count++;
@@ -146,7 +147,7 @@ void test_emit_until() {
   assert(call_count == 2);
 
   // Cleaner test:
-  core::Signal<int(int)> sig2;
+  core::signal::Signal<int(int)> sig2;
   auto r2 = sig2.connect([](int) -> int { return 1; });
   r2 = sig2.connect([](int) -> int { return 2; });
   int result = 0;
@@ -163,7 +164,7 @@ void test_emit_until() {
 // ---------------------------------------------------------------------------
 void test_connection_ids() {
   TEST(connection_ids);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   auto id1 = *sig.connect([] {});
   auto id2 = *sig.connect([] {});
   auto ids = sig.connection_ids();
@@ -180,11 +181,11 @@ void test_connection_ids() {
 // ---------------------------------------------------------------------------
 void test_scoped_connection_raii() {
   TEST(scoped_connection_raii);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   int count = 0;
   {
     auto result = sig.connect([&count] { ++count; });
-    core::ScopedConnection<void()> conn(sig, *result);
+    core::signal::ScopedConnection<void()> conn(sig, *result);
     assert(conn.is_connected());
     sig.emit();
     assert(count == 1);
@@ -199,13 +200,13 @@ void test_scoped_connection_raii() {
 // ---------------------------------------------------------------------------
 void test_scoped_connection_move() {
   TEST(scoped_connection_move);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   int count = 0;
   auto id = *sig.connect([&count] { ++count; });
-  core::ScopedConnection<void()> conn1(sig, id);
+  core::signal::ScopedConnection<void()> conn1(sig, id);
   assert(conn1.is_connected());
 
-  core::ScopedConnection<void()> conn2(std::move(conn1));
+  core::signal::ScopedConnection<void()> conn2(std::move(conn1));
   assert(!conn1.is_connected()); // moved-from state
   assert(conn2.is_connected());
 
@@ -213,7 +214,7 @@ void test_scoped_connection_move() {
   assert(count == 1);
 
   // Move assignment
-  core::ScopedConnection<void()> conn3;
+  core::signal::ScopedConnection<void()> conn3;
   conn3 = std::move(conn2);
   assert(!conn2.is_connected());
   assert(conn3.is_connected());
@@ -229,10 +230,10 @@ void test_scoped_connection_move() {
 // ---------------------------------------------------------------------------
 void test_scoped_connection_reset_release() {
   TEST(scoped_connection_reset_release);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   int count = 0;
   auto id = *sig.connect([&count] { ++count; });
-  core::ScopedConnection<void()> conn(sig, id);
+  core::signal::ScopedConnection<void()> conn(sig, id);
   assert(conn.is_connected());
 
   // reset() disconnects
@@ -243,8 +244,8 @@ void test_scoped_connection_reset_release() {
 
   // Reconnect for release test
   id = *sig.connect([&count] { ++count; });
-  conn = core::ScopedConnection<void()>(sig, id);
-  core::ConnectionId released_id = conn.release();
+  conn = core::signal::ScopedConnection<void()>(sig, id);
+  core::signal::ConnectionId released_id = conn.release();
   assert(!conn.is_connected());
   assert(released_id == id);
   sig.emit();
@@ -258,8 +259,8 @@ void test_scoped_connection_reset_release() {
 // ---------------------------------------------------------------------------
 void test_signal_hub_connect() {
   TEST(signal_hub_connect);
-  core::Signal<void()> sig1, sig2;
-  core::SignalHub hub;
+  core::signal::Signal<void()> sig1, sig2;
+  core::signal::SignalHub hub;
   int count1 = 0, count2 = 0;
 
   auto conn1 = hub.connect(sig1, [&count1] { ++count1; });
@@ -293,8 +294,8 @@ void test_signal_hub_connect() {
 // ---------------------------------------------------------------------------
 void test_signal_hub_clear() {
   TEST(signal_hub_clear);
-  core::Signal<void()> sig1, sig2;
-  core::SignalHub hub;
+  core::signal::Signal<void()> sig1, sig2;
+  core::signal::SignalHub hub;
   int count1 = 0, count2 = 0;
 
   auto con1 = hub.connect(sig1, [&count1] { ++count1; });
@@ -317,7 +318,7 @@ void test_signal_hub_clear() {
 // ---------------------------------------------------------------------------
 void test_signal_hub_add_disconnector() {
   TEST(signal_hub_add_disconnector);
-  core::SignalHub hub;
+  core::signal::SignalHub hub;
   bool cleaned = false;
   hub.add_disconnector([&cleaned] { cleaned = true; });
   assert(!cleaned);
@@ -331,7 +332,7 @@ void test_signal_hub_add_disconnector() {
 // ---------------------------------------------------------------------------
 void test_multiple_emissions() {
   TEST(multiple_emissions);
-  core::Signal<void(int)> sig;
+  core::signal::Signal<void(int)> sig;
   std::atomic<int> sum{0};
   const int N = 10;
 
@@ -358,7 +359,7 @@ void test_multiple_emissions() {
 // ---------------------------------------------------------------------------
 void test_emit_until_early_exit() {
   TEST(emit_until_early_exit);
-  core::Signal<int(int)> sig;
+  core::signal::Signal<int(int)> sig;
   auto r = sig.connect([](int x) -> int { return x * 2; });
   r = sig.connect([](int x) -> int { return x * 3; });
   int result = 0;
@@ -377,7 +378,7 @@ void test_emit_until_early_exit() {
 // ---------------------------------------------------------------------------
 void test_connection_ids_empty() {
   TEST(connection_ids_empty);
-  core::Signal<void()> sig;
+  core::signal::Signal<void()> sig;
   auto ids = sig.connection_ids();
   assert(ids.empty());
   auto r = sig.connect([] {});
@@ -394,10 +395,10 @@ void test_connection_ids_empty() {
 // ---------------------------------------------------------------------------
 void test_scoped_connection_default() {
   TEST(scoped_connection_default);
-  core::ScopedConnection<void()> conn;
+  core::signal::ScopedConnection<void()> conn;
   assert(!conn.is_connected());
   conn.reset(); // no-op
-  core::ConnectionId id = conn.release();
+  core::signal::ConnectionId id = conn.release();
   assert(id == 0);
   PASS();
 }

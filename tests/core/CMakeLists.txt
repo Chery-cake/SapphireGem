@@ -58,4 +58,12 @@ target_compile_definitions(test_signal PRIVATE
 )
 add_test(NAME core_signal COMMAND test_signal)
 
+# --- ECS Tests ---
+add_executable(test_ecs test_ecs.cpp)
+target_link_libraries(test_ecs PRIVATE core)
+target_compile_definitions(test_ecs PRIVATE
+    $<$<CONFIG:Debug>:ENGINE_DEBUG>
+)
+add_test(NAME core_ecs COMMAND test_ecs)
+
 message(STATUS "Core tests configured")

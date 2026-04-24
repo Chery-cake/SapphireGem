@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-namespace core {
+namespace core::signal {
 
 template <typename Signature> class Signal;
 
@@ -13,6 +13,6 @@ class SignalHub;
 
 using ConnectionId = uint64_t;
 
-} // namespace core
+} // namespace core::signal
 
 #endif // SIGNAL_FWD_H_

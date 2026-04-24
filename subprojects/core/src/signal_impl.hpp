@@ -10,7 +10,7 @@
 #include <shared_mutex>
 #include <vector>
 
-namespace core {
+namespace core::signal {
 
 template <typename R, typename... Args> Signal<R(Args...)>::Signal() = default;
 
@@ -221,4 +221,4 @@ ConnectionId ScopedConnection<Signature>::release() {
   return std::exchange(id_, 0);
 }
 
-} // namespace core
+} // namespace core::signal
