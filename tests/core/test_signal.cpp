@@ -1,8 +1,6 @@
 #include "signal.hpp"
 #include <cassert>
-#include <csignal>
 #include <cstdio>
-#include <iostream>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -298,8 +296,8 @@ void test_signal_hub_clear() {
   core::signal::SignalHub hub;
   int count1 = 0, count2 = 0;
 
-  auto con1 = hub.connect(sig1, [&count1] { ++count1; });
-  auto con2 = hub.connect(sig2, [&count2] { ++count2; });
+  hub.connect(sig1, [&count1] { ++count1; });
+  hub.connect(sig2, [&count2] { ++count2; });
 
   sig1.emit();
   sig2.emit();
@@ -404,6 +402,97 @@ void test_scoped_connection_default() {
 }
 
 // ---------------------------------------------------------------------------
+// Test: Hub Non-auto-disconect behaviour
+// ---------------------------------------------------------------------------
+void test_hub_connection_keeps_alive() {
+  TEST(hub_connection_keeps_alive);
+  core::signal::Signal<void()> sig;
+  core::signal::SignalHub hub;
+  int count = 0;
+
+  // discard return value
+  hub.connect(sig, [&count] { ++count; });
+  sig.emit();
+  assert(count == 1); // still connected
+  hub.clear();
+  sig.emit();
+  assert(count == 1); // disconnected by hub
+  PASS();
+}
+
+void test_hub_connection_move_preserves_flag() {
+  TEST(hub_connection_move_preserves_flag);
+  core::signal::Signal<void()> sig;
+  core::signal::SignalHub hub;
+  int count = 0;
+  auto conn1 = hub.connect(sig, [&count] { ++count; });
+  // Move it away
+  core::signal::ScopedConnection<void()> conn2(std::move(conn1));
+  sig.emit();
+  assert(count == 1); // still alive
+  PASS();
+}
+
+void test_emit_empty_signal() {
+  TEST(emit_empty_signal);
+  core::signal::Signal<void()> sig;
+  sig.emit();          // must not crash
+  sig.emit_parallel(); // must not crash
+  bool predicate_called = false;
+  sig.emit_until([&] {
+    predicate_called = true;
+    return true;
+  });
+  assert(!predicate_called); // nothing to call
+  PASS();
+}
+
+void test_emit_until_no_stop() {
+  TEST(emit_until_no_stop);
+  core::signal::Signal<int(int)> sig;
+  int call_count = 0;
+  auto res = sig.connect([&](int x) {
+    call_count++;
+    return x;
+  });
+  res = sig.connect([&](int x) {
+    call_count++;
+    return x;
+  });
+  sig.emit_until(0, [](int) { return false; }); // never stops
+  assert(call_count == 2);                      // all slots called
+  PASS();
+}
+
+void test_clear_preserves_id_monotonicity() {
+  TEST(clear_preserves_id_monotonicity);
+  core::signal::Signal<void()> sig;
+  auto id1 = *sig.connect([] {});
+  sig.clear();
+  auto id2 = *sig.connect([] {});
+  assert(id2 > id1); // no reuse
+  PASS();
+}
+
+void test_hub_after_manual_reset() {
+  TEST(hub_after_manual_reset);
+  core::signal::Signal<void()> sig;
+  core::signal::SignalHub hub;
+  int a = 0, b = 0;
+  auto c1 = hub.connect(sig, [&] { ++a; });
+  auto c2 = hub.connect(sig, [&] { ++b; });
+  c1.reset();              // disconnect manually, hub still has 2 disconnectors
+  assert(hub.size() == 2); // internal count unchanged
+  sig.emit();
+  assert(a == 0 && b == 1); // only second slot fires
+  hub.clear();              // should not crash, second slot disconnected
+  sig.emit();
+  assert(b == 1);
+  assert(hub.empty());
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
 // Run all tests
 // ---------------------------------------------------------------------------
 int main() {
@@ -426,6 +515,12 @@ int main() {
   test_emit_until_early_exit();
   test_connection_ids_empty();
   test_scoped_connection_default();
+  test_hub_connection_keeps_alive();
+  test_hub_connection_move_preserves_flag();
+  test_emit_empty_signal();
+  test_emit_until_no_stop();
+  test_clear_preserves_id_monotonicity();
+  test_hub_after_manual_reset();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
   return (tests_passed == tests_run) ? 0 : 1;

@@ -1,6 +1,7 @@
 #ifndef HOT_RELOAD_MODULES_HPP_
 #define HOT_RELOAD_MODULES_HPP_
 
+#include "signal.hpp"
 #include <chrono>
 #include <string>
 
@@ -84,6 +85,8 @@ private:
   void cleanupCoreState();
 
   static constexpr std::chrono::seconds monitor_delay_{10};
+
+  core::signal::SignalHub hub_;
 
   std::unique_ptr<HotReload> core_;
   std::unique_ptr<HotReload> device_;

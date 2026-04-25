@@ -108,7 +108,8 @@ public:
   using SignalType = Signal<Signature>;
 
   ScopedConnection() = default;
-  ScopedConnection(SignalType &signal, ConnectionId id);
+  ScopedConnection(SignalType &signal, ConnectionId id,
+                   bool auto_disconnect = true);
   ~ScopedConnection();
 
   ScopedConnection(const ScopedConnection &) = delete;
@@ -124,6 +125,7 @@ public:
 private:
   SignalType *signal_ = nullptr;
   ConnectionId id_ = 0;
+  bool auto_disconnect_ = true;
 };
 
 } // namespace core::signal

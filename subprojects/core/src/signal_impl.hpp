@@ -8,6 +8,7 @@
 #include <mutex>
 #include <ranges>
 #include <shared_mutex>
+#include <type_traits>
 #include <vector>
 
 namespace core::signal {
@@ -39,7 +40,6 @@ bool Signal<R(Args...)>::disconnect(ConnectionId id) {
 template <typename R, typename... Args> void Signal<R(Args...)>::clear() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
   connections_.clear();
-  next_id_ = 1;
 }
 
 template <typename R, typename... Args> bool Signal<R(Args...)>::empty() const {
@@ -96,7 +96,12 @@ void Signal<R(Args...)>::emit_until(Args... args, Predicate &&pred) const {
       std::views::transform([](const auto &pair) { return pair.second; });
 
   std::ranges::find_if(filter, [&pred, &args...](const SlotPtr &slot) {
-    return pred(std::invoke(*slot, args...));
+    if constexpr (std::is_void_v<R>) {
+      std::invoke(*slot, args...);
+      return pred();
+    } else {
+      return pred(std::invoke(*slot, args...));
+    }
   });
 }
 
@@ -144,7 +149,7 @@ ScopedConnection<Signature> SignalHub::connect(Signal<Signature> &signal,
     disconnectors_.emplace_back(std::move(disconnector));
   }
 
-  return ScopedConnection<Signature>(signal, id);
+  return ScopedConnection<Signature>(signal, id, false);
 }
 
 void SignalHub::add_disconnector(DisconnectFunc &&func) {
@@ -179,17 +184,21 @@ bool SignalHub::empty() const {
 // ScopedConnection template implementations
 template <typename Signature>
 ScopedConnection<Signature>::ScopedConnection(SignalType &signal,
-                                              ConnectionId id)
-    : signal_(&signal), id_(id) {}
+                                              ConnectionId id,
+                                              bool auto_disconnect)
+    : signal_(&signal), id_(id), auto_disconnect_(auto_disconnect) {}
 
 template <typename Signature> ScopedConnection<Signature>::~ScopedConnection() {
-  reset();
+  if (auto_disconnect_) {
+    reset();
+  }
 }
 
 template <typename Signature>
 ScopedConnection<Signature>::ScopedConnection(ScopedConnection &&other) noexcept
     : signal_(std::exchange(other.signal_, nullptr)),
-      id_(std::exchange(other.id_, 0)) {}
+      id_(std::exchange(other.id_, 0)),
+      auto_disconnect_(other.auto_disconnect_) {}
 
 template <typename Signature>
 ScopedConnection<Signature> &
@@ -198,6 +207,7 @@ ScopedConnection<Signature>::operator=(ScopedConnection &&other) noexcept {
     reset();
     signal_ = std::exchange(other.signal_, nullptr);
     id_ = std::exchange(other.id_, 0);
+    auto_disconnect_ = other.auto_disconnect_;
   }
   return *this;
 }

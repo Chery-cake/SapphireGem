@@ -119,14 +119,20 @@ void ModuleReloadManager::shutdown() {
                 monitorThreads_.end(), [](auto &t) { t.join(); });
   monitorThreads_.clear();
 
+  if (core_)
+    core_->destroy();
+  if (device_)
+    device_->destroy();
+  if (window_)
+    window_->destroy();
+
+  hub_.clear();
+
   // Modules are destroyed in reverse dependency order.
   // Guard each reset so double-shutdown is safe.
-  if (window_)
-    window_.reset();
-  if (device_)
-    device_.reset();
-  if (core_)
-    core_.reset();
+  window_.reset();
+  device_.reset();
+  core_.reset();
 }
 
 void ModuleReloadManager::destroyCoreState(coreState *state,
@@ -157,8 +163,7 @@ void ModuleReloadManager::setupCoreCallbacks() {
   // BEFORE invoking ~HotReload, so callbacks must NOT go through core_.
   HotReload *corePtr = core_.get();
 
-  corePtr->registerLoadCallback("core_load", [corePtr](void *data,
-                                                       std::mutex &mutex) {
+  hub_.connect(corePtr->loadSignal, [corePtr](void *data, std::mutex &mutex) {
     std::println("[ModuleReloadManager] Core library loaded");
 
     coreState *state = static_cast<coreState *>(data);
@@ -173,8 +178,7 @@ void ModuleReloadManager::setupCoreCallbacks() {
     }
   });
 
-  corePtr->registerUnloadCallback("core_unload", [corePtr](void *data,
-                                                           std::mutex &mutex) {
+  hub_.connect(corePtr->unloadSignal, [corePtr](void *data, std::mutex &mutex) {
     std::println("[ModuleReloadManager] Core library unloading");
 
     coreState *state = static_cast<coreState *>(data);
@@ -189,8 +193,7 @@ void ModuleReloadManager::setupCoreCallbacks() {
     }
   });
 
-  corePtr->registerReloadCallback("core_reload", [corePtr](void *data,
-                                                           std::mutex &mutex) {
+  hub_.connect(corePtr->reloadSignal, [corePtr](void *data, std::mutex &mutex) {
     std::println("[ModuleReloadManager] Core library reloading");
 
     coreState *state = static_cast<coreState *>(data);
@@ -205,157 +208,154 @@ void ModuleReloadManager::setupCoreCallbacks() {
     }
   });
 
-  corePtr->registerDestroyCallback(
-      "core_cleanup", [corePtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Core library cleanup");
+  hub_.connect(corePtr->destroySignal, [corePtr](void *data,
+                                                 std::mutex &mutex) {
+    std::println("[ModuleReloadManager] Core library cleanup");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            corePtr->getSymbol("lib_on_destroy"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr,
-                       "[ModuleReloadManager] Warning: lib_on_destroy not "
-                       "found in core, manual cleanup");
-          destroyCoreState(static_cast<coreState *>(data), true);
-        }
-        corePtr->setData(nullptr);
-      });
+    auto fn = reinterpret_cast<void (*)(void *)>(
+        corePtr->getSymbol("lib_on_destroy"));
+    if (fn) {
+      std::lock_guard<std::mutex> lock(mutex);
+      fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
+                           "found in core, manual cleanup");
+      destroyCoreState(static_cast<coreState *>(data), true);
+    }
+    corePtr->setData(nullptr);
+  });
 }
 
 void ModuleReloadManager::setupDeviceCallbacks() {
   HotReload *devicePtr = device_.get();
 
-  devicePtr->registerLoadCallback(
-      "device_load", [devicePtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Device library loaded");
+  hub_.connect(devicePtr->loadSignal, [devicePtr](void *data,
+                                                  std::mutex &mutex) {
+    std::println("[ModuleReloadManager] Device library loaded");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            devicePtr->getSymbol("lib_on_load"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_load' in device");
-        }
-      });
+    auto fn =
+        reinterpret_cast<void (*)(void *)>(devicePtr->getSymbol("lib_on_load"));
+    if (fn) {
+      std::lock_guard<std::mutex> lock(mutex);
+      fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_load' in device");
+    }
+  });
 
-  devicePtr->registerUnloadCallback(
-      "device_unload", [devicePtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Device library unloading");
+  hub_.connect(devicePtr->unloadSignal,
+               [devicePtr](void *data, std::mutex &mutex) {
+                 std::println("[ModuleReloadManager] Device library unloading");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            devicePtr->getSymbol("lib_on_unload"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_unload' in device");
-        }
-      });
+                 auto fn = reinterpret_cast<void (*)(void *)>(
+                     devicePtr->getSymbol("lib_on_unload"));
+                 if (fn) {
+                   std::lock_guard<std::mutex> lock(mutex);
+                   fn(data);
+                 } else {
+                   std::println(stderr, "[ModuleReloadManager] Could not find "
+                                        "'lib_on_unload' in device");
+                 }
+               });
 
-  devicePtr->registerReloadCallback(
-      "device_reload", [devicePtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Device library reloading");
+  hub_.connect(devicePtr->reloadSignal,
+               [devicePtr](void *data, std::mutex &mutex) {
+                 std::println("[ModuleReloadManager] Device library reloading");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            devicePtr->getSymbol("lib_on_reload"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_reload' in device");
-        }
-      });
+                 auto fn = reinterpret_cast<void (*)(void *)>(
+                     devicePtr->getSymbol("lib_on_reload"));
+                 if (fn) {
+                   std::lock_guard<std::mutex> lock(mutex);
+                   fn(data);
+                 } else {
+                   std::println(stderr, "[ModuleReloadManager] Could not find "
+                                        "'lib_on_reload' in device");
+                 }
+               });
 
-  devicePtr->registerDestroyCallback(
-      "device_cleanup", [devicePtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Device library cleanup");
+  hub_.connect(devicePtr->destroySignal, [devicePtr](void *data,
+                                                     std::mutex &mutex) {
+    std::println("[ModuleReloadManager] Device library cleanup");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            devicePtr->getSymbol("lib_on_destroy"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr,
-                       "[ModuleReloadManager] Warning: lib_on_destroy not "
-                       "found in device, manual cleanup");
-          delete static_cast<deviceState *>(data);
-        }
-        devicePtr->setData(nullptr);
-      });
+    auto fn = reinterpret_cast<void (*)(void *)>(
+        devicePtr->getSymbol("lib_on_destroy"));
+    if (fn) {
+      std::lock_guard<std::mutex> lock(mutex);
+      fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
+                           "found in device, manual cleanup");
+      delete static_cast<deviceState *>(data);
+    }
+    devicePtr->setData(nullptr);
+  });
 }
 
 void ModuleReloadManager::setupWindowCallbacks() {
   HotReload *windowPtr = window_.get();
 
-  windowPtr->registerLoadCallback(
-      "window_load", [windowPtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Window library loaded");
+  hub_.connect(windowPtr->loadSignal, [windowPtr](void *data,
+                                                  std::mutex &mutex) {
+    std::println("[ModuleReloadManager] Window library loaded");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            windowPtr->getSymbol("lib_on_load"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_load' in window");
-        }
-      });
+    auto fn =
+        reinterpret_cast<void (*)(void *)>(windowPtr->getSymbol("lib_on_load"));
+    if (fn) {
+      std::lock_guard<std::mutex> lock(mutex);
+      fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Could not find "
+                           "'lib_on_load' in window");
+    }
+  });
 
-  windowPtr->registerUnloadCallback(
-      "window_unload", [windowPtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Window library unloading");
+  hub_.connect(windowPtr->unloadSignal,
+               [windowPtr](void *data, std::mutex &mutex) {
+                 std::println("[ModuleReloadManager] Window library unloading");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            windowPtr->getSymbol("lib_on_unload"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_unload' in window");
-        }
-      });
+                 auto fn = reinterpret_cast<void (*)(void *)>(
+                     windowPtr->getSymbol("lib_on_unload"));
+                 if (fn) {
+                   std::lock_guard<std::mutex> lock(mutex);
+                   fn(data);
+                 } else {
+                   std::println(stderr, "[ModuleReloadManager] Could not find "
+                                        "'lib_on_unload' in window");
+                 }
+               });
 
-  windowPtr->registerReloadCallback(
-      "window_reload", [windowPtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Window library reloading");
+  hub_.connect(windowPtr->reloadSignal,
+               [windowPtr](void *data, std::mutex &mutex) {
+                 std::println("[ModuleReloadManager] Window library reloading");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            windowPtr->getSymbol("lib_on_reload"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr, "[ModuleReloadManager] Could not find "
-                               "'lib_on_reload' in window");
-        }
-      });
+                 auto fn = reinterpret_cast<void (*)(void *)>(
+                     windowPtr->getSymbol("lib_on_reload"));
+                 if (fn) {
+                   std::lock_guard<std::mutex> lock(mutex);
+                   fn(data);
+                 } else {
+                   std::println(stderr, "[ModuleReloadManager] Could not find "
+                                        "'lib_on_reload' in window");
+                 }
+               });
 
-  windowPtr->registerDestroyCallback(
-      "window_cleanup", [windowPtr](void *data, std::mutex &mutex) {
-        std::println("[ModuleReloadManager] Window library cleanup");
+  hub_.connect(windowPtr->destroySignal, [windowPtr](void *data,
+                                                     std::mutex &mutex) {
+    std::println("[ModuleReloadManager] Window library cleanup");
 
-        auto fn = reinterpret_cast<void (*)(void *)>(
-            windowPtr->getSymbol("lib_on_destroy"));
-        if (fn) {
-          std::lock_guard<std::mutex> lock(mutex);
-          fn(data);
-        } else {
-          std::println(stderr,
-                       "[ModuleReloadManager] Warning: lib_on_destroy not "
-                       "found in window, manual cleanup");
-          delete static_cast<windowState *>(data);
-        }
-        windowPtr->setData(nullptr);
-      });
+    auto fn = reinterpret_cast<void (*)(void *)>(
+        windowPtr->getSymbol("lib_on_destroy"));
+    if (fn) {
+      std::lock_guard<std::mutex> lock(mutex);
+      fn(data);
+    } else {
+      std::println(stderr, "[ModuleReloadManager] Warning: lib_on_destroy not "
+                           "found in window, manual cleanup");
+      delete static_cast<windowState *>(data);
+    }
+    windowPtr->setData(nullptr);
+  });
 }
 
 #endif // ENGINE_DEBUG

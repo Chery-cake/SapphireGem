@@ -2,6 +2,7 @@
 #define HOT_RELOAD_H_
 #ifdef ENGINE_DEBUG
 
+#include "signal.hpp"
 #include <ctime>
 #include <functional>
 #include <mutex>
@@ -24,10 +25,11 @@ public:
 
   bool load();
   void unload();
-  void *getSymbol(const std::string &symbolName);
+  void *getSymbol(const std::string &symbolName) const;
 
   bool reload();
-  inline std::time_t getFileModTime();
+  void destroy();
+  std::time_t getFileModTime();
   bool checkAndReloadIfNeeded();
 
   // Module dependency management
@@ -36,16 +38,6 @@ public:
 
   // Accessors
   const std::string &getName() const { return name; }
-
-  // Lifecycle callback registration
-  void registerLoadCallback(const std::string &name,
-                            LifecycleCallback callback);
-  void registerUnloadCallback(const std::string &name,
-                              LifecycleCallback callback);
-  void registerReloadCallback(const std::string &name,
-                              LifecycleCallback callback);
-  void registerDestroyCallback(const std::string &name,
-                               LifecycleCallback callback);
 
   // Data pointer (passed to all callbacks)
   void setData(void *newData) {
@@ -57,27 +49,24 @@ public:
     return data;
   }
 
-private:
-  struct CallbackEntry {
-    std::string name;
-    LifecycleCallback callback;
-  };
+  // Lifecycle signals
+  using SignalCall = void(void *, std::mutex &);
+  core::signal::Signal<SignalCall> loadSignal;
+  core::signal::Signal<SignalCall> unloadSignal;
+  core::signal::Signal<SignalCall> reloadSignal;
+  core::signal::Signal<SignalCall> destroySignal;
 
+  static core::signal::Signal<void(const std::string &)> fileChanged;
+
+private:
   bool copy_file();
   std::string makeTempLibPath();
-  void executeCallbacks(std::vector<CallbackEntry> &callbacks);
 
   std::string name;
   std::string path;
   std::string tempPath;
   std::time_t lastModTime;
   void *data;
-
-  // Lifecycle callbacks
-  std::vector<CallbackEntry> loadCallbacks;
-  std::vector<CallbackEntry> unloadCallbacks;
-  std::vector<CallbackEntry> reloadCallbacks;
-  std::vector<CallbackEntry> destroyCallbacks;
 
   mutable std::mutex dataMutex_;
 

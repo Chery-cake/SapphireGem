@@ -1,13 +1,10 @@
 #include <exception>
 #include <filesystem>
-#include <shared_mutex>
 #ifdef ENGINE_DEBUG
 
 #include "hot_reload.h"
-#include <algorithm>
 #include <chrono>
 #include <csignal>
-#include <execution>
 #include <fstream>
 #include <mutex>
 #include <print>
@@ -19,6 +16,7 @@
 
 std::set<HotReload *> HotReload::instances;
 std::mutex HotReload::registry_mutex;
+core::signal::Signal<void(const std::string &)> HotReload::fileChanged;
 
 HotReload::HotReload(const std::string &libName, const std::string &libPath)
     : name(libName), path(libPath), lastModTime(0), data(nullptr) {
@@ -30,7 +28,7 @@ HotReload::HotReload(const std::string &libName, const std::string &libPath)
 HotReload::~HotReload() {
   std::lock_guard<std::mutex> lock(registry_mutex);
   instances.erase(this);
-  executeCallbacks(destroyCallbacks);
+  destroySignal.emit(data, dataMutex_);
   unload();
 }
 
@@ -57,8 +55,8 @@ bool HotReload::load() {
     return false;
   }
 
-  // Execute load callbacks
-  executeCallbacks(loadCallbacks);
+  // Execute load signal
+  loadSignal.emit(data, dataMutex_);
 
   std::print("[HotReload] '{}' loaded successfully.\n", name);
   return true;
@@ -66,8 +64,8 @@ bool HotReload::load() {
 
 void HotReload::unload() {
   if (handle) {
-    // Execute unload callbacks
-    executeCallbacks(unloadCallbacks);
+    // Execute unload signal
+    unloadSignal.emit(data, dataMutex_);
 
 #ifdef _WIN32
     FreeLibrary(handle);
@@ -84,7 +82,7 @@ void HotReload::unload() {
   }
 }
 
-void *HotReload::getSymbol(const std::string &symbolName) {
+void *HotReload::getSymbol(const std::string &symbolName) const {
   if (!handle)
     return nullptr;
 #ifdef _WIN32
@@ -95,10 +93,10 @@ void *HotReload::getSymbol(const std::string &symbolName) {
 }
 
 bool HotReload::reload() {
-  std::print("[HotReload] Reloading '{}'...\n", name);
+  std::println("[HotReload] Reloading '{}'...", name);
 
-  // Execute reload callbacks before unloading to save state
-  executeCallbacks(reloadCallbacks);
+  // Execute reload signal before unloading to save state
+  reloadSignal.emit(data, dataMutex_);
 
   unload();
   bool success = load();
@@ -111,7 +109,12 @@ bool HotReload::reload() {
   return success;
 }
 
-inline std::time_t HotReload::getFileModTime() {
+void HotReload::destroy() {
+  std::println("[HotReload] Destroying '{}'...", name);
+  destroySignal.emit(data, dataMutex_);
+}
+
+std::time_t HotReload::getFileModTime() {
   std::filesystem::path p(path);
 
   try {
@@ -122,7 +125,8 @@ inline std::time_t HotReload::getFileModTime() {
             std::chrono::system_clock::now());
     return std::chrono::system_clock::to_time_t(timeDiff);
   } catch (std::exception &e) {
-    std::println("[HotReload] Couldn't get the write time from library {} with error: {}",
+    std::println("[HotReload] Couldn't get the write time from library {} with "
+                 "error: {}",
                  name, e.what());
     return 0;
   }
@@ -132,6 +136,7 @@ bool HotReload::checkAndReloadIfNeeded() {
   std::time_t modTime = getFileModTime();
   if (modTime > 0 && modTime != lastModTime) {
     lastModTime = modTime;
+    fileChanged.emit(name);
     return reload();
   }
   return false;
@@ -208,43 +213,6 @@ void HotReload::reloadDependents() {
       dep->reload();
     }
   }
-}
-
-// ============================================================================
-// Lifecycle Callback Management
-// ============================================================================
-
-void HotReload::registerLoadCallback(const std::string &name,
-                                     LifecycleCallback callback) {
-  loadCallbacks.push_back({name, std::move(callback)});
-}
-
-void HotReload::registerUnloadCallback(const std::string &name,
-                                       LifecycleCallback callback) {
-  unloadCallbacks.push_back({name, std::move(callback)});
-}
-
-void HotReload::registerReloadCallback(const std::string &name,
-                                       LifecycleCallback callback) {
-  reloadCallbacks.push_back({name, std::move(callback)});
-}
-
-void HotReload::registerDestroyCallback(const std::string &name,
-                                        LifecycleCallback callback) {
-  destroyCallbacks.push_back({name, std::move(callback)});
-}
-
-void HotReload::executeCallbacks(std::vector<CallbackEntry> &callbacks) {
-  std::ranges::for_each(
-      callbacks.begin(), callbacks.end(), [this](auto &entry) {
-        try {
-          entry.callback(data, dataMutex_);
-          std::print("[HotReload] Executed callback: '{}'\n", entry.name);
-        } catch (const std::exception &e) {
-          std::print(stderr, "[HotReload] Callback '{}' threw exception: {}\n",
-                     entry.name, e.what());
-        }
-      });
 }
 
 #endif // ENGINE_DEBUG
