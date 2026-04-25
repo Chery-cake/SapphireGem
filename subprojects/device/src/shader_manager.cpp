@@ -6,6 +6,7 @@
 #include <expected>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -44,6 +45,39 @@ vk::PipelineShaderStageCreateInfo CompiledShader::getStageInfo() const {
       module,
       "main"}; // TODO find a better way to deal with this naming problem
                // entryPoint.c_str()};
+}
+
+// ============================================================================
+// ShaderProgram Hash
+// ============================================================================
+
+void ShaderProgram::computeHash() const {
+  std::string combined;
+  // Process stages in a fixed order so that the hash is deterministic
+  auto appendStage = [&](const std::unique_ptr<CompiledShader> &stage) {
+    if (stage && stage->isValid) {
+      combined += stage->sourceHash;
+      combined += ':';
+      combined += stage->entryPoint;
+      combined += ';';
+    }
+  };
+  appendStage(vertex);
+  appendStage(fragment);
+  appendStage(geometry);
+  appendStage(compute);
+  appendStage(tessControl);
+  appendStage(tessEval);
+
+  cachedHash_ = std::hash<std::string>{}(combined);
+  hashComputed_ = true;
+}
+
+std::size_t ShaderProgram::getHash() const {
+  if (!hashComputed_) {
+    computeHash();
+  }
+  return cachedHash_;
 }
 
 // ============================================================================
@@ -494,6 +528,11 @@ ShaderManager::acquire(const ShaderTag *tag) {
 
   program->refCount = 1;
   program->compiled = true;
+
+  program->refCount = 1;
+  program->compiled = true;
+
+  program->getHash();
 
   ShaderProgram *ptr = program.get();
   shaderRegistry_.add(tag, std::move(program));

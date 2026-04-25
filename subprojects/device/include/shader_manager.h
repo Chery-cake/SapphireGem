@@ -122,6 +122,21 @@ struct DEVICE_API ShaderProgram {
       stages.push_back(tessEval->getStageInfo());
     return stages;
   }
+
+  /**
+   * @brief Returns a hash that uniquely identifies the compiled shader.
+   *
+   * The hash is stable as long as the shader sources and entry points
+   * do not change.  It is computed once after compilation.
+   */
+  [[nodiscard]] std::size_t getHash() const;
+
+private:
+  mutable std::size_t cachedHash_ = 0;
+  mutable bool hashComputed_ = false;
+
+  // Helper to compute the hash from the compiled stages
+  void computeHash() const;
 };
 
 /**

@@ -2,7 +2,7 @@
 # Modular C++ Engine - Root CMakeLists.txt
 # ==============================================================================
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 
 # Allow older third-party projects to be processed by CMake >= 4.0
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")

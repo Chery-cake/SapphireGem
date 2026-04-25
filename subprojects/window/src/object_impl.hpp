@@ -1,7 +1,9 @@
 #pragma once
 #include "bindless_types.h"
 #include "glm/ext/matrix_transform.hpp"
+#include "material.h"
 #include "object.h"
+#include "pipeline_cache.h"
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
@@ -233,10 +235,11 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
   }
 
   // Create per-object pipeline from base material
-  objectPipeline_ = baseMaterial.createPipelineForObject(
-      device, renderPass, **descriptorSetLayout_, pipelineConfig, 0,
-      bindlessSetLayout);
-  if (!objectPipeline_.isValid()) {
+  objectPipeline_ = PipelineCache::instance().getOrCreate(
+      device, renderPass, **descriptorSetLayout_, pipelineConfig,
+      0, // textureCount hardcoded to 0; adjust if needed
+      bindlessSetLayout, baseMaterial.getShaderProgram());
+  if (!objectPipeline_) {
     std::println(stderr, "[Object] Failed to create pipeline for object: {}",
                  name_);
     descriptorSetLayout_.reset();
@@ -735,7 +738,7 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     return;
   }
 
-  if (!objectPipeline_.isValid()) {
+  if (!objectPipeline_) {
     std::println(stderr, "[Object] No valid pipeline for draw '{}'", name_);
     return;
   }
@@ -746,16 +749,16 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
 
   // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                   **objectPipeline_.pipeline);
+                   **objectPipeline_->pipeline);
   cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                         **objectPipeline_.pipelineLayout, 0,
+                         **objectPipeline_->pipelineLayout, 0,
                          {*descriptorSets_[frameIndex]}, {});
 
   // Push time constant if configured
   // Bind global bindless descriptor set (set 1) if available
   if (bindlessDescriptorSet_) {
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                           **objectPipeline_.pipelineLayout, 1,
+                           **objectPipeline_->pipelineLayout, 1,
                            {bindlessDescriptorSet_}, {});
   }
 
@@ -765,7 +768,7 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
     device::BindlessPushConstants pushData(
         time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
         static_cast<uint32_t>(indices_.size()));
-    cmd.pushConstants(**objectPipeline_.pipelineLayout,
+    cmd.pushConstants(**objectPipeline_->pipelineLayout,
                       pipelineConfig_.pushConstantStages, 0,
                       sizeof(device::BindlessPushConstants), &pushData);
   }
@@ -887,7 +890,7 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
                                     const device::ShaderTag *computeNormalTag) {
   std::lock_guard<std::mutex> lock(objectMutex_);
 
-  if (!initialized_ || !objectPipeline_.isValid()) {
+  if (!initialized_ || !objectPipeline_) {
     std::println(stderr,
                  "[Object] initializeCompute: '{}' must be initialized first",
                  name_);
@@ -896,7 +899,7 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
 
   // The compute pipelines share the same pipeline layout as the graphics
   // pipeline (same set 0 descriptor layout, same push constant range).
-  vk::PipelineLayout sharedLayout = **objectPipeline_.pipelineLayout;
+  vk::PipelineLayout sharedLayout = **objectPipeline_->pipelineLayout;
 
   // ---- Create per-frame update compute pipeline (object_update.slang) ----
   if (computeUpdateTag) {
@@ -1031,18 +1034,18 @@ void Object<Dim>::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const {
   // Dispatch wave displacement compute shader
   cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **computeUpdatePipeline_);
   cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                         **objectPipeline_.pipelineLayout, 0,
+                         **objectPipeline_->pipelineLayout, 0,
                          {*descriptorSets_[frameIndex]}, {});
   if (bindlessDescriptorSet_) {
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
-                           **objectPipeline_.pipelineLayout, 1,
+                           **objectPipeline_->pipelineLayout, 1,
                            {bindlessDescriptorSet_}, {});
   }
 
   device::BindlessPushConstants pushData(
       time_, baseTextureId_.index, static_cast<uint32_t>(vertices_.size()),
       static_cast<uint32_t>(indices_.size()));
-  cmd.pushConstants(**objectPipeline_.pipelineLayout,
+  cmd.pushConstants(**objectPipeline_->pipelineLayout,
                     pipelineConfig_.pushConstantStages, 0,
                     sizeof(device::BindlessPushConstants), &pushData);
 

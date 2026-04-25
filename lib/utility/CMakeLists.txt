@@ -23,6 +23,21 @@ set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(nlohmann_json)
 
 # ==============================================================================
+# zlib - Compression Library
+# ==============================================================================
+
+FetchContent_Declare(
+    zlib
+    GIT_REPOSITORY https://github.com/madler/zlib.git
+    GIT_TAG v1.3.1.2
+    GIT_SHALLOW TRUE
+    OVERRIDE_FIND_PACKAGE
+)
+set(ZLIB_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(zlib)
+
+# ==============================================================================
 # Assimp - Asset Import Library
 # ==============================================================================
 FetchContent_Declare(
@@ -30,6 +45,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/assimp/assimp.git
     GIT_TAG v6.0.4
     GIT_SHALLOW TRUE
+    GIT_SUBMODULES contrib/zip
 )
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
@@ -37,32 +53,11 @@ set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_USE_CCACHE OFF CACHE BOOL "" FORCE)
 
-if(WIN32)
-  set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
-  set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB TRUE)
-    set(ZLIB_FOUND TRUE)
-    set(ZLIB_LIBRARIES zlibstatic)
-    set(ZLIB_INCLUDE_DIR
-        "${sdl_image_SOURCE_DIR}/external/zlib"
-        "${sdl_image_BINARY_DIR}/external/zlib"
-    )
-endif()
+set(ASSIMP_BUILD_ZLIB OFF)
+find_package(ZLIB REQUIRED)
+set(ASSIMP_BUILD_MINIZIP ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(assimp)
-
-# ==============================================================================
-# zlib - Compression Library
-# ==============================================================================
-
-#FetchContent_Declare(
-#    zlib
-#    GIT_REPOSITORY https://github.com/madler/zlib.git
-#    GIT_TAG v1.3.1.2
-#    GIT_SHALLOW TRUE
-#)
-#set(ZLIB_BUILD_STATIC OFF CACHE BOOL "" FORCE)
-#set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
-#FetchContent_MakeAvailable(zlib)
+#FetchContent_MakeAvailable(assimp)
 
 # ==============================================================================
 # PhysicsFS - Virtual Filesystem

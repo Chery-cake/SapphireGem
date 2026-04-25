@@ -5,6 +5,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -245,6 +246,7 @@ private:
       std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f};
 
   bool initialized_ = false;
+  size_t pipelineCacheSignalId_;
   mutable std::mutex renderMutex_;
 };
 

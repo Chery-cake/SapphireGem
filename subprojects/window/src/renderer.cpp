@@ -1,4 +1,5 @@
 #include "renderer.h"
+#include "pipeline_cache.h"
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
 #include "vulkan_device.h"
@@ -17,6 +18,8 @@ void Renderer::shutdown() {
   }
 
   waitIdle();
+
+  PipelineCache::instance().clear();
 
   // Destroy framebuffers first (they reference the render pass)
   if (swapchain_) {
@@ -70,6 +73,16 @@ bool Renderer::initialize(device::GPUDevice &device,
   renderPassConfig.colorFormat = swapchain_->getFormat();
   if (!createRenderPass(renderPassConfig)) {
     return false;
+  }
+
+  auto result = PipelineCache::getInvalidateSignal().connect([]() {
+    // The cache has been cleared. New pipelines will be created with the
+    // updated render pass.
+    // TODO implement
+    std::println("[Renderer] Pipeline cache invalidated");
+  });
+  if (result.has_value()) {
+    pipelineCacheSignalId_ = result.value();
   }
 
   // Create command pool
@@ -448,6 +461,8 @@ void Renderer::waitIdle() {
 
 bool Renderer::handleSwapchainRecreation() {
   waitIdle();
+
+  PipelineCache::instance().clear();
 
   // Destroy framebuffers
   swapchain_->destroyFramebuffers();

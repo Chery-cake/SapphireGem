@@ -148,9 +148,14 @@ public:
   [[nodiscard]] const device::ShaderTag *getShaderTag() const {
     return shaderTag_;
   }
+  const device::ShaderProgram *getShaderProgram() const {
+    return shaderProgram_;
+  }
   [[nodiscard]] bool isInitialized() const { return initialized_; }
 
 private:
+  friend class PipelineCache;
+
   static bool
   createPipelineLayout(device::GPUDevice &device,
                        vk::DescriptorSetLayout descriptorSetLayout,

@@ -429,7 +429,7 @@ private:
   std::vector<Face> faces_;
 
   // Per-object pipeline (created by material, owned by object)
-  ObjectPipeline objectPipeline_;
+  std::shared_ptr<ObjectPipeline> objectPipeline_;
 
   // Compute pipeline for per-frame wave displacement (object_update.slang).
   // Shares the same pipeline layout as the graphics pipeline.
@@ -451,10 +451,9 @@ private:
   // Per-frame GPU resources
   std::vector<device::AllocatedBuffer> uniformBuffers_;
   std::vector<device::AllocatedBuffer>
-      faceDataBuffers_; ///< Per-frame face SSBO
-  device::AllocatedBuffer
-      positionBuffer_; ///< Base vertex position SSBO (static, shared by all
-                       ///< frames)
+      faceDataBuffers_;                    ///< Per-frame face SSBO
+  device::AllocatedBuffer positionBuffer_; ///< Base vertex position SSBO
+                                           ///< (static, shared by all frames)
   std::vector<device::AllocatedBuffer>
       displacedPositionBuffers_; ///< Displaced position SSBO
                                  ///< (compute-written)
