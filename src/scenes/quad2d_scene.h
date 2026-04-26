@@ -22,7 +22,7 @@ extern const window::ObjectTag QUAD_2D_OBJ_TAG;
 class Quad2DScene : public window::Scene {
 private:
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<2>> quad_;
+  std::shared_ptr<window::Scene2DFrameData> frameData_;
   float totalTime_ = 0.0f;
 
   // Shared texture (for CPU-side image loading/upload)
@@ -48,8 +48,6 @@ public:
 
   void unload() override;
   void update(float deltaTime) override;
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) override;
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override;
 };
 
 #endif // QUAD2D_SCENE_H_

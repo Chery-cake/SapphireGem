@@ -1,7 +1,7 @@
 #include "config.h"
 #include "config_threads.h"
 #include "config_vulkan.h"
-#include "signal_fwd.h"
+#include "signal.hpp"
 #include <memory>
 #include <mutex>
 

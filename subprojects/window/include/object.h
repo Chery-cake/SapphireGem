@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 
 namespace window {
 
@@ -151,6 +152,23 @@ template <uint32_t Dim> struct Vertex {
   std::array<float, 3> color; // RGB TODO change to RGBA
 };
 
+class WINDOW_API ObjectBase {
+public:
+  explicit ObjectBase(const char *name) : name_(name) {}
+  virtual ~ObjectBase() = default;
+  virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
+  [[nodiscard]] virtual bool isInitialized() const { return initialized_; };
+  [[nodiscard]] virtual const std::string getName() const { return name_; };
+  virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
+  // additional virtual methods if needed
+protected:
+  inline ObjectBase(ObjectBase &&other) noexcept;
+  inline ObjectBase &operator=(ObjectBase &&other) noexcept;
+
+  const char *name_;
+  bool initialized_ = false;
+};
+
 /**
  * @brief Templated renderable object with compile-time dimension
  *
@@ -177,7 +195,7 @@ template <uint32_t Dim> struct Vertex {
  *
  * Thread-safe: all mutable operations are protected by mutex.
  */
-template <uint32_t Dim> class Object {
+template <uint32_t Dim> class Object : public ObjectBase {
 public:
   static constexpr uint32_t DIMENSION = Dim;
   using UBO = UniformBufferData<Dim>;
@@ -260,7 +278,7 @@ public:
    * @param cmd Command buffer to record draw commands
    * @param frameIndex Current frame in flight index
    */
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
 
   /**
    * @brief Initialize the per-frame compute update pipeline and run the
@@ -297,7 +315,7 @@ public:
    * @param cmd        Command buffer to record compute commands into
    * @param frameIndex Current frame-in-flight index
    */
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const;
+  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
 
   // =========================================================================
   // Bindless texture ID support
@@ -364,6 +382,8 @@ public:
    */
   void uploadFaceData(uint32_t frameIndex) const;
 
+  void markIndirectDirty() { indirectCommandDirty_ = true; }
+
   // =========================================================================
   // Transform accessors (dimension-agnostic using fixed-size arrays)
   // =========================================================================
@@ -377,11 +397,9 @@ public:
   [[nodiscard]] std::array<float, Dim> getScale() const;
 
   // Getters
-  [[nodiscard]] const char *getName() const { return name_; }
   [[nodiscard]] const MaterialTag *getBaseMaterialTag() const {
     return baseMaterialTag_;
   }
-  [[nodiscard]] bool isInitialized() const { return initialized_; }
   [[nodiscard]] static constexpr uint32_t getDimension() { return Dim; }
   [[nodiscard]] uint32_t getFaceCount() const {
     return static_cast<uint32_t>(faces_.size());
@@ -413,7 +431,9 @@ private:
    */
   void calculateFaces();
 
-  const char *name_;
+  void
+  uploadIndirectCommand() const; // write indirectDrawCmd_ to the GPU buffer
+
   const MaterialTag *baseMaterialTag_ = nullptr;
 
   // Transform (fixed-size arrays, dimension-agnostic)
@@ -459,11 +479,16 @@ private:
                                  ///< (compute-written)
   device::AllocatedBuffer
       indexBuffer_; ///< Dual-use index+storage buffer (topology)
+
+  device::AllocatedBuffer
+      indirectDrawBuffer_; ///< buffer holding the indirect command
+  VkDrawIndexedIndirectCommand indirectDrawCmd_; ///< cached CPU copy
+  mutable bool indirectCommandDirty_ = true;     ///< re-upload needed
+
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool_;
   std::vector<vk::raii::DescriptorSet> descriptorSets_;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout_;
 
-  bool initialized_ = false;
   // True when geometry topology has changed and GPU resources must be rebuilt
   bool geometryDirty_ = true;
   mutable std::mutex objectMutex_;

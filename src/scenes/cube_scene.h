@@ -23,7 +23,7 @@ extern const window::ObjectTag CUBE_OBJ_TAG;
 class CubeScene3D : public window::Scene {
 private:
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<3>> cube_;
+  std::shared_ptr<window::Scene3DFrameData> frameData_;
   float totalTime_ = 0.0f;
 
   // Shared textures (for CPU-side image loading/upload)
@@ -37,12 +37,11 @@ private:
   device::TextureId atlasTextureId_;
 
 public:
-  explicit CubeScene3D(
-      const window::SceneTag &sceneTag,
-      std::shared_ptr<window::Texture> checkerboard,
-      std::shared_ptr<window::Texture> layerAtlas,
-      std::shared_ptr<device::ImageArrayRegistry> registry,
-      std::shared_ptr<device::TextureTableManager> textureTable);
+  CubeScene3D(const window::SceneTag &sceneTag,
+              std::shared_ptr<window::Texture> checkerboard,
+              std::shared_ptr<window::Texture> layerAtlas,
+              std::shared_ptr<device::ImageArrayRegistry> registry,
+              std::shared_ptr<device::TextureTableManager> textureTable);
 
   bool load(device::GPUDevice &device,
             std::vector<device::GPUDevice *> &secondaryGPUs,
@@ -52,8 +51,6 @@ public:
 
   void unload() override;
   void update(float deltaTime) override;
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) override;
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override;
 };
 
 #endif // CUBE_SCENE_H_

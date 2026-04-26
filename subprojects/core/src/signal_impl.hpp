@@ -1,6 +1,6 @@
 #pragma once
+
 #include "signal.hpp"
-#include "signal_fwd.h"
 #include <algorithm>
 #include <execution>
 #include <iterator>

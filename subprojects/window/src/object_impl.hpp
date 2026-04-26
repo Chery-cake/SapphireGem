@@ -7,8 +7,21 @@
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
+#include <utility>
+#include <vk_mem_alloc_enums.hpp>
 
 namespace window {
+
+ObjectBase::ObjectBase(ObjectBase &&other) noexcept
+    : name_(other.name_), initialized_(other.initialized_) {
+  other.initialized_ = false;
+}
+ObjectBase &ObjectBase::operator=(ObjectBase &&other) noexcept {
+  name_ = other.name_;
+  initialized_ = other.initialized_;
+  other.initialized_ = false;
+  return *this;
+}
 
 // ============================================================================
 // Construction / Destruction
@@ -17,7 +30,7 @@ namespace window {
 template <uint32_t Dim>
 Object<Dim>::Object(const ObjectTag &tag, std::vector<VertexType> vertices,
                     std::vector<uint32_t> indices)
-    : name_(tag.name), baseMaterialTag_(tag.baseMaterialTag),
+    : ObjectBase(tag.name), baseMaterialTag_(tag.baseMaterialTag),
       vertices_(std::move(vertices)), indices_(std::move(indices)) {
   // Initialize transforms: position and rotation to 0, scale to 1
   position_.fill(0.0f);
@@ -37,34 +50,29 @@ template <uint32_t Dim> Object<Dim>::~Object() { release(); }
 // Move semantics
 // ============================================================================
 
-template <uint32_t Dim> Object<Dim>::Object(Object &&other) noexcept {
-  std::lock_guard<std::mutex> lock(other.objectMutex_);
-  name_ = other.name_;
-  baseMaterialTag_ = other.baseMaterialTag_;
-  position_ = other.position_;
-  rotation_ = other.rotation_;
-  scale_ = other.scale_;
-  vertices_ = std::move(other.vertices_);
-  indices_ = std::move(other.indices_);
-  faces_ = std::move(other.faces_);
-  objectPipeline_ = std::move(other.objectPipeline_);
-  computeUpdatePipeline_ = std::move(other.computeUpdatePipeline_);
-  pipelineConfig_ = other.pipelineConfig_;
-  time_ = other.time_;
-  baseTextureId_ = other.baseTextureId_;
-  faceMaterials_ = std::move(other.faceMaterials_);
-  bindlessDescriptorSet_ = other.bindlessDescriptorSet_;
+template <uint32_t Dim>
+Object<Dim>::Object(Object &&other) noexcept
+    : ObjectBase(std::move(other)), baseMaterialTag_(other.baseMaterialTag_),
+      position_(std::move(other.position_)),
+      rotation_(std::move(other.rotation_)), scale_(std::move(other.scale_)),
+      vertices_(std::move(other.vertices_)),
+      indices_(std::move(other.indices_)), faces_(std::move(other.faces_)),
+      objectPipeline_(std::move(other.objectPipeline_)),
+      computeUpdatePipeline_(std::move(other.computeUpdatePipeline_)),
+      pipelineConfig_(other.pipelineConfig_), time_(other.time_),
+      baseTextureId_(other.baseTextureId_),
+      faceMaterials_(std::move(other.faceMaterials_)),
+      bindlessDescriptorSet_(other.bindlessDescriptorSet_),
+      uniformBuffers_(std::move(other.uniformBuffers_)),
+      faceDataBuffers_(std::move(other.faceDataBuffers_)),
+      positionBuffer_(std::move(other.positionBuffer_)),
+      displacedPositionBuffers_(std::move(other.displacedPositionBuffers_)),
+      indexBuffer_(std::move(other.indexBuffer_)),
+      descriptorPool_(std::move(other.descriptorPool_)),
+      descriptorSets_(std::move(other.descriptorSets_)),
+      descriptorSetLayout_(std::move(other.descriptorSetLayout_)),
+      geometryDirty_(other.geometryDirty_) {
   other.bindlessDescriptorSet_ = vk::DescriptorSet{};
-  uniformBuffers_ = std::move(other.uniformBuffers_);
-  faceDataBuffers_ = std::move(other.faceDataBuffers_);
-  positionBuffer_ = std::move(other.positionBuffer_);
-  displacedPositionBuffers_ = std::move(other.displacedPositionBuffers_);
-  indexBuffer_ = std::move(other.indexBuffer_);
-  descriptorPool_ = std::move(other.descriptorPool_);
-  descriptorSets_ = std::move(other.descriptorSets_);
-  descriptorSetLayout_ = std::move(other.descriptorSetLayout_);
-  initialized_ = other.initialized_;
-  geometryDirty_ = other.geometryDirty_;
   other.initialized_ = false;
 }
 
@@ -73,7 +81,9 @@ Object<Dim> &Object<Dim>::operator=(Object &&other) noexcept {
   if (this != &other) {
     std::scoped_lock lock(objectMutex_, other.objectMutex_);
     release();
-    name_ = other.name_;
+
+    ObjectBase::operator=(std::move(other));
+
     baseMaterialTag_ = other.baseMaterialTag_;
     position_ = other.position_;
     rotation_ = other.rotation_;
@@ -264,6 +274,33 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
     }
     uniformBuffers_.push_back(std::move(ubo));
   }
+
+  // ---------- Indirect draw buffer ----------
+  indirectDrawCmd_.indexCount = static_cast<uint32_t>(indices_.size());
+  indirectDrawCmd_.instanceCount = 1;
+  indirectDrawCmd_.firstIndex = 0;
+  indirectDrawCmd_.vertexOffset = 0;
+  indirectDrawCmd_.firstInstance = 0;
+
+  device::BufferCreateInfo indirectInfo{};
+  indirectInfo.size = sizeof(VkDrawIndexedIndirectCommand);
+  indirectInfo.usage = vk::BufferUsageFlagBits::eIndirectBuffer;
+  // If compute shader will write to it later:
+  indirectInfo.usage |= vk::BufferUsageFlagBits::eStorageBuffer;
+  indirectInfo.memoryUsage = vma::MemoryUsage::eCpuToGpu;
+  indirectInfo.flags = vma::AllocationCreateFlagBits::eMapped;
+  indirectInfo.debugName = std::string(name_) + "_indirect";
+
+  indirectDrawBuffer_ = allocator.createBuffer(indirectInfo);
+  if (!indirectDrawBuffer_.isValid()) {
+    std::println(stderr, "[Object] Failed to create indirect buffer for '{}'",
+                 name_);
+    release();
+    return false;
+  }
+
+  uploadIndirectCommand();
+  indirectCommandDirty_ = false;
 
   // Create face data storage buffers (one per frame in flight)
   const vk::DeviceSize faceDataSize =
@@ -523,12 +560,28 @@ template <uint32_t Dim> void Object<Dim>::release() {
   positionBuffer_ = {};
   displacedPositionBuffers_.clear();
   indexBuffer_ = {};
+  indirectDrawBuffer_ = {};
+  indirectCommandDirty_ = true;
   computeUpdatePipeline_.reset();
   objectPipeline_.reset();
   descriptorSetLayout_.reset();
   bindlessDescriptorSet_ = vk::DescriptorSet{};
   geometryDirty_ = true;
   initialized_ = false;
+}
+
+template <uint32_t Dim> void Object<Dim>::uploadIndirectCommand() const {
+  // For simplicity, use a shared staging buffer or map if host-visible.
+  // Here we assume the indirect buffer is host-visible (CpuToGpu) for easy
+  // updates. If it's device-local, you'd use a one-time staging copy.
+  // TODO improve implementation
+  void *mapped = indirectDrawBuffer_.map();
+  if (mapped) {
+    std::memcpy(mapped, &indirectDrawCmd_,
+                sizeof(VkDrawIndexedIndirectCommand));
+    indirectDrawBuffer_.unmap();
+  }
+  indirectCommandDirty_ = false;
 }
 
 // ============================================================================
@@ -747,6 +800,10 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
   // buffer)
   uploadFaceData(frameIndex);
 
+  if (indirectCommandDirty_) {
+    uploadIndirectCommand(); // lock already held
+  }
+
   // Bind the single pipeline and descriptor sets
   cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
                    **objectPipeline_->pipeline);
@@ -773,11 +830,12 @@ void Object<Dim>::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
                       sizeof(device::BindlessPushConstants), &pushData);
   }
 
-  // Indexed draw call — uses the dual-use index+storage buffer
-  if (!indices_.empty()) {
-    cmd.bindIndexBuffer(indexBuffer_.getBuffer(), 0, vk::IndexType::eUint32);
-    cmd.drawIndexed(static_cast<uint32_t>(indices_.size()), 1, 0, 0, 0);
-  }
+  // Bind index buffer
+  cmd.bindIndexBuffer(indexBuffer_.getBuffer(), 0, vk::IndexType::eUint32);
+
+  // Indirect draw
+  cmd.drawIndexedIndirect(indirectDrawBuffer_.getBuffer(), 0, 1,
+                          sizeof(VkDrawIndexedIndirectCommand));
 }
 
 // ============================================================================

@@ -1,6 +1,5 @@
 #pragma once
 #include "resource_registry.h"
-#include "signal_fwd.h"
 #include <algorithm>
 #include <iterator>
 #include <memory>

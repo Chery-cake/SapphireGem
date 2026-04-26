@@ -162,7 +162,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     indices.push_back(static_cast<uint32_t>(i2));
   }
 
-  polytope_ = std::make_unique<window::Object<3>>(
+  auto polytope = std::make_shared<window::Object<3>>(
       POLYTOPE_OBJ_TAG, std::move(vertices), std::move(indices));
 
   // Assign per-face materials cycling through material types
@@ -211,7 +211,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       break;
     }
 
-    polytope_->setFaceMaterial(faceIdx, fm);
+    polytope->setFaceMaterial(faceIdx, fm);
   }
 
   // Upload texture tables to GPU
@@ -226,7 +226,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  polytope_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  polytope->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
   window::PipelineConfig pConfig;
   pConfig.topology = vk::PrimitiveTopology::eTriangleList;
@@ -239,10 +239,10 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
                                vk::ShaderStageFlagBits::eFragment |
                                vk::ShaderStageFlagBits::eCompute;
 
-  if (!polytope_->initialize(allocator, device, *material_,
-                             renderer.getRenderPass(),
-                             window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                             imageRegistry_->getDescriptorSetLayout())) {
+  if (!polytope->initialize(allocator, device, *material_,
+                            renderer.getRenderPass(),
+                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                            imageRegistry_->getDescriptorSetLayout())) {
     std::println(stderr, "[{}] Failed to initialize polytope", getName());
     return false;
   }
@@ -255,8 +255,18 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  polytope_->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                               &OBJECT_COMPUTE_SHADER_TAG);
+  polytope->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                              &OBJECT_COMPUTE_SHADER_TAG);
+
+  frameData_ = std::make_shared<window::Scene3DFrameData>();
+  addObject(polytope, [polytope = polytope.get(), frameData = frameData_,
+                       totalTimePtr = &totalTime_, rotXPtr = &rotX_,
+                       rotYPtr = &rotY_,
+                       rotZPtr = &rotZ_](uint32_t frameIndex) {
+    polytope->setRotation({*rotXPtr, *rotYPtr, *rotZPtr});
+    polytope->setTime(*totalTimePtr);
+    polytope->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  });
 
   setLoaded(true);
   std::println("[{}] Polytope scene loaded ({} faces)", getName(), numFaces);
@@ -264,10 +274,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 }
 
 void PolytopeDemoScene::unload() {
-  if (polytope_) {
-    polytope_->release();
-    polytope_.reset();
-  }
+  clearObjects();
   if (material_) {
     material_->release();
     material_.reset();
@@ -281,27 +288,13 @@ void PolytopeDemoScene::update(float deltaTime) {
   rotX_ += deltaTime * 0.7f;
   rotY_ += deltaTime * 1.1f;
   rotZ_ += deltaTime * 0.4f;
-}
 
-void PolytopeDemoScene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (polytope_ && polytope_->isInitialized()) {
-    polytope_->preRender(cmd, frameIndex);
-  }
-}
-
-void PolytopeDemoScene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (polytope_ && polytope_->isInitialized()) {
-    polytope_->setRotation({rotX_, rotY_, rotZ_});
-    polytope_->setTime(totalTime_);
-
-    glm::mat4 view =
-        glm::lookAt(glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f));
-    glm::mat4 proj =
-        glm::perspective(glm::radians(45.0f), 16.0f / 9.0f, 0.1f, 100.0f);
-    proj[1][1] *= -1.0f; // Flip Y for Vulkan
-
-    polytope_->updateUniforms(frameIndex, view, proj);
-    polytope_->draw(cmd, frameIndex);
-  }
+  // compute view/proj
+  frameData_->view =
+      glm::lookAt(glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                  glm::vec3(0.0f, 1.0f, 0.0f));
+  float aspect = 16.0f / 9.0f;
+  frameData_->proj =
+      glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+  frameData_->proj[1][1] *= -1.0f;
 }

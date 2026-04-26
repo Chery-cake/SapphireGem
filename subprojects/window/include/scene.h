@@ -1,9 +1,14 @@
 #ifndef SCENE_H_
 #define SCENE_H_
 
+#include "glm/ext/matrix_float3x3.hpp"
+#include "glm/ext/matrix_float4x4.hpp"
+#include "signal.hpp"
 #include "vulkan/vulkan.hpp"
 #include "window_export.h"
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -18,6 +23,27 @@ namespace window {
 
 // Forward declaration
 class Renderer;
+class ObjectBase;
+
+/**
+ * @brief A user callback called before the object's draw.
+ *        Use it to update uniforms, transform, etc.
+ */
+using ObjectUpdateFunc = std::function<void(uint32_t frameIndex)>;
+
+// For 3D scenes
+struct Scene3DFrameData {
+  glm::mat4 view{1.0f};
+  glm::mat4 proj{1.0f};
+};
+
+// For 2D scenes
+struct Scene2DFrameData {
+  glm::mat3 view{1.0f};
+  glm::mat3 proj{1.0f};
+};
+
+// TODO improve object draw updates with signals
 
 /**
  * @brief Tag for identifying scenes in the resource system
@@ -62,91 +88,40 @@ public:
   Scene(Scene &&other) noexcept;
   Scene &operator=(Scene &&other) noexcept;
 
-  /**
-   * @brief Load scene resources onto GPU
-   *
-   * Called when the scene becomes active. Implementations should
-   * create materials, objects, pipelines, and other GPU resources.
-   *
-   * Supports multi-GPU by receiving primary and secondary devices.
-   *
-   * @param device Primary GPU device
-   * @param secondaryGPUs Secondary GPUs for multi-GPU rendering
-   * @param allocator VMA allocator for buffer/image creation
-   * @param shaderManager Shader manager for shader compilation
-   * @param renderer Renderer providing render pass and frame info
-   * @return true if loading succeeded
-   */
+  // ----- Lifecycle (can be overridden) -----
   virtual bool load(device::GPUDevice &device,
                     std::vector<device::GPUDevice *> &secondaryGPUs,
                     device::VMAAllocator &allocator,
-                    device::ShaderManager &shaderManager,
-                    Renderer &renderer) = 0;
+                    device::ShaderManager &shaderManager, Renderer &renderer);
+  virtual void unload();
+  virtual void update(float deltaTime);
+  virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex);
+  virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex);
 
-  /**
-   * @brief Unload scene resources from GPU memory
-   *
-   * Called when the scene becomes inactive. Implementations should
-   * release all GPU resources to free memory.
-   */
-  virtual void unload() = 0;
+  // ----- Manage objects (thread‑safe) -----
+  void addObject(std::shared_ptr<ObjectBase> obj,
+                 ObjectUpdateFunc updateFunc = {});
+  void removeObject(const ObjectBase *obj);
+  void clearObjects();
 
-  /**
-   * @brief Update scene state
-   * @param deltaTime Time elapsed since last update in seconds
-   */
-  virtual void update(float deltaTime) = 0;
-
-  /**
-   * @brief Record pre-render compute commands for this scene
-   *
-   * Called OUTSIDE an active render pass, immediately before
-   * beginRenderPass().  Implementations should dispatch compute
-   * shaders (e.g. wave displacement) and insert any required
-   * pipeline barriers.
-   *
-   * The default implementation is a no-op; override in subclasses
-   * that use compute shaders.
-   *
-   * @param cmd        Command buffer to record compute commands into
-   * @param frameIndex Current frame-in-flight index
-   */
-  virtual void preRender(vk::CommandBuffer /*cmd*/, uint32_t /*frameIndex*/) {}
-
-  /**
-   * @brief Record draw commands for this scene
-   *
-   * Called within an active render pass. Implementations should
-   * bind pipelines, descriptor sets, and issue draw calls.
-   *
-   * Supports multi-GPU by accepting a command buffer that may
-   * be associated with any device queue.
-   *
-   * @param cmd Command buffer to record commands into
-   * @param frameIndex Current frame-in-flight index
-   */
-  virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex) = 0;
-
-  /**
-   * @brief Check if scene resources are loaded
-   * @return true if scene is loaded onto GPU
-   */
   [[nodiscard]] bool isLoaded() const { return loaded_; }
-
-  /**
-   * @brief Get scene name
-   * @return Scene name from tag
-   */
   [[nodiscard]] const char *getName() const { return name_; }
 
+  core::signal::Signal<void(const ObjectBase *)> objectAdded;
+  core::signal::Signal<void(const ObjectBase *)> objectRemoved;
+
 protected:
-  /**
-   * @brief Set the loaded state
-   * @param loaded New loaded state
-   */
   void setLoaded(bool loaded) { loaded_ = loaded; }
 
 private:
+  struct Drawable {
+    std::shared_ptr<ObjectBase> object;
+    ObjectUpdateFunc update;
+  };
+
+  std::vector<Drawable> objects_;
+  mutable std::mutex objectsMutex_;
+
   const char *name_;
   bool loaded_ = false;
   mutable std::mutex sceneMutex_;

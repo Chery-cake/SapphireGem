@@ -23,7 +23,7 @@ extern const window::ObjectTag POLYTOPE_OBJ_TAG;
 class PolytopeDemoScene : public window::Scene {
 private:
   std::unique_ptr<window::Material> material_;
-  std::unique_ptr<window::Object<3>> polytope_;
+  std::shared_ptr<window::Scene3DFrameData> frameData_;
   float rotX_ = 0.0f, rotY_ = 0.0f, rotZ_ = 0.0f;
   float totalTime_ = 0.0f;
 
@@ -48,8 +48,6 @@ public:
 
   void unload() override;
   void update(float deltaTime) override;
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) override;
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) override;
 };
 
 #endif // POLYTOPE_SCENE_H_

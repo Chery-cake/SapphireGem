@@ -3,6 +3,7 @@
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
 #include "renderer.h"
+#include "scene.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
 
@@ -214,12 +215,12 @@ bool CubeScene3D::load(device::GPUDevice &device,
       4, 5, 1, 4, 1, 0, // Bottom (-Y)
   };
 
-  cube_ = std::make_unique<window::Object<3>>(CUBE_OBJ_TAG, std::move(vertices),
-                                              std::move(indices));
+  auto cube = std::make_shared<window::Object<3>>(
+      CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
 
   // Set the bindless texture ID and descriptor set
-  cube_->setTextureId(cubeTextureId_);
-  cube_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  cube->setTextureId(cubeTextureId_);
+  cube->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
   // Assign per-face materials using the FaceMaterial system
   // Each cube face = 2 triangles, 12 triangles total
@@ -227,15 +228,15 @@ bool CubeScene3D::load(device::GPUDevice &device,
   {
     device::FaceMaterial fm;
     fm.textureId = cubeTextureId_.index;
-    cube_->setFaceMaterial(0, fm);
-    cube_->setFaceMaterial(1, fm);
+    cube->setFaceMaterial(0, fm);
+    cube->setFaceMaterial(1, fm);
   }
   // Face 1 (back -Z, tri 2-3): atlas layered texture, no effect
   {
     device::FaceMaterial fm;
     fm.textureId = atlasTextureId_.index;
-    cube_->setFaceMaterial(2, fm);
-    cube_->setFaceMaterial(3, fm);
+    cube->setFaceMaterial(2, fm);
+    cube->setFaceMaterial(3, fm);
   }
   // Face 2 (left -X, tri 4-5): gradient + wave
   {
@@ -244,8 +245,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
-    cube_->setFaceMaterial(4, fm);
-    cube_->setFaceMaterial(5, fm);
+    cube->setFaceMaterial(4, fm);
+    cube->setFaceMaterial(5, fm);
   }
   // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
   {
@@ -254,15 +255,15 @@ bool CubeScene3D::load(device::GPUDevice &device,
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
-    cube_->setFaceMaterial(6, fm);
-    cube_->setFaceMaterial(7, fm);
+    cube->setFaceMaterial(6, fm);
+    cube->setFaceMaterial(7, fm);
   }
   // Face 4 (top +Y, tri 8-9): plain colour, no effect
-  cube_->setFaceMaterial(8, {});
-  cube_->setFaceMaterial(9, {});
+  cube->setFaceMaterial(8, {});
+  cube->setFaceMaterial(9, {});
   // Face 5 (bottom -Y, tri 10-11): plain colour, no effect
-  cube_->setFaceMaterial(10, {});
-  cube_->setFaceMaterial(11, {});
+  cube->setFaceMaterial(10, {});
+  cube->setFaceMaterial(11, {});
 
   // Pipeline config with push constants for time + objectId
   window::PipelineConfig pConfig;
@@ -276,9 +277,9 @@ bool CubeScene3D::load(device::GPUDevice &device,
                                vk::ShaderStageFlagBits::eFragment |
                                vk::ShaderStageFlagBits::eCompute;
 
-  if (!cube_->initialize(allocator, device, *material_,
-                         renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
-                         pConfig, imageRegistry_->getDescriptorSetLayout())) {
+  if (!cube->initialize(allocator, device, *material_, renderer.getRenderPass(),
+                        window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                        imageRegistry_->getDescriptorSetLayout())) {
     std::println(stderr, "[{}] Failed to initialize cube", getName());
     return false;
   }
@@ -291,8 +292,21 @@ bool CubeScene3D::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  cube_->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                           &OBJECT_COMPUTE_SHADER_TAG);
+  cube->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                          &OBJECT_COMPUTE_SHADER_TAG);
+
+  // Create shared frame data
+  frameData_ = std::make_shared<window::Scene3DFrameData>();
+
+  // Add object with update lambda that reads scene frame data
+  addObject(cube, [cube, frameData = frameData_,
+                   totalTimePtr = &totalTime_](uint32_t frameIndex) {
+    float rotY = *totalTimePtr * 0.5f;
+    float rotX = *totalTimePtr * 0.3f;
+    cube->setRotation({rotX, rotY, 0.0f});
+    cube->setTime(*totalTimePtr);
+    cube->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  });
 
   setLoaded(true);
   std::println("[{}] Cube scene loaded (bindless, textureId={}, "
@@ -302,46 +316,26 @@ bool CubeScene3D::load(device::GPUDevice &device,
 }
 
 void CubeScene3D::unload() {
-  if (cube_) {
-    cube_->release();
-    cube_.reset();
-  }
+  clearObjects();
   if (material_) {
     material_->release();
     material_.reset();
   }
   textureTable_.reset();
+  frameData_.reset();
   setLoaded(false);
   std::println("[{}] Cube scene unloaded", getName());
 }
 
-void CubeScene3D::update(float deltaTime) { totalTime_ += deltaTime; }
+void CubeScene3D::update(float deltaTime) {
+  totalTime_ += deltaTime;
 
-void CubeScene3D::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (cube_ && cube_->isInitialized()) {
-    cube_->preRender(cmd, frameIndex);
-  }
-}
-
-void CubeScene3D::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (cube_ && cube_->isInitialized()) {
-    // Update rotation: spin the cube around Y and X axes
-    float rotY = totalTime_ * 0.5f;
-    float rotX = totalTime_ * 0.3f;
-    cube_->setRotation({rotX, rotY, 0.0f});
-    cube_->setTime(totalTime_);
-
-    // Set up 3D view and projection matrices
-    glm::mat4 view =
-        glm::lookAt(glm::vec3(0.0f, 0.5f, 2.5f), glm::vec3(0.0f, 0.0f, 0.0f),
-                    glm::vec3(0.0f, 1.0f, 0.0f));
-
-    // Perspective projection (Vulkan clip space: Y inverted)
-    glm::mat4 proj =
-        glm::perspective(glm::radians(45.0f), 16.0f / 9.0f, 0.1f, 100.0f);
-    proj[1][1] *= -1.0f; // Flip Y for Vulkan
-
-    cube_->updateUniforms(frameIndex, view, proj);
-    cube_->draw(cmd, frameIndex);
-  }
+  // Update view/projection matrices (could be more sophisticated)
+  const float aspect = 16.0f / 9.0f; // could be window aspect
+  frameData_->view =
+      glm::lookAt(glm::vec3(0.0f, 0.5f, 2.5f), glm::vec3(0.0f, 0.0f, 0.0f),
+                  glm::vec3(0.0f, 1.0f, 0.0f));
+  frameData_->proj =
+      glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
+  frameData_->proj[1][1] *= -1.0f;
 }

@@ -1,7 +1,6 @@
 #ifndef SIGNAL_H_
 #define SIGNAL_H_
 
-#include "signal_fwd.h"
 #include <expected>
 #include <flat_map>
 #include <functional>
@@ -9,6 +8,11 @@
 #include <shared_mutex>
 
 namespace core::signal {
+
+using ConnectionId = uint64_t;
+
+template <typename Signature> class Signal;
+template <typename Signature> class ScopedConnection;
 
 template <typename R, typename... Args> class Signal<R(Args...)> {
 public:

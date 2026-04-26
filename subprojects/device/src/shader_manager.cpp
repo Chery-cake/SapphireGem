@@ -529,10 +529,7 @@ ShaderManager::acquire(const ShaderTag *tag) {
   program->refCount = 1;
   program->compiled = true;
 
-  program->refCount = 1;
-  program->compiled = true;
-
-  program->getHash();
+  (void)program->getHash();
 
   ShaderProgram *ptr = program.get();
   shaderRegistry_.add(tag, std::move(program));

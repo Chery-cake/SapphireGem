@@ -1,6 +1,7 @@
 #include "quad2d_scene.h"
 #include "bindless_types.h"
 #include "renderer.h"
+#include "scene.h"
 #include "vulkan/vulkan.hpp"
 #include <print>
 
@@ -145,39 +146,39 @@ bool Quad2DScene::load(device::GPUDevice &device,
       4,
   };
 
-  quad_ = std::make_unique<window::Object<2>>(
+  auto quad = std::make_shared<window::Object<2>>(
       QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
 
   // Set the bindless texture ID and descriptor set
-  quad_->setTextureId(quadTextureId_);
-  quad_->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  quad->setTextureId(quadTextureId_);
+  quad->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
 
   // Assign per-face materials (8 triangles = 4 quadrants x 2 tris)
   // Quadrant 0 (top-left, tri 0-1): plain colour, no effect
-  quad_->setFaceMaterial(0, {});
-  quad_->setFaceMaterial(1, {});
+  quad->setFaceMaterial(0, {});
+  quad->setFaceMaterial(1, {});
   // Quadrant 1 (top-right, tri 2-3): texture
   {
     device::FaceMaterial fm;
     fm.textureId = quadTextureId_.index;
-    quad_->setFaceMaterial(2, fm);
-    quad_->setFaceMaterial(3, fm);
+    quad->setFaceMaterial(2, fm);
+    quad->setFaceMaterial(3, fm);
   }
   // Quadrant 2 (bottom-left, tri 4-5): gradient effect
   {
     device::FaceMaterial fm;
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
-    quad_->setFaceMaterial(4, fm);
-    quad_->setFaceMaterial(5, fm);
+    quad->setFaceMaterial(4, fm);
+    quad->setFaceMaterial(5, fm);
   }
   // Quadrant 3 (bottom-right, tri 6-7): wave effect
   {
     device::FaceMaterial fm;
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.04f, 6.0f});
-    quad_->setFaceMaterial(6, fm);
-    quad_->setFaceMaterial(7, fm);
+    quad->setFaceMaterial(6, fm);
+    quad->setFaceMaterial(7, fm);
   }
 
   window::PipelineConfig pConfig;
@@ -189,9 +190,9 @@ bool Quad2DScene::load(device::GPUDevice &device,
                                vk::ShaderStageFlagBits::eFragment |
                                vk::ShaderStageFlagBits::eCompute;
 
-  if (!quad_->initialize(allocator, device, *material_,
-                         renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
-                         pConfig, imageRegistry_->getDescriptorSetLayout())) {
+  if (!quad->initialize(allocator, device, *material_, renderer.getRenderPass(),
+                        window::MAX_FRAMES_IN_FLIGHT, pConfig,
+                        imageRegistry_->getDescriptorSetLayout())) {
     std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
     return false;
   }
@@ -204,8 +205,15 @@ bool Quad2DScene::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  quad_->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                           &OBJECT_COMPUTE_SHADER_TAG);
+  quad->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                          &OBJECT_COMPUTE_SHADER_TAG);
+
+  frameData_ = std::make_shared<window::Scene2DFrameData>();
+  addObject(quad, [quad = quad.get(), frameData = frameData_,
+                   totalTimePtr = &totalTime_](uint32_t frameIndex) {
+    quad->setTime(*totalTimePtr);
+    quad->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  });
 
   setLoaded(true);
   std::println("[{}] 2D scene loaded (bindless, textureId={})", getName(),
@@ -214,10 +222,7 @@ bool Quad2DScene::load(device::GPUDevice &device,
 }
 
 void Quad2DScene::unload() {
-  if (quad_) {
-    quad_->release();
-    quad_.reset();
-  }
+  clearObjects();
   if (material_) {
     material_->release();
     material_.reset();
@@ -228,21 +233,3 @@ void Quad2DScene::unload() {
 }
 
 void Quad2DScene::update(float deltaTime) { totalTime_ += deltaTime; }
-
-void Quad2DScene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (quad_ && quad_->isInitialized()) {
-    quad_->preRender(cmd, frameIndex);
-  }
-}
-
-void Quad2DScene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (quad_ && quad_->isInitialized()) {
-    quad_->setTime(totalTime_);
-
-    // 2D uses 3x3 matrices (identity for now)
-    glm::mat3 view(1.0f);
-    glm::mat3 proj(1.0f);
-    quad_->updateUniforms(frameIndex, view, proj);
-    quad_->draw(cmd, frameIndex);
-  }
-}
