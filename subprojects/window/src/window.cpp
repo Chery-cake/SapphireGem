@@ -493,6 +493,16 @@ bool Window::renderFrame(float deltaTime) {
   // Begin frame
   auto *sync = renderer_->beginFrame();
   if (!sync) {
+    // Out‑of‑date / suboptimal
+    if (renderer_->getSwapchain() &&
+        renderer_->getSwapchain()->needsRecreation()) {
+      if (!renderer_->recreateSwapchain(static_cast<uint32_t>(width_),
+                                        static_cast<uint32_t>(height_))) {
+        std::println(stderr, "[Window] Swapchain recreation failed");
+        return false;
+      }
+      return true; // skip this frame, next one will render
+    }
     return false;
   }
 

@@ -6,6 +6,8 @@
 #include "pipeline_cache.h"
 #include "shader_manager.h"
 #include "vulkan/vulkan.hpp"
+#include "vulkan/vulkan_core.h"
+#include <memory>
 #include <print>
 #include <utility>
 #include <vk_mem_alloc_enums.hpp>
@@ -414,6 +416,7 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
       std::memcpy(mapped, gpuPositions.data(),
                   vertCount * sizeof(device::GPUVertexPosition));
       positionBuffer_.unmap();
+      positionBuffer_.flush(0, vertCount * sizeof(device::GPUVertexPosition));
     }
 
     // Initialize displaced positions to base positions for all frames
@@ -423,6 +426,8 @@ bool Object<Dim>::initialize(device::VMAAllocator &allocator,
         std::memcpy(dispMapped, gpuPositions.data(),
                     vertCount * sizeof(device::GPUVertexPosition));
         displacedPositionBuffers_[i].unmap();
+        displacedPositionBuffers_[i].flush(
+            0, vertCount * sizeof(device::GPUVertexPosition));
       }
     }
   }
@@ -578,8 +583,9 @@ template <uint32_t Dim> void Object<Dim>::uploadIndirectCommand() const {
   void *mapped = indirectDrawBuffer_.map();
   if (mapped) {
     std::memcpy(mapped, &indirectDrawCmd_,
-                sizeof(VkDrawIndexedIndirectCommand));
+                sizeof(vk::DrawIndexedIndirectCommand));
     indirectDrawBuffer_.unmap();
+    indirectDrawBuffer_.flush(0, sizeof(vk::DrawIndexedIndirectCommand));
   }
   indirectCommandDirty_ = false;
 }
@@ -735,6 +741,7 @@ void Object<Dim>::updateUniforms(uint32_t frameIndex, const MatType &viewMatrix,
   if (mapped) {
     std::memcpy(mapped, &gpuData, sizeof(GPUUBO));
     uniformBuffers_[frameIndex].unmap();
+    uniformBuffers_[frameIndex].flush(0, sizeof(GPUUBO));
   }
 }
 
@@ -769,6 +776,8 @@ void Object<Dim>::uploadFaceData(uint32_t frameIndex) const {
     std::memcpy(mapped, gpuData.data(),
                 faceCount * sizeof(device::GPUFaceData));
     faceDataBuffers_[frameIndex].unmap();
+    faceDataBuffers_[frameIndex].flush(0,
+                                       faceCount * sizeof(device::GPUFaceData));
   }
 }
 
@@ -875,6 +884,9 @@ typename Object<Dim>::MatType Object<Dim>::buildModelMatrix() const {
   // For 0 < Dim <= 3, we use the standard axis-rotation convention.
   // For Dim > 3, only the first 3 rotation entries are applied as the
   // standard X/Y/Z rotations; higher-dimensional rotations are not mapped.
+
+  // TODO fix rotation calculations, also it needs to deal with N dimensions
+
   constexpr uint32_t maxRotations = (Dim < 3) ? Dim : 3;
   for (uint32_t i = 0; i < maxRotations; ++i) {
     float angle = rotation_[i];
@@ -968,7 +980,7 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
                    "[Object] Failed to acquire compute update shader for '{}'",
                    name_);
     } else {
-      device::ShaderProgram *prog = result.value();
+      std::shared_ptr<device::ShaderProgram> prog = result.value();
       vk::PipelineShaderStageCreateInfo stageInfo =
           prog->compute->getStageInfo();
       vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};
@@ -996,7 +1008,7 @@ bool Object<Dim>::initializeCompute(device::GPUDevice &device,
                    "[Object] Failed to acquire compute normal shader for '{}'",
                    name_);
     } else {
-      device::ShaderProgram *prog = result.value();
+      std::shared_ptr<device::ShaderProgram> prog = result.value();
       vk::PipelineShaderStageCreateInfo stageInfo =
           prog->compute->getStageInfo();
       vk::ComputePipelineCreateInfo pipelineInfo{{}, stageInfo, sharedLayout};

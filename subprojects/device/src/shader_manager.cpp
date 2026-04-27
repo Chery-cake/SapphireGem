@@ -424,7 +424,7 @@ ShaderManager::compile(const ShaderCompileRequest &request) {
 // Tag-based shader management
 // ============================================================================
 
-std::expected<ShaderProgram *, ShaderError>
+std::expected<std::shared_ptr<ShaderProgram>, ShaderError>
 ShaderManager::acquire(const ShaderTag *tag) {
   if (!initialized_ || !tag) {
     return std::unexpected(
@@ -432,13 +432,12 @@ ShaderManager::acquire(const ShaderTag *tag) {
   }
 
   // Check if already in registry
-  if (auto *program = shaderRegistry_.get(tag)) {
-    program->refCount++;
-    return program;
+  if (auto existing = shaderRegistry_.get(tag)) {
+    return existing;
   }
 
   // Compile all stages specified in the tag
-  auto program = std::make_unique<ShaderProgram>(*tag);
+  auto program = std::make_shared<ShaderProgram>(*tag);
   bool hasFailure = false;
 
   if (tag->vertexEntry) {
@@ -526,43 +525,18 @@ ShaderManager::acquire(const ShaderTag *tag) {
                  tag->name, stageInfos.size());
   }
 
-  program->refCount = 1;
   program->compiled = true;
-
   (void)program->getHash();
 
-  ShaderProgram *ptr = program.get();
-  shaderRegistry_.add(tag, std::move(program));
+  shaderRegistry_.add(tag, program);
 
   std::println(
       "[ShaderManager] Acquired shader program '{}': {} stage(s) ready",
       tag->name, stageInfos.size());
-  return ptr;
+  return program;
 }
 
-void ShaderManager::release(const ShaderTag *tag) {
-  if (!tag) {
-    return;
-  }
-
-  auto *program = shaderRegistry_.get(tag);
-  if (!program) {
-    return;
-  }
-
-  if (program->refCount > 0) {
-    program->refCount--;
-  }
-
-  // When no longer in use, discard to free memory
-  if (program->refCount == 0) {
-    std::println("[ShaderManager] Releasing unused shader program: {}",
-                 tag->name);
-    shaderRegistry_.remove(tag);
-  }
-}
-
-ShaderProgram *ShaderManager::getProgram(const ShaderTag *tag) {
+std::shared_ptr<ShaderProgram> ShaderManager::getProgram(const ShaderTag *tag) {
   if (!tag) {
     return nullptr;
   }

@@ -485,6 +485,31 @@ bool Renderer::handleSwapchainRecreation() {
   return swapchain_->createFramebuffers(getRenderPass(), depthView);
 }
 
+bool Renderer::recreateSwapchain() {
+  if (!swapchain_) {
+    return false;
+  }
+  waitIdle();
+  // Get the current (possibly new) window size
+  // You’ll need to store window size somewhere – pass it or store inside
+  // Swapchain.
+  if (!swapchain_->recreate(swapchain_->getExtent().width,
+                            swapchain_->getExtent().height)) {
+    return false;
+  }
+  return handleSwapchainRecreation(); // framebuffers, depth, image sync
+                                      // objects
+}
+
+bool Renderer::recreateSwapchain(uint32_t newWidth, uint32_t newHeight) {
+  if (!swapchain_)
+    return false;
+  waitIdle();
+  if (!swapchain_->recreate(newWidth, newHeight))
+    return false;
+  return handleSwapchainRecreation();
+}
+
 vk::CommandBuffer Renderer::getCurrentCommandBuffer() const {
   if (frameSyncObjects_.empty()) {
     return nullptr;

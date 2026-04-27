@@ -244,6 +244,12 @@ public:
   [[nodiscard]] uint32_t getLayerCount() const;
   [[nodiscard]] bool isUploaded() const { return uploaded_; }
   [[nodiscard]] vk::Sampler getSampler() const;
+
+  /**
+   * @brief Get a layer by index.
+   * @warning The returned pointer is only valid while the Texture's mutex is
+   * held; do not store it across calls that may modify the texture.
+   */
   [[nodiscard]] const TextureLayer *getLayer(uint32_t index) const;
 
   /**

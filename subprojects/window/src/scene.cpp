@@ -76,16 +76,27 @@ void Scene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
 
 void Scene::addObject(std::shared_ptr<ObjectBase> obj,
                       ObjectUpdateFunc updateFunc) {
-  std::lock_guard lock(objectsMutex_);
-  objects_.push_back({std::move(obj), std::move(updateFunc)});
-  objectAdded.emit(obj.get());
+  std::unique_lock lock(objectsMutex_);
+  objects_.push_back(Drawable(std::move(obj), std::move(updateFunc)));
+  auto *ptr = objects_.back().object.get();
+
+  lock.unlock();
+  objectAdded.emit(ptr);
 }
 
 void Scene::removeObject(const ObjectBase *obj) {
-  std::lock_guard lock(objectsMutex_);
-  std::erase_if(objects_,
-                [obj](const Drawable &d) { return d.object.get() == obj; });
-  objectRemoved.emit(obj);
+  std::unique_lock lock(objectsMutex_);
+  auto it = std::ranges::find_if(
+      objects_, [obj](const Drawable &d) { return d.object.get() == obj; });
+  if (it == objects_.end()) {
+    return;
+  }
+
+  auto *ptr = it->object.get();
+  objects_.erase(it);
+
+  lock.unlock();
+  objectRemoved.emit(ptr);
 }
 
 void Scene::clearObjects() {

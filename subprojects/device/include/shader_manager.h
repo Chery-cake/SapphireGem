@@ -96,7 +96,6 @@ struct DEVICE_API ShaderProgram {
   std::unique_ptr<CompiledShader> compute;
   std::unique_ptr<CompiledShader> tessControl;
   std::unique_ptr<CompiledShader> tessEval;
-  uint32_t refCount = 0; // Reference count for memory management
   bool compiled = false;
 
   explicit ShaderProgram(const ShaderTag & /*tag*/) {}
@@ -197,31 +196,28 @@ public:
    * @param tag Shader tag identifying the program
    * @return Pointer to compiled shader program, or ShaderError on failure
    */
-  [[nodiscard]] std::expected<ShaderProgram *, ShaderError>
+  [[nodiscard]] std::expected<std::shared_ptr<ShaderProgram>, ShaderError>
   acquire(const ShaderTag *tag);
 
   /**
-   * @brief Release a shader program, potentially freeing memory
-   *
-   * Decrements the reference count. When the count reaches zero,
-   * the compiled shaders are discarded to save memory.
-   *
-   * @param tag Shader tag to release
+   * @brief Explicitly remove a shader program from the registry.
+   *        Any existing std::shared_ptr will keep the program alive.
    */
-  void release(const ShaderTag *tag);
+  void release(const ShaderTag *tag) { shaderRegistry_.remove(tag); }
 
   /**
    * @brief Get a shader program by tag without changing reference count
    * @param tag Shader tag
    * @return Pointer to shader program, or nullptr if not loaded
    */
-  ShaderProgram *getProgram(const ShaderTag *tag);
+  std::shared_ptr<ShaderProgram> getProgram(const ShaderTag *tag);
 
   /**
    * @brief Get the shader registry for direct access
    * @return Reference to the shader registry
    */
-  [[nodiscard]] core::ResourceRegistry<ShaderTag, ShaderProgram> &
+  [[nodiscard]] core::ResourceRegistry<
+      ShaderTag, ShaderProgram, core::WeakPtrPolicy<ShaderTag, ShaderProgram>> &
   getRegistry() {
     return shaderRegistry_;
   }
@@ -306,7 +302,9 @@ private:
   std::vector<std::string> includePaths_;
 
   // Tag-based shader registry
-  core::ResourceRegistry<ShaderTag, ShaderProgram> shaderRegistry_;
+  core::ResourceRegistry<ShaderTag, ShaderProgram,
+                         core::WeakPtrPolicy<ShaderTag, ShaderProgram>>
+      shaderRegistry_;
 
   bool initialized_ = false;
 };

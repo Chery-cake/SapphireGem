@@ -153,6 +153,9 @@ public:
    */
   bool handleSwapchainRecreation();
 
+  bool recreateSwapchain();
+  bool recreateSwapchain(uint32_t newWidth, uint32_t newHeight);
+
   // Getters
   [[nodiscard]] vk::RenderPass getRenderPass() const {
     return renderPass_ ? *renderPass_ : vk::RenderPass{};

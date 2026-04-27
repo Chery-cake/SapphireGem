@@ -149,7 +149,7 @@ public:
     return shaderTag_;
   }
   const device::ShaderProgram *getShaderProgram() const {
-    return shaderProgram_;
+    return shaderProgram_.get();
   }
   [[nodiscard]] bool isInitialized() const { return initialized_; }
 
@@ -171,7 +171,7 @@ private:
   const device::ShaderTag *shaderTag_ = nullptr;
 
   // Cached shader program (owned by ShaderManager)
-  device::ShaderProgram *shaderProgram_ = nullptr;
+  std::shared_ptr<device::ShaderProgram> shaderProgram_;
 
   bool initialized_ = false;
   mutable std::mutex materialMutex_;

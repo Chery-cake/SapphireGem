@@ -5,10 +5,115 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 namespace core {
+
+// Default policy – exactly what the current implementation does.
+template <typename Tag, typename Asset> struct UniquePtrPolicy {
+  using StoredType = std::unique_ptr<Asset>;
+  using InputType = std::unique_ptr<Asset>;
+  using ReturnType = Asset *;
+  using ExtractType = std::unique_ptr<Asset>;
+
+  template <typename... Args> static StoredType make_asset(Args &&...args) {
+    return std::make_unique<Asset>(std::forward<Args>(args)...);
+  }
+
+  static bool add_to_map(std::unordered_map<const Tag *, StoredType> &map,
+                         const Tag *tag, InputType asset) {
+    return map.try_emplace(tag, std::move(asset)).second;
+  }
+
+  static Asset *get_ptr(const StoredType &stored) { return stored.get(); }
+
+  static ExtractType extract(StoredType &stored) { return std::move(stored); }
+
+  // For iteration: returns a raw pointer that is guaranteed to live
+  // during the callback (the map owns it).
+  static Asset *view_for_callback(const StoredType &stored) {
+    return stored.get();
+  }
+};
+
+// Shared ptr
+template <typename Tag, typename Asset> struct SharedPtrPolicy {
+  using StoredType = std::shared_ptr<Asset>;
+  using InputType = std::shared_ptr<Asset>;
+  using ReturnType = std::shared_ptr<Asset>;
+  using ExtractType = std::shared_ptr<Asset>;
+
+  template <typename... Args> static StoredType make_asset(Args &&...args) {
+    return std::make_shared<Asset>(std::forward<Args>(args)...);
+  }
+
+  static bool add_to_map(std::unordered_map<const Tag *, StoredType> &map,
+                         const Tag *tag, InputType asset) {
+    return map.try_emplace(tag, std::move(asset)).second;
+  }
+
+  static Asset *get_ptr(const StoredType &stored) { return stored.get(); }
+
+  static ExtractType extract(StoredType &stored) { return std::move(stored); }
+
+  // For iteration: returns a raw pointer that is guaranteed to live
+  // during the callback (the map owns it).
+  static Asset *view_for_callback(const StoredType &stored) {
+    return stored.get();
+  }
+};
+
+// Weak‑ptr cache policy – stores a non‑owning weak_ptr.
+template <typename Tag, typename Asset> struct WeakPtrPolicy {
+  using StoredType = std::weak_ptr<Asset>;
+  using InputType = std::shared_ptr<Asset>;
+  using ReturnType = std::shared_ptr<Asset>;
+  using ExtractType = std::shared_ptr<Asset>;
+
+  template <typename... Args> static StoredType make_asset(Args &&...args) {
+    return std::make_shared<Asset>(std::forward<Args>(args)...);
+  }
+
+  static bool add_to_map(std::unordered_map<const Tag *, StoredType> &map,
+                         const Tag *tag, InputType asset) {
+    auto it = map.find(tag);
+    if (it != map.end()) {
+      if (!it->second.expired()) {
+        return false;
+      }
+      map.erase(it);
+    }
+    map.try_emplace(tag, asset);
+    return true;
+  }
+
+  // `get` returns a shared_ptr – keeps the object alive.
+  static std::shared_ptr<Asset> get_ptr(const StoredType &stored) {
+    return stored.lock();
+  }
+
+  static ExtractType extract(StoredType &stored) {
+    auto shared = stored.lock();
+    stored.reset(); // invalidate weak reference
+    return shared;
+  }
+
+  // For iteration: lock and return raw pointer; the caller must ensure
+  // the returned shared_ptr lives during the callback.
+  // We'll handle that inside the registry's forEach.
+  static Asset *view_for_callback(const StoredType &stored) {
+    // This is unsafe used alone; the registry must hold a temporary
+    // shared_ptr. See forEach implementation below.
+    return nullptr;
+  }
+};
+
+template <typename Tag, typename Asset, typename Policy>
+concept OwnerShipPolicy = std::is_same_v<Policy, UniquePtrPolicy<Tag, Asset>> ||
+                          std::is_same_v<Policy, SharedPtrPolicy<Tag, Asset>> ||
+                          std::is_same_v<Policy, WeakPtrPolicy<Tag, Asset>>;
 
 /**
  * @brief A combined registry for type-safe asset management with metadata-rich
@@ -86,12 +191,16 @@ namespace core {
  *             similar interface)
  * @tparam Asset The asset type to store
  */
-template <typename Tag, typename Asset> class ResourceRegistry {
+template <typename Tag, typename Asset,
+          typename Policy = UniquePtrPolicy<Tag, Asset>>
+  requires OwnerShipPolicy<Tag, Asset, Policy>
+class ResourceRegistry {
 private:
-  using SignalCall = void(const Tag *, Asset *);
+  using SignalCall = void(const Tag *,
+                          Asset *); // TODO possible improvement type per policy
   using SignalSlot = std::move_only_function<SignalCall>;
 
-  std::unordered_map<const Tag *, std::unique_ptr<Asset>> assets_;
+  std::unordered_map<const Tag *, typename Policy::StoredType> assets_;
   signal::Signal<SignalCall> assetAdded_;
   signal::Signal<SignalCall> assetRemoved_;
   mutable std::mutex mutex_;
@@ -120,7 +229,7 @@ public:
    * @param asset Unique pointer to the asset (ownership transferred)
    * @return true if added, false if tag already exists
    */
-  bool add(const Tag *tag, std::unique_ptr<Asset> asset);
+  bool add(const Tag *tag, typename Policy::InputType asset);
 
   /**
    * @brief Construct and add an asset using the tag's metadata
@@ -142,14 +251,14 @@ public:
    *       When replacing, remove callbacks are invoked first, then add
    *       callbacks.
    */
-  bool set(const Tag *tag, std::unique_ptr<Asset> asset);
+  bool set(const Tag *tag, typename Policy::InputType asset);
 
   /**
    * @brief Get an asset by tag
    * @param tag Pointer to the tag instance
    * @return Pointer to the asset, or nullptr if not found
    */
-  Asset *get(const Tag *tag) const;
+  typename Policy::ReturnType get(const Tag *tag) const;
 
   /**
    * @brief Get both the tag and asset as an Entry
@@ -178,7 +287,7 @@ public:
    * @param tag Pointer to the tag instance
    * @return Unique pointer to the asset, or nullptr if not found
    */
-  std::unique_ptr<Asset> extract(const Tag *tag);
+  typename Policy::ExtractType extract(const Tag *tag);
 
   /**
    * @brief Iterate over all entries (tag + asset pairs)
