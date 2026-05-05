@@ -2,6 +2,7 @@
 #define OBJECT_H_
 
 #include "bindless_types.h"
+#include "entities.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
 #include "shader_manager.h"
@@ -16,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <type_traits>
 
 namespace window {
 
@@ -152,50 +154,12 @@ template <uint32_t Dim> struct Vertex {
   std::array<float, 3> color; // RGB TODO change to RGBA
 };
 
-class WINDOW_API ObjectBase {
-public:
-  explicit ObjectBase(const char *name) : name_(name) {}
-  virtual ~ObjectBase() = default;
-  virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
-  [[nodiscard]] virtual bool isInitialized() const { return initialized_; };
-  [[nodiscard]] virtual const std::string getName() const { return name_; };
-  virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
-  // additional virtual methods if needed
-protected:
-  inline ObjectBase(ObjectBase &&other) noexcept;
-  inline ObjectBase &operator=(ObjectBase &&other) noexcept;
-
-  const char *name_;
-  bool initialized_ = false;
-};
-
-/**
- * @brief Templated renderable object with compile-time dimension
- *
- * A 2D object (Object<2>) cannot interact directly with a 3D object
- * (Object<3>) since they are different types. This prevents accidental
- * mixing of dimensions.
- *
- * Objects receive their vertices and indices at construction, and the
- * face count is calculated automatically from the index data (every
- * 3 consecutive indices form one triangular face).
- *
- * The uniform buffer uses (Dim+1)×(Dim+1) matrices, so a 2D object
- * has a smaller GPU buffer compared to a 3D object.
- *
- * All transform calculations (position, rotation, scale) are
- * dimension-agnostic: the same operations apply across all dimensions,
- * just on arrays of different sizes.
- *
- * Rendering mode diversity (different styles per face) is handled
- * per-vertex in the shader via mode indices, not by per-face material
- * overrides. Each object uses a single material/pipeline instance.
- *
- * @tparam Dim Spatial dimension (1, 2, 3, ...)
- *
- * Thread-safe: all mutable operations are protected by mutex.
- */
-template <uint32_t Dim> class Object : public ObjectBase {
+template <uint32_t Dim,
+          template <typename, typename...> class Entity =
+              ecs::entity::TupleDerived,
+          typename... Comps>
+  requires ecs::entity::IsEntityTemplate<Entity>
+class Object : public Entity<Object<Dim, Entity, Comps...>, Comps...> {
 public:
   static constexpr uint32_t DIMENSION = Dim;
   using UBO = UniformBufferData<Dim>;
@@ -278,7 +242,7 @@ public:
    * @param cmd Command buffer to record draw commands
    * @param frameIndex Current frame in flight index
    */
-  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
+  void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
   /**
    * @brief Initialize the per-frame compute update pipeline and run the
@@ -315,7 +279,7 @@ public:
    * @param cmd        Command buffer to record compute commands into
    * @param frameIndex Current frame-in-flight index
    */
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
+  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
   // =========================================================================
   // Bindless texture ID support

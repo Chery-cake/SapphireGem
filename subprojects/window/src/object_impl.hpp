@@ -14,17 +14,6 @@
 
 namespace window {
 
-ObjectBase::ObjectBase(ObjectBase &&other) noexcept
-    : name_(other.name_), initialized_(other.initialized_) {
-  other.initialized_ = false;
-}
-ObjectBase &ObjectBase::operator=(ObjectBase &&other) noexcept {
-  name_ = other.name_;
-  initialized_ = other.initialized_;
-  other.initialized_ = false;
-  return *this;
-}
-
 // ============================================================================
 // Construction / Destruction
 // ============================================================================
