@@ -3,6 +3,7 @@
 
 #include "glm/ext/matrix_float3x3.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
+#include "object.h"
 #include "signal.hpp"
 #include "vulkan/vulkan.hpp"
 #include "window_export.h"
@@ -99,28 +100,42 @@ public:
   virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex);
 
   // ----- Manage objects (thread‑safe) -----
-  void addObject(std::shared_ptr<ObjectBase> obj,
+  /**
+   * @brief Add a renderable entity to the scene.
+   * @param rc         Pointer to the render component (must outlive the
+   * scene).
+   * @param updateFunc Optional per‑frame update (e.g. for uniforms).
+   */
+  void addEntity(ecs::component::object::RenderComponentBase *rc,
                  ObjectUpdateFunc updateFunc = {});
-  void removeObject(const ObjectBase *obj);
-  void clearObjects();
+
+  /**
+   * @brief Remove an entity by its render component pointer.
+   */
+  void removeEntity(const ecs::component::object::RenderComponentBase *rc);
+  void clearEntities();
 
   [[nodiscard]] bool isLoaded() const { return loaded_; }
   [[nodiscard]] const char *getName() const { return name_; }
 
-  core::signal::Signal<void(const ObjectBase *)> objectAdded;
-  core::signal::Signal<void(const ObjectBase *)> objectRemoved;
+  core::signal::Signal<void(
+      const ecs::component::object::RenderComponentBase *)>
+      objectAdded;
+  core::signal::Signal<void(
+      const ecs::component::object::RenderComponentBase *)>
+      objectRemoved;
 
 protected:
   void setLoaded(bool loaded) { loaded_ = loaded; }
 
 private:
   struct Drawable {
-    std::shared_ptr<ObjectBase> object;
+    ecs::component::object::RenderComponentBase *renderComp = nullptr;
     ObjectUpdateFunc update;
   };
 
-  std::vector<Drawable> objects_;
-  mutable std::mutex objectsMutex_;
+  std::vector<Drawable> entities_;
+  mutable std::mutex entitiesMutex_;
 
   const char *name_;
   bool loaded_ = false;

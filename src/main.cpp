@@ -48,13 +48,6 @@ constexpr window::MaterialTag QUAD_2D_MATERIAL_TAG{"quad2d_bindless_mat",
 constexpr window::MaterialTag POLYTOPE_MATERIAL_TAG{"polytope_mat",
                                                     &OBJECT_BASE_SHADER_TAG};
 
-// Object tags
-constexpr window::ObjectTag CUBE_OBJ_TAG{"cube_obj", &CUBE_MATERIAL_TAG};
-constexpr window::ObjectTag QUAD_2D_OBJ_TAG{"quad2d_obj",
-                                            &QUAD_2D_MATERIAL_TAG};
-constexpr window::ObjectTag POLYTOPE_OBJ_TAG{"polytope_obj",
-                                             &POLYTOPE_MATERIAL_TAG};
-
 // Texture tags for shared assets (still used for CPU-side image loading)
 static const window::ImageTag CHECKERBOARD_IMAGE{window::ImageFromFile{
     "checkerboard", "assets/textures/checkerboard.png", 256, 256}};

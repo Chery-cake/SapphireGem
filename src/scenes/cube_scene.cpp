@@ -2,9 +2,11 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "object.h"
 #include "renderer.h"
 #include "scene.h"
 #include "vulkan/vulkan.hpp"
+#include <memory>
 #include <print>
 
 CubeScene3D::CubeScene3D(
@@ -200,7 +202,7 @@ bool CubeScene3D::load(device::GPUDevice &device,
       {-0.5f, 0.5f, -0.5f},
   }};
 
-  std::vector<window::Vertex<3>> vertices(8);
+  std::vector<ecs::component::object::Vertex<3>> vertices(8);
   for (size_t i = 0; i < 8; ++i) {
     vertices[i].position = {cubePos[i][0], cubePos[i][1], cubePos[i][2]};
     vertices[i].color = {1.0f, 1.0f, 1.0f};
@@ -215,12 +217,40 @@ bool CubeScene3D::load(device::GPUDevice &device,
       4, 5, 1, 4, 1, 0, // Bottom (-Y)
   };
 
-  auto cube = std::make_shared<window::Object<3>>(
-      CUBE_OBJ_TAG, std::move(vertices), std::move(indices));
+  // ---- Create the entity ----
+  entity_ = std::make_unique<Cube>();
+  auto &transform =
+      entity_->get<ecs::component::object::TransformComponent<3>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh<3>>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent<3>>();
+
+  mesh.vertices = std::move(vertices);
+  mesh.indices = std::move(indices);
+  mesh.calculateFaces();
+
+  if (!mesh.upload(allocator)) {
+    return false;
+  }
+
+  // ---- Initialize the render component ----
+  window::PipelineConfig pConfig;
+  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+  pConfig.cullMode = vk::CullModeFlagBits::eBack;
+  pConfig.frontFace = vk::FrontFace::eCounterClockwise;
+  pConfig.depthTestEnable = pConfig.depthWriteEnable = true;
+  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
+  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
+                               vk::ShaderStageFlagBits::eFragment |
+                               vk::ShaderStageFlagBits::eCompute;
+
+  if (!rc.initialize(allocator, device, mesh, *material_,
+                     renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
+                     pConfig, imageRegistry_->getDescriptorSetLayout()))
+    return false;
 
   // Set the bindless texture ID and descriptor set
-  cube->setTextureId(cubeTextureId_);
-  cube->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  rc.bindlessDescriptorSet = imageRegistry_->getDescriptorSet();
+  rc.baseTextureId = cubeTextureId_;
 
   // Assign per-face materials using the FaceMaterial system
   // Each cube face = 2 triangles, 12 triangles total
@@ -228,15 +258,15 @@ bool CubeScene3D::load(device::GPUDevice &device,
   {
     device::FaceMaterial fm;
     fm.textureId = cubeTextureId_.index;
-    cube->setFaceMaterial(0, fm);
-    cube->setFaceMaterial(1, fm);
+    rc.setFaceMaterial(0, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(1, fm, mesh.getFaceCount());
   }
   // Face 1 (back -Z, tri 2-3): atlas layered texture, no effect
   {
     device::FaceMaterial fm;
     fm.textureId = atlasTextureId_.index;
-    cube->setFaceMaterial(2, fm);
-    cube->setFaceMaterial(3, fm);
+    rc.setFaceMaterial(2, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(3, fm, mesh.getFaceCount());
   }
   // Face 2 (left -X, tri 4-5): gradient + wave
   {
@@ -245,8 +275,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
-    cube->setFaceMaterial(4, fm);
-    cube->setFaceMaterial(5, fm);
+    rc.setFaceMaterial(4, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(5, fm, mesh.getFaceCount());
   }
   // Face 3 (right +X, tri 6-7): gradient + wave (same as left)
   {
@@ -255,34 +285,15 @@ bool CubeScene3D::load(device::GPUDevice &device,
         device::FaceEffect{device::EffectType::eGradient, 0.05f, 4.0f});
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.05f, 4.0f});
-    cube->setFaceMaterial(6, fm);
-    cube->setFaceMaterial(7, fm);
+    rc.setFaceMaterial(6, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(7, fm, mesh.getFaceCount());
   }
   // Face 4 (top +Y, tri 8-9): plain colour, no effect
-  cube->setFaceMaterial(8, {});
-  cube->setFaceMaterial(9, {});
+  rc.setFaceMaterial(8, {}, mesh.getFaceCount());
+  rc.setFaceMaterial(9, {}, mesh.getFaceCount());
   // Face 5 (bottom -Y, tri 10-11): plain colour, no effect
-  cube->setFaceMaterial(10, {});
-  cube->setFaceMaterial(11, {});
-
-  // Pipeline config with push constants for time + objectId
-  window::PipelineConfig pConfig;
-  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
-  pConfig.cullMode = vk::CullModeFlagBits::eBack;
-  pConfig.frontFace = vk::FrontFace::eCounterClockwise;
-  pConfig.depthTestEnable = true;
-  pConfig.depthWriteEnable = true;
-  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
-  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
-                               vk::ShaderStageFlagBits::eFragment |
-                               vk::ShaderStageFlagBits::eCompute;
-
-  if (!cube->initialize(allocator, device, *material_, renderer.getRenderPass(),
-                        window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                        imageRegistry_->getDescriptorSetLayout())) {
-    std::println(stderr, "[{}] Failed to initialize cube", getName());
-    return false;
-  }
+  rc.setFaceMaterial(10, {}, mesh.getFaceCount());
+  rc.setFaceMaterial(11, {}, mesh.getFaceCount());
 
   // Compute shader tags for wave displacement and normal precomputation
   static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
@@ -292,20 +303,22 @@ bool CubeScene3D::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  cube->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                          &OBJECT_COMPUTE_SHADER_TAG);
+  if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
+                            mesh.indices.size()))
+    return false;
 
   // Create shared frame data
   frameData_ = std::make_shared<window::Scene3DFrameData>();
 
   // Add object with update lambda that reads scene frame data
-  addObject(cube, [cube, frameData = frameData_,
-                   totalTimePtr = &totalTime_](uint32_t frameIndex) {
-    float rotY = *totalTimePtr * 0.5f;
-    float rotX = *totalTimePtr * 0.3f;
-    cube->setRotation({rotX, rotY, 0.0f});
-    cube->setTime(*totalTimePtr);
-    cube->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  addEntity(&rc, [this, &transform, &rc](uint32_t frameIndex) {
+    float rotY = totalTime_ * 0.5f;
+    float rotX = totalTime_ * 0.3f;
+    transform.rotation = {rotX, rotY, 0.0f};
+    rc.time = totalTime_;
+    rc.updateUniforms(frameIndex, transform, frameData_->view,
+                      frameData_->proj);
   });
 
   setLoaded(true);
@@ -316,11 +329,12 @@ bool CubeScene3D::load(device::GPUDevice &device,
 }
 
 void CubeScene3D::unload() {
-  clearObjects();
+  clearEntities();
+  entity_.reset();
   if (material_) {
     material_->release();
-    material_.reset();
   }
+  material_.reset();
   textureTable_.reset();
   frameData_.reset();
   setLoaded(false);

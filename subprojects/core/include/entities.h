@@ -17,9 +17,9 @@
 #include <utility>
 #include <vector>
 
-namespace ecs::component {
+namespace ecs::component::detail {
 
-template <typename T> struct ComponentDependencies {
+template <typename... Args> struct ComponentDependencies {
   using required = std::tuple<>;
 };
 
@@ -51,13 +51,14 @@ template <typename... Components> constexpr bool all_dependencies_satisfied() {
   }.template operator()<Components>() &&
           ...);
 }
-} // namespace ecs::component
+
+} // namespace ecs::component::detail
 
 namespace ecs::entity {
 
 template <typename... Components> class Tuple {
   static_assert(
-      component::all_dependencies_satisfied<Components...>(),
+      component::detail::all_dependencies_satisfied<Components...>(),
       "Tuple entity is missing one or more required component dependencies.");
 
 public:
@@ -81,9 +82,6 @@ private:
   std::tuple<Components...> components_;
 };
 
-template <typename Derived, typename... Components>
-using TupleDerived = Tuple<Components...>;
-
 //////////////////////////////////////
 
 template <typename Derived, typename... Components> class Linear;
@@ -91,7 +89,7 @@ template <typename Derived, typename... Components> class Linear;
 template <typename Derived, typename First, typename... Rest>
 class Linear<Derived, First, Rest...> : public First,
                                         public Linear<Derived, Rest...> {
-  static_assert(component::all_dependencies_satisfied<First, Rest...>(),
+  static_assert(component::detail::all_dependencies_satisfied<First, Rest...>(),
                 "Linear entity is missing required component dependencies.");
 
 public:
@@ -116,7 +114,7 @@ template <typename Derived, typename... Components> class Virtual;
 template <typename Derived, typename First, typename... Rest>
 class Virtual<Derived, First, Rest...>
     : public virtual First, public virtual Virtual<Derived, Rest...> {
-  static_assert(component::all_dependencies_satisfied<First, Rest...>(),
+  static_assert(component::detail::all_dependencies_satisfied<First, Rest...>(),
                 "Virtual entity is missing required component dependencies.");
 
 public:
@@ -137,23 +135,24 @@ template <typename Derived> class Virtual<Derived> {};
 ////////////////////////////////////////////////////
 
 // Primary template: two different template-template parameters → false
-template <template <typename, typename...> class A,
-          template <typename, typename...> class B>
+template <template <typename...> class A, template <typename...> class B>
 struct is_same_template : std::false_type {};
 
 // Specialisation: same parameter → true
-template <template <typename, typename...> class A>
+template <template <typename...> class A>
 struct is_same_template<A, A> : std::true_type {};
 
 // Convenience variable template
-template <template <typename, typename...> class A,
-          template <typename, typename...> class B>
+template <template <typename...> class A, template <typename...> class B>
 inline constexpr bool is_same_template_v = is_same_template<A, B>::value;
 
-template <template <typename, typename...> class Entity>
+template <template <typename...> class Entity>
 concept IsEntityTemplate =
-    is_same_template_v<Entity, TupleDerived> ||
-    is_same_template_v<Entity, Linear> || is_same_template_v<Entity, Virtual>;
+    is_same_template_v<Entity, Tuple> || is_same_template_v<Entity, Linear> ||
+    is_same_template_v<Entity, Virtual>;
+
+template <template <typename, typename...> class Entity>
+concept IsEntityTuple = is_same_template_v<Entity, Tuple>;
 
 } // namespace ecs::entity
 
@@ -183,7 +182,7 @@ private:
   }
 
   template <typename T> bool meets_dependencies_unsafe() const {
-    using Reqs = typename ComponentDependencies<T>::required;
+    using Reqs = typename detail::ComponentDependencies<T>::required;
     return check_requirements<Reqs>::all_exist(*this);
   }
 
@@ -289,8 +288,8 @@ template <typename T, size_t N> struct MultiComponent {
 };
 
 template <typename T, size_t N>
-struct ComponentDependencies<MultiComponent<T, N>> {
-  using required = typename ComponentDependencies<T>::required;
+struct detail::ComponentDependencies<MultiComponent<T, N>> {
+  using required = typename detail::ComponentDependencies<T>::required;
 };
 
 template <typename T> struct DynamicMultiComponent {
@@ -318,8 +317,9 @@ template <typename T> struct DynamicMultiComponent {
   [[nodiscard]] size_t size() const { return components.size(); }
 };
 
-template <typename T> struct ComponentDependencies<DynamicMultiComponent<T>> {
-  using required = typename ComponentDependencies<T>::required;
+template <typename T>
+struct detail::ComponentDependencies<DynamicMultiComponent<T>> {
+  using required = typename detail::ComponentDependencies<T>::required;
 };
 
 } // namespace ecs::component

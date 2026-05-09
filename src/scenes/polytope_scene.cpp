@@ -2,6 +2,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_clip_space.hpp"
 #include "glm/ext/matrix_transform.hpp"
+#include "object.h"
 #include "renderer.h"
 #include "vulkan/vulkan.hpp"
 #include <algorithm>
@@ -112,7 +113,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   std::uniform_real_distribution<float> colorDist(0.2f, 1.0f);
 
   // Build 12 unique vertices with average colour from adjacent faces
-  std::vector<window::Vertex<3>> vertices(12);
+  std::vector<ecs::component::object::Vertex<3>> vertices(12);
   // Track per-vertex colour accumulation
   std::vector<glm::vec3> colorAccum(12, glm::vec3(0.0f));
   std::vector<int> colorCount(12, 0);
@@ -162,8 +163,19 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     indices.push_back(static_cast<uint32_t>(i2));
   }
 
-  auto polytope = std::make_shared<window::Object<3>>(
-      POLYTOPE_OBJ_TAG, std::move(vertices), std::move(indices));
+  entity_ = std::make_unique<Poly>();
+  auto &transform =
+      entity_->get<ecs::component::object::TransformComponent<3>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh<3>>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent<3>>();
+
+  mesh.vertices = std::move(vertices);
+  mesh.indices = std::move(indices);
+  mesh.calculateFaces();
+
+  if (!mesh.upload(allocator)) {
+    return false;
+  }
 
   // Assign per-face materials cycling through material types
   for (int fi = 0; fi < numFaces; ++fi) {
@@ -211,7 +223,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       break;
     }
 
-    polytope->setFaceMaterial(faceIdx, fm);
+    rc.setFaceMaterial(faceIdx, fm, mesh.getFaceCount());
   }
 
   // Upload texture tables to GPU
@@ -226,7 +238,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  polytope->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  rc.bindlessDescriptorSet = imageRegistry_->getDescriptorSet();
 
   window::PipelineConfig pConfig;
   pConfig.topology = vk::PrimitiveTopology::eTriangleList;
@@ -239,13 +251,10 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
                                vk::ShaderStageFlagBits::eFragment |
                                vk::ShaderStageFlagBits::eCompute;
 
-  if (!polytope->initialize(allocator, device, *material_,
-                            renderer.getRenderPass(),
-                            window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                            imageRegistry_->getDescriptorSetLayout())) {
-    std::println(stderr, "[{}] Failed to initialize polytope", getName());
+  if (!rc.initialize(allocator, device, mesh, *material_,
+                     renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
+                     pConfig, imageRegistry_->getDescriptorSetLayout()))
     return false;
-  }
 
   // Compute shader tags for wave displacement and normal precomputation
   static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
@@ -255,17 +264,19 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  polytope->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                              &OBJECT_COMPUTE_SHADER_TAG);
+  if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
+                            mesh.indices.size()))
+    return false;
 
   frameData_ = std::make_shared<window::Scene3DFrameData>();
-  addObject(polytope, [polytope = polytope.get(), frameData = frameData_,
-                       totalTimePtr = &totalTime_, rotXPtr = &rotX_,
-                       rotYPtr = &rotY_,
-                       rotZPtr = &rotZ_](uint32_t frameIndex) {
-    polytope->setRotation({*rotXPtr, *rotYPtr, *rotZPtr});
-    polytope->setTime(*totalTimePtr);
-    polytope->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  addEntity(&rc, [this, &transform, &rc](uint32_t frameIndex) {
+    float rotY = totalTime_ * 0.5f;
+    float rotX = totalTime_ * 0.3f;
+    transform.rotation = {rotX, rotY, 0.0f};
+    rc.time = totalTime_;
+    rc.updateUniforms(frameIndex, transform, frameData_->view,
+                      frameData_->proj);
   });
 
   setLoaded(true);
@@ -274,11 +285,11 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 }
 
 void PolytopeDemoScene::unload() {
-  clearObjects();
+  clearEntities();
   if (material_) {
     material_->release();
-    material_.reset();
   }
+  material_.reset();
   setLoaded(false);
   std::println("[{}] Polytope scene unloaded", getName());
 }

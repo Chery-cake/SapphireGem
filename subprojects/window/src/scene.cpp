@@ -11,21 +11,21 @@ Scene::Scene(const SceneTag &tag) : name_(tag.name) {}
 Scene::~Scene() = default;
 
 Scene::Scene(Scene &&other) noexcept {
-  std::scoped_lock lock(other.sceneMutex_, other.objectsMutex_);
+  std::scoped_lock lock(other.sceneMutex_, other.entitiesMutex_);
   name_ = other.name_;
   loaded_ = other.loaded_;
-  objects_ = std::move(other.objects_);
+  entities_ = std::move(other.entities_);
   other.loaded_ = false;
 }
 
 Scene &Scene::operator=(Scene &&other) noexcept {
   if (this != &other) {
-    std::scoped_lock lock(sceneMutex_, other.sceneMutex_, objectsMutex_,
-                          other.objectsMutex_);
+    std::scoped_lock lock(sceneMutex_, other.sceneMutex_, entitiesMutex_,
+                          other.entitiesMutex_);
     name_ = other.name_;
     loaded_ = other.loaded_;
     other.loaded_ = false;
-    objects_ = std::move(other.objects_);
+    entities_ = std::move(other.entities_);
   }
   return *this;
 }
@@ -52,56 +52,57 @@ void Scene::update(float /*deltaTime*/) {
 }
 
 void Scene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  std::lock_guard lock(objectsMutex_);
+  std::lock_guard lock(entitiesMutex_);
 
   std::ranges::for_each(
-      objects_ | std::views::filter([](Drawable &d) {
-        return d.object && d.object->isInitialized();
-      }),
-      [cmd, frameIndex](Drawable &d) { d.object->preRender(cmd, frameIndex); });
+      entities_ | std::views::filter([](Drawable &d) { return d.renderComp; }),
+      [cmd, frameIndex](Drawable &d) {
+        d.renderComp->preRender(cmd, frameIndex);
+      });
 }
 
 void Scene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  std::lock_guard lock(objectsMutex_);
+  std::lock_guard lock(entitiesMutex_);
 
-  std::ranges::for_each(objects_ | std::views::filter([](Drawable &d) {
-                          return d.object && d.object->isInitialized();
-                        }),
-                        [cmd, frameIndex](Drawable &d) {
-                          if (d.update)
-                            d.update(frameIndex);
-                          d.object->draw(cmd, frameIndex);
-                        });
+  std::ranges::for_each(
+      entities_ | std::views::filter([](Drawable &d) { return d.renderComp; }),
+      [cmd, frameIndex](Drawable &d) {
+        if (d.update) {
+          d.update(frameIndex);
+        }
+        d.renderComp->draw(cmd, frameIndex);
+      });
 }
 
-void Scene::addObject(std::shared_ptr<ObjectBase> obj,
+void Scene::addEntity(ecs::component::object::RenderComponentBase *rc,
                       ObjectUpdateFunc updateFunc) {
-  std::unique_lock lock(objectsMutex_);
-  objects_.push_back(Drawable(std::move(obj), std::move(updateFunc)));
-  auto *ptr = objects_.back().object.get();
+  std::unique_lock lock(entitiesMutex_);
+  entities_.push_back(Drawable(rc, std::move(updateFunc)));
+  auto *ptr = entities_.back().renderComp;
 
   lock.unlock();
   objectAdded.emit(ptr);
 }
 
-void Scene::removeObject(const ObjectBase *obj) {
-  std::unique_lock lock(objectsMutex_);
+void Scene::removeEntity(
+    const ecs::component::object::RenderComponentBase *rc) {
+  std::unique_lock lock(entitiesMutex_);
   auto it = std::ranges::find_if(
-      objects_, [obj](const Drawable &d) { return d.object.get() == obj; });
-  if (it == objects_.end()) {
+      entities_, [&rc](const Drawable &d) { return d.renderComp == rc; });
+  if (it == entities_.end()) {
     return;
   }
 
-  auto *ptr = it->object.get();
-  objects_.erase(it);
+  auto *ptr = it->renderComp;
+  entities_.erase(it);
 
   lock.unlock();
   objectRemoved.emit(ptr);
 }
 
-void Scene::clearObjects() {
-  std::lock_guard lock(objectsMutex_);
-  objects_.clear();
+void Scene::clearEntities() {
+  std::lock_guard lock(entitiesMutex_);
+  entities_.clear();
 }
 
 } // namespace window

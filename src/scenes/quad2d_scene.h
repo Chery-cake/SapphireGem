@@ -1,6 +1,7 @@
 #ifndef QUAD2D_SCENE_H_
 #define QUAD2D_SCENE_H_
 
+#include "entities.h"
 #include "image_array_registry.h"
 #include "object.h"
 #include "scene.h"
@@ -10,7 +11,6 @@
 
 // Forward declarations for tags (defined in main.cpp)
 extern const window::MaterialTag QUAD_2D_MATERIAL_TAG;
-extern const window::ObjectTag QUAD_2D_OBJ_TAG;
 
 /**
  * @brief 2D quad scene with bindless textures
@@ -32,6 +32,11 @@ private:
   std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   std::shared_ptr<device::TextureTableManager> textureTable_;
   device::TextureId quadTextureId_;
+
+  using Quad = ecs::entity::Tuple<ecs::component::object::TransformComponent<2>,
+                                  ecs::component::object::Mesh<2>,
+                                  ecs::component::object::RenderComponent<2>>;
+  std::unique_ptr<Quad> entity_;
 
 public:
   explicit Quad2DScene(

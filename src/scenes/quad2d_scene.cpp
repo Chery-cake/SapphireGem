@@ -1,5 +1,6 @@
 #include "quad2d_scene.h"
 #include "bindless_types.h"
+#include "object.h"
 #include "renderer.h"
 #include "scene.h"
 #include "vulkan/vulkan.hpp"
@@ -109,7 +110,13 @@ bool Quad2DScene::load(device::GPUDevice &device,
       P2(0.8f, 0.8f),   // 8: top-right
   };
 
-  std::vector<window::Vertex<2>> vertices(9);
+  entity_ = std::make_unique<Quad>();
+  auto &transform =
+      entity_->get<ecs::component::object::TransformComponent<2>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh<2>>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent<2>>();
+
+  std::vector<ecs::component::object::Vertex<2>> vertices(9);
   for (size_t i = 0; i < 9; ++i) {
     vertices[i].position = {gridPositions[i].x, gridPositions[i].y};
     vertices[i].color = {1.0f, 1.0f, 1.0f};
@@ -146,55 +153,60 @@ bool Quad2DScene::load(device::GPUDevice &device,
       4,
   };
 
-  auto quad = std::make_shared<window::Object<2>>(
-      QUAD_2D_OBJ_TAG, std::move(vertices), std::move(indices));
+  mesh.vertices = std::move(vertices);
+  mesh.indices = std::move(indices);
+  mesh.calculateFaces();
+
+  if (!mesh.upload(allocator)) {
+    return false;
+  }
+
+  // ---- Initialize the render component ----
+  window::PipelineConfig pConfig;
+  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+  pConfig.cullMode = vk::CullModeFlagBits::eNone;
+  pConfig.frontFace = vk::FrontFace::eCounterClockwise;
+  pConfig.depthTestEnable = pConfig.depthWriteEnable = false;
+  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
+  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
+                               vk::ShaderStageFlagBits::eFragment |
+                               vk::ShaderStageFlagBits::eCompute;
+
+  if (!rc.initialize(allocator, device, mesh, *material_,
+                     renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
+                     pConfig, imageRegistry_->getDescriptorSetLayout()))
+    return false;
 
   // Set the bindless texture ID and descriptor set
-  quad->setTextureId(quadTextureId_);
-  quad->setBindlessDescriptorSet(imageRegistry_->getDescriptorSet());
+  rc.baseTextureId = quadTextureId_;
+  rc.bindlessDescriptorSet = imageRegistry_->getDescriptorSet();
 
   // Assign per-face materials (8 triangles = 4 quadrants x 2 tris)
   // Quadrant 0 (top-left, tri 0-1): plain colour, no effect
-  quad->setFaceMaterial(0, {});
-  quad->setFaceMaterial(1, {});
+  rc.setFaceMaterial(0, {}, mesh.getFaceCount());
+  rc.setFaceMaterial(1, {}, mesh.getFaceCount());
   // Quadrant 1 (top-right, tri 2-3): texture
   {
     device::FaceMaterial fm;
     fm.textureId = quadTextureId_.index;
-    quad->setFaceMaterial(2, fm);
-    quad->setFaceMaterial(3, fm);
+    rc.setFaceMaterial(2, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(3, fm, mesh.getFaceCount());
   }
   // Quadrant 2 (bottom-left, tri 4-5): gradient effect
   {
     device::FaceMaterial fm;
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eGradient, 0.0f, 0.0f});
-    quad->setFaceMaterial(4, fm);
-    quad->setFaceMaterial(5, fm);
+    rc.setFaceMaterial(4, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(5, fm, mesh.getFaceCount());
   }
   // Quadrant 3 (bottom-right, tri 6-7): wave effect
   {
     device::FaceMaterial fm;
     (void)fm.addEffect(
         device::FaceEffect{device::EffectType::eWave, 0.04f, 6.0f});
-    quad->setFaceMaterial(6, fm);
-    quad->setFaceMaterial(7, fm);
-  }
-
-  window::PipelineConfig pConfig;
-  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
-  pConfig.cullMode = vk::CullModeFlagBits::eNone;
-  pConfig.depthTestEnable = false;
-  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
-  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
-                               vk::ShaderStageFlagBits::eFragment |
-                               vk::ShaderStageFlagBits::eCompute;
-
-  if (!quad->initialize(allocator, device, *material_, renderer.getRenderPass(),
-                        window::MAX_FRAMES_IN_FLIGHT, pConfig,
-                        imageRegistry_->getDescriptorSetLayout())) {
-    std::println(stderr, "[{}] Failed to initialize 2D quad", getName());
-    return false;
+    rc.setFaceMaterial(6, fm, mesh.getFaceCount());
+    rc.setFaceMaterial(7, fm, mesh.getFaceCount());
   }
 
   // Compute shader tags for wave displacement and normal precomputation
@@ -205,14 +217,19 @@ bool Quad2DScene::load(device::GPUDevice &device,
       "object_compute", "object_compute.slang", nullptr, nullptr,
       nullptr,          "computeMain"};
 
-  quad->initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                          &OBJECT_COMPUTE_SHADER_TAG);
+  if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
+                            mesh.indices.size()))
+    return false;
 
   frameData_ = std::make_shared<window::Scene2DFrameData>();
-  addObject(quad, [quad = quad.get(), frameData = frameData_,
-                   totalTimePtr = &totalTime_](uint32_t frameIndex) {
-    quad->setTime(*totalTimePtr);
-    quad->updateUniforms(frameIndex, frameData->view, frameData->proj);
+  addEntity(&rc, [this, &transform, &rc](uint32_t frameIndex) {
+    float rotY = totalTime_ * 0.5f;
+    float rotX = totalTime_ * 0.3f;
+    transform.rotation = {rotX, rotY};
+    rc.time = totalTime_;
+    rc.updateUniforms(frameIndex, transform, frameData_->view,
+                      frameData_->proj);
   });
 
   setLoaded(true);
@@ -222,11 +239,11 @@ bool Quad2DScene::load(device::GPUDevice &device,
 }
 
 void Quad2DScene::unload() {
-  clearObjects();
+  clearEntities();
   if (material_) {
     material_->release();
-    material_.reset();
   }
+  material_.reset();
   textureTable_.reset();
   setLoaded(false);
   std::println("[{}] 2D scene unloaded", getName());

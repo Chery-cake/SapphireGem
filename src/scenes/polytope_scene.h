@@ -1,6 +1,7 @@
 #ifndef POLYTOPE_SCENE_H_
 #define POLYTOPE_SCENE_H_
 
+#include "entities.h"
 #include "image_array_registry.h"
 #include "object.h"
 #include "scene.h"
@@ -10,7 +11,6 @@
 
 // Forward declarations for tags (defined in main.cpp)
 extern const window::MaterialTag POLYTOPE_MATERIAL_TAG;
-extern const window::ObjectTag POLYTOPE_OBJ_TAG;
 
 /**
  * @brief Random convex polytope demo scene with per-face materials
@@ -31,6 +31,11 @@ private:
   std::shared_ptr<window::Texture> layerAtlasTex_;
   std::shared_ptr<device::ImageArrayRegistry> imageRegistry_;
   std::shared_ptr<device::TextureTableManager> textureTable_;
+
+  using Poly = ecs::entity::Tuple<ecs::component::object::TransformComponent<3>,
+                                  ecs::component::object::Mesh<3>,
+                                  ecs::component::object::RenderComponent<3>>;
+  std::unique_ptr<Poly> entity_;
 
 public:
   explicit PolytopeDemoScene(

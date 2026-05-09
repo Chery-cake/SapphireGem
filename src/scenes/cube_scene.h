@@ -1,6 +1,7 @@
 #ifndef CUBE_SCENE_H_
 #define CUBE_SCENE_H_
 
+#include "entities.h"
 #include "image_array_registry.h"
 #include "object.h"
 #include "scene.h"
@@ -10,7 +11,6 @@
 
 // Forward declarations for tags (defined in main.cpp)
 extern const window::MaterialTag CUBE_MATERIAL_TAG;
-extern const window::ObjectTag CUBE_OBJ_TAG;
 
 /**
  * @brief 3D cube scene with per-face materials and bindless textures
@@ -35,6 +35,11 @@ private:
   std::shared_ptr<device::TextureTableManager> textureTable_;
   device::TextureId cubeTextureId_;
   device::TextureId atlasTextureId_;
+
+  using Cube = ecs::entity::Tuple<ecs::component::object::TransformComponent<3>,
+                                  ecs::component::object::Mesh<3>,
+                                  ecs::component::object::RenderComponent<3>>;
+  std::unique_ptr<Cube> entity_;
 
 public:
   CubeScene3D(const window::SceneTag &sceneTag,
