@@ -344,6 +344,10 @@ void CubeScene3D::unload() {
 void CubeScene3D::update(float deltaTime) {
   totalTime_ += deltaTime;
 
+  if (!frameData_) {
+    return;
+  }
+
   // Update view/projection matrices (could be more sophisticated)
   const float aspect = 16.0f / 9.0f; // could be window aspect
   frameData_->view =

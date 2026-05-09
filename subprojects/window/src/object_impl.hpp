@@ -409,8 +409,7 @@ template <uint32_t Dim>
 void RenderComponent<Dim>::uploadFaceData(uint32_t frameIndex,
                                           size_t faceCount) const {
   std::lock_guard lock(mutex);
-  if (!initialized || faceDataBuffers.empty() ||
-      frameIndex >= faceDataBuffers.size()) {
+  if (faceDataBuffers.empty() || frameIndex >= faceDataBuffers.size()) {
     return;
   }
 

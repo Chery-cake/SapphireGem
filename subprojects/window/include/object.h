@@ -262,7 +262,7 @@ private:
   std::vector<device::FaceMaterial> faceMaterials;
   const Mesh<Dim> *mesh = nullptr;
 
-  mutable std::mutex mutex;
+  mutable std::recursive_mutex mutex;
 
   void uploadFaceData(uint32_t frameIndex, size_t faceCount) const;
   void uploadIndirectCommand() const;

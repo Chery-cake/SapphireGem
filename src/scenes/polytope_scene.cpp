@@ -177,6 +177,24 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
     return false;
   }
 
+  rc.bindlessDescriptorSet = imageRegistry_->getDescriptorSet();
+
+  window::PipelineConfig pConfig;
+  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
+  pConfig.cullMode = vk::CullModeFlagBits::eBack;
+  pConfig.frontFace = vk::FrontFace::eCounterClockwise;
+  pConfig.depthTestEnable = true;
+  pConfig.depthWriteEnable = true;
+  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
+  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
+                               vk::ShaderStageFlagBits::eFragment |
+                               vk::ShaderStageFlagBits::eCompute;
+
+  if (!rc.initialize(allocator, device, mesh, *material_,
+                     renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
+                     pConfig, imageRegistry_->getDescriptorSetLayout()))
+    return false;
+
   // Assign per-face materials cycling through material types
   for (int fi = 0; fi < numFaces; ++fi) {
     uint32_t faceIdx = static_cast<uint32_t>(fi);
@@ -238,24 +256,6 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
                                       &textureTable_->getLayerBuffer());
   }
 
-  rc.bindlessDescriptorSet = imageRegistry_->getDescriptorSet();
-
-  window::PipelineConfig pConfig;
-  pConfig.topology = vk::PrimitiveTopology::eTriangleList;
-  pConfig.cullMode = vk::CullModeFlagBits::eBack;
-  pConfig.frontFace = vk::FrontFace::eCounterClockwise;
-  pConfig.depthTestEnable = true;
-  pConfig.depthWriteEnable = true;
-  pConfig.pushConstantSize = sizeof(device::BindlessPushConstants);
-  pConfig.pushConstantStages = vk::ShaderStageFlagBits::eVertex |
-                               vk::ShaderStageFlagBits::eFragment |
-                               vk::ShaderStageFlagBits::eCompute;
-
-  if (!rc.initialize(allocator, device, mesh, *material_,
-                     renderer.getRenderPass(), window::MAX_FRAMES_IN_FLIGHT,
-                     pConfig, imageRegistry_->getDescriptorSetLayout()))
-    return false;
-
   // Compute shader tags for wave displacement and normal precomputation
   static constexpr device::ShaderTag OBJECT_UPDATE_SHADER_TAG{
       "object_update", "object_update.slang", nullptr, nullptr,
@@ -271,9 +271,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 
   frameData_ = std::make_shared<window::Scene3DFrameData>();
   addEntity(&rc, [this, &transform, &rc](uint32_t frameIndex) {
-    float rotY = totalTime_ * 0.5f;
-    float rotX = totalTime_ * 0.3f;
-    transform.rotation = {rotX, rotY, 0.0f};
+    transform.rotation = {rotX_, rotY_, rotZ_};
     rc.time = totalTime_;
     rc.updateUniforms(frameIndex, transform, frameData_->view,
                       frameData_->proj);
@@ -286,6 +284,7 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
 
 void PolytopeDemoScene::unload() {
   clearEntities();
+  entity_.reset();
   if (material_) {
     material_->release();
   }
@@ -299,6 +298,10 @@ void PolytopeDemoScene::update(float deltaTime) {
   rotX_ += deltaTime * 0.7f;
   rotY_ += deltaTime * 1.1f;
   rotZ_ += deltaTime * 0.4f;
+
+  if (!frameData_) {
+    return;
+  }
 
   // compute view/proj
   frameData_->view =
