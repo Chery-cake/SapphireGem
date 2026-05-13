@@ -236,6 +236,14 @@ public:
     add_impl(std::forward<T>(value));
   }
 
+  /// Unchecked in-place construction: constructs T from args and stores it,
+  /// overwriting any existing component of the same type.
+  template <typename T, typename... Args> void add(Args &&...args) {
+    std::unique_lock lock(mtx_);
+    components[typeid(T)] =
+        std::any(std::in_place_type<T>, std::forward<Args>(args)...);
+  }
+
   /**@brief
    * If the dependency is missing, throw an error
    */
@@ -273,10 +281,13 @@ template <typename T, size_t N> struct MultiComponent {
 
   template <typename... Args>
     requires(sizeof...(Args) == N)
-  MultiComponent(Args &&...args) : components(std::forward<Args>(args)...) {}
+  MultiComponent(Args &&...args) : components{std::forward<Args>(args)...} {}
 
   T &operator[](size_t i) { return components[i]; }
   const T &operator[](size_t i) const { return components[i]; }
+
+  T &at(size_t i) { return components.at(i); }
+  const T &at(size_t i) const { return components.at(i); }
 
   auto begin() { return components.begin(); }
   auto begin() const { return components.begin(); }
@@ -284,7 +295,8 @@ template <typename T, size_t N> struct MultiComponent {
   auto end() { return components.end(); }
   auto end() const { return components.end(); }
 
-  [[nodiscard]] size_t size() const { return N; }
+  [[nodiscard]] constexpr size_t size() const noexcept { return N; }
+  [[nodiscard]] constexpr bool empty() const noexcept { return N == 0; }
 };
 
 template <typename T, size_t N>
@@ -305,8 +317,19 @@ template <typename T> struct DynamicMultiComponent {
   void add(const T &value) { components.push_back(value); }
   void add(T &&value) { components.push_back(std::forward<T>(value)); }
 
+  template <typename... Args> T &emplace(Args &&...args) {
+    return components.emplace_back(std::forward<Args>(args)...);
+  }
+
+  void reserve(size_t n) { components.reserve(n); }
+
+  void clear() { components.clear(); }
+
   T &operator[](size_t i) { return components[i]; }
   const T &operator[](size_t i) const { return components[i]; }
+
+  T &at(size_t i) { return components.at(i); }
+  const T &at(size_t i) const { return components.at(i); }
 
   auto begin() { return components.begin(); }
   auto begin() const { return components.begin(); }
@@ -315,6 +338,7 @@ template <typename T> struct DynamicMultiComponent {
   auto end() const { return components.end(); }
 
   [[nodiscard]] size_t size() const { return components.size(); }
+  [[nodiscard]] bool empty() const { return components.empty(); }
 };
 
 template <typename T>

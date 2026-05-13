@@ -400,6 +400,119 @@ void test_virtual_copy() {
 }
 
 // ---------------------------------------------------------------------------
+// MultiComponent tests
+// ---------------------------------------------------------------------------
+void test_multi_component_default() {
+  TEST(multi_component_default);
+  ecs::component::MultiComponent<Position, 3> mc;
+  assert(mc.size() == 3);
+  assert(!mc.empty());
+  PASS();
+}
+
+void test_multi_component_construction() {
+  TEST(multi_component_construction);
+  ecs::component::MultiComponent<Position, 2> mc(Position{1, 2}, Position{3, 4});
+  assert(mc[0].x == 1);
+  assert(mc[1].y == 4);
+  PASS();
+}
+
+void test_multi_component_at_valid() {
+  TEST(multi_component_at_valid);
+  ecs::component::MultiComponent<Health, 2> mc(Health{10}, Health{20});
+  assert(mc.at(0).hp == 10);
+  assert(mc.at(1).hp == 20);
+  mc.at(0).hp = 99;
+  assert(mc[0].hp == 99);
+  PASS();
+}
+
+void test_multi_component_at_oob() {
+  TEST(multi_component_at_oob);
+  ecs::component::MultiComponent<Health, 2> mc(Health{10}, Health{20});
+  bool threw = false;
+  try {
+    (void)mc.at(5);
+  } catch (const std::out_of_range &) {
+    threw = true;
+  }
+  assert(threw);
+  PASS();
+}
+
+void test_multi_component_iteration() {
+  TEST(multi_component_iteration);
+  ecs::component::MultiComponent<Health, 3> mc(Health{1}, Health{2}, Health{3});
+  int sum = 0;
+  for (auto &h : mc)
+    sum += h.hp;
+  assert(sum == 6);
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
+// DynamicMultiComponent tests
+// ---------------------------------------------------------------------------
+void test_dynamic_multi_component_add() {
+  TEST(dynamic_multi_component_add);
+  ecs::component::DynamicMultiComponent<Position> dmc;
+  assert(dmc.empty());
+  dmc.add(Position{1, 2});
+  dmc.add(Position{3, 4});
+  assert(dmc.size() == 2);
+  assert(dmc[0].x == 1);
+  assert(dmc[1].y == 4);
+  PASS();
+}
+
+void test_dynamic_multi_component_emplace() {
+  TEST(dynamic_multi_component_emplace);
+  ecs::component::DynamicMultiComponent<Position> dmc;
+  Position &p = dmc.emplace(7.0f, 8.0f);
+  assert(p.x == 7);
+  assert(dmc.size() == 1);
+  PASS();
+}
+
+void test_dynamic_multi_component_at() {
+  TEST(dynamic_multi_component_at);
+  ecs::component::DynamicMultiComponent<Health> dmc({Health{10}, Health{20}});
+  assert(dmc.at(0).hp == 10);
+  dmc.at(1).hp = 99;
+  assert(dmc[1].hp == 99);
+  bool threw = false;
+  try {
+    (void)dmc.at(5);
+  } catch (const std::out_of_range &) {
+    threw = true;
+  }
+  assert(threw);
+  PASS();
+}
+
+void test_dynamic_multi_component_reserve_clear() {
+  TEST(dynamic_multi_component_reserve_clear);
+  ecs::component::DynamicMultiComponent<Position> dmc;
+  dmc.reserve(10);
+  dmc.add(Position{1, 2});
+  assert(dmc.size() == 1);
+  dmc.clear();
+  assert(dmc.empty());
+  PASS();
+}
+
+void test_dynamic_multi_component_iteration() {
+  TEST(dynamic_multi_component_iteration);
+  ecs::component::DynamicMultiComponent<Health> dmc({Health{5}, Health{10}, Health{15}});
+  int sum = 0;
+  for (auto &h : dmc)
+    sum += h.hp;
+  assert(sum == 30);
+  PASS();
+}
+
+// ---------------------------------------------------------------------------
 // Run all tests
 // ---------------------------------------------------------------------------
 int main() {
@@ -427,6 +540,17 @@ int main() {
   test_tuple_move();
   test_linear_copy();
   test_virtual_copy();
+
+  test_multi_component_default();
+  test_multi_component_construction();
+  test_multi_component_at_valid();
+  test_multi_component_at_oob();
+  test_multi_component_iteration();
+  test_dynamic_multi_component_add();
+  test_dynamic_multi_component_emplace();
+  test_dynamic_multi_component_at();
+  test_dynamic_multi_component_reserve_clear();
+  test_dynamic_multi_component_iteration();
 
   std::printf("\n%d/%d tests passed\n", tests_passed, tests_run);
   return (tests_passed == tests_run) ? 0 : 1;
