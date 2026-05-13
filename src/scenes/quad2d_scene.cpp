@@ -125,7 +125,7 @@ bool Quad2DScene::load(device::GPUDevice &device,
     mesh.vertexData[base + 0] = gridPositions[i].x; // x
     mesh.vertexData[base + 1] = gridPositions[i].y; // y
     // z stays 0.0f
-    mesh.vertexData[base + 3] = 2.0f; // w = dimension tag (2 = 2D, per mesh.h)
+    mesh.vertexData[base + 3] = static_cast<float>(mesh.dimension); // w = dimension tag
     mesh.vertexData[base + 4] = 1.0f;               // r
     mesh.vertexData[base + 5] = 1.0f;               // g
     mesh.vertexData[base + 6] = 1.0f;               // b

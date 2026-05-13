@@ -335,6 +335,12 @@ void RenderComponent::updateUniforms(uint32_t frameIndex,
   if (!initialized || frameIndex >= uniformBuffers.size()) {
     return;
   }
+  // This overload is for 3-D components.  Guard against dimension mismatch:
+  // a 2-D component must use the mat3 overload so that the UBO is written
+  // to the correctly-sized buffer that was allocated in initialize().
+  if (dimension_ != 3) {
+    return;
+  }
 
   GPUUniformBufferData<3> gpu{};
   gpu.fromUBO(UniformBufferData<3>{model, view, proj});
@@ -353,6 +359,12 @@ void RenderComponent::updateUniforms(uint32_t frameIndex,
                                      const glm::mat3 &proj) {
   std::lock_guard lock(mutex_);
   if (!initialized || frameIndex >= uniformBuffers.size()) {
+    return;
+  }
+  // This overload is for 2-D components.  Guard against dimension mismatch:
+  // a 3-D component must use the mat4 overload so that the UBO is written
+  // to the correctly-sized buffer that was allocated in initialize().
+  if (dimension_ != 2) {
     return;
   }
 
