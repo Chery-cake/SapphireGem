@@ -227,7 +227,7 @@ bool CubeScene3D::load(device::GPUDevice &device,
     mesh.vertexData[base + 0] = cubePos[i][0]; // x
     mesh.vertexData[base + 1] = cubePos[i][1]; // y
     mesh.vertexData[base + 2] = cubePos[i][2]; // z
-    mesh.vertexData[base + 3] = 3.0f;           // w = dimension
+    mesh.vertexData[base + 3] = 3.0f; // w = dimension tag (3 = 3D, per mesh.h)
     mesh.vertexData[base + 4] = 1.0f;           // r
     mesh.vertexData[base + 5] = 1.0f;           // g
     mesh.vertexData[base + 6] = 1.0f;           // b
