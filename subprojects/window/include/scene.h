@@ -4,6 +4,7 @@
 #include "glm/ext/matrix_float3x3.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "object.h"
+#include "render_world.h"
 #include "signal.hpp"
 #include "vulkan/vulkan.hpp"
 #include "window_export.h"
@@ -74,7 +75,9 @@ struct WINDOW_API SceneTag {
  * Scenes are managed through a ResourceRegistry<SceneTag, Scene>
  * using the tag system for type-safe identification.
  *
- * Thread-safe: the loaded state is protected by mutex.
+ * Thread-safe: entity management and rendering are delegated to a
+ * @ref RenderWorld whose internal mutex provides the necessary
+ * thread-safety guarantees.
  */
 class WINDOW_API Scene {
 public:
@@ -118,6 +121,13 @@ public:
   [[nodiscard]] bool isLoaded() const { return loaded_; }
   [[nodiscard]] const char *getName() const { return name_; }
 
+  /**
+   * @brief Signals forwarded from the internal RenderWorld.
+   *
+   * These are still emitted by the scene so external observers (e.g. the
+   * window) can react to entity lifecycle changes without depending on
+   * RenderWorld directly.
+   */
   core::signal::Signal<void(
       const ecs::component::object::RenderComponentBase *)>
       objectAdded;
@@ -125,17 +135,23 @@ public:
       const ecs::component::object::RenderComponentBase *)>
       objectRemoved;
 
+  /**
+   * @brief Expose the underlying RenderWorld.
+   *
+   * Advanced callers (e.g. a multi-scene compositor) can use the
+   * RenderWorld directly to submit additional renderables without going
+   * through the Scene lifecycle.
+   */
+  [[nodiscard]] RenderWorld &getRenderWorld() { return *renderWorld_; }
+  [[nodiscard]] const RenderWorld &getRenderWorld() const {
+    return *renderWorld_;
+  }
+
 protected:
   void setLoaded(bool loaded) { loaded_ = loaded; }
 
 private:
-  struct Drawable {
-    ecs::component::object::RenderComponentBase *renderComp = nullptr;
-    ObjectUpdateFunc update;
-  };
-
-  std::vector<Drawable> entities_;
-  mutable std::mutex entitiesMutex_;
+  std::unique_ptr<RenderWorld> renderWorld_;
 
   const char *name_;
   bool loaded_ = false;

@@ -1,31 +1,68 @@
 #include "scene.h"
 #include "object.h"
-#include <algorithm>
 #include <mutex>
-#include <ranges>
 
 namespace window {
 
-Scene::Scene(const SceneTag &tag) : name_(tag.name) {}
+Scene::Scene(const SceneTag &tag)
+    : renderWorld_(std::make_unique<RenderWorld>()), name_(tag.name) {
+  // Forward RenderWorld signals to the Scene's own signals so that any
+  // observer wired to objectAdded/objectRemoved on the Scene continues
+  // to receive notifications.
+  renderWorld_->objectAdded.connect([this](
+      const ecs::component::object::RenderComponentBase *rc) {
+    objectAdded.emit(rc);
+  });
+  renderWorld_->objectRemoved.connect([this](
+      const ecs::component::object::RenderComponentBase *rc) {
+    objectRemoved.emit(rc);
+  });
+}
 
 Scene::~Scene() = default;
 
 Scene::Scene(Scene &&other) noexcept {
-  std::scoped_lock lock(other.sceneMutex_, other.entitiesMutex_);
-  name_ = other.name_;
-  loaded_ = other.loaded_;
-  entities_ = std::move(other.entities_);
-  other.loaded_ = false;
+  std::lock_guard lock(other.sceneMutex_);
+  name_          = other.name_;
+  loaded_        = other.loaded_;
+  renderWorld_   = std::move(other.renderWorld_);
+  other.loaded_  = false;
+  // Re-wire signals: the existing lambdas captured `&other`; reconnect them
+  // to forward to this new Scene's signals instead.
+  if (renderWorld_) {
+    renderWorld_->objectAdded.clear();
+    renderWorld_->objectRemoved.clear();
+    renderWorld_->objectAdded.connect([this](
+        const ecs::component::object::RenderComponentBase *rc) {
+      objectAdded.emit(rc);
+    });
+    renderWorld_->objectRemoved.connect([this](
+        const ecs::component::object::RenderComponentBase *rc) {
+      objectRemoved.emit(rc);
+    });
+  }
 }
 
 Scene &Scene::operator=(Scene &&other) noexcept {
   if (this != &other) {
-    std::scoped_lock lock(sceneMutex_, other.sceneMutex_, entitiesMutex_,
-                          other.entitiesMutex_);
-    name_ = other.name_;
-    loaded_ = other.loaded_;
+    std::scoped_lock lock(sceneMutex_, other.sceneMutex_);
+    name_         = other.name_;
+    loaded_       = other.loaded_;
     other.loaded_ = false;
-    entities_ = std::move(other.entities_);
+    renderWorld_  = std::move(other.renderWorld_);
+    // Re-wire signals after move
+    if (renderWorld_) {
+      renderWorld_->objectAdded.clear();
+      renderWorld_->objectRemoved.clear();
+      renderWorld_->objectAdded.connect([this](
+          const ecs::component::object::RenderComponentBase *rc) {
+        objectAdded.emit(rc);
+      });
+      renderWorld_->objectRemoved.connect([this](
+          const ecs::component::object::RenderComponentBase *rc) {
+        objectRemoved.emit(rc);
+      });
+    }
   }
   return *this;
 }
@@ -52,57 +89,36 @@ void Scene::update(float /*deltaTime*/) {
 }
 
 void Scene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  std::lock_guard lock(entitiesMutex_);
-
-  std::ranges::for_each(
-      entities_ | std::views::filter([](Drawable &d) { return d.renderComp; }),
-      [cmd, frameIndex](Drawable &d) {
-        d.renderComp->preRender(cmd, frameIndex);
-      });
+  if (renderWorld_) {
+    renderWorld_->preRender(cmd, frameIndex);
+  }
 }
 
 void Scene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  std::lock_guard lock(entitiesMutex_);
-
-  std::ranges::for_each(
-      entities_ | std::views::filter([](Drawable &d) { return d.renderComp; }),
-      [cmd, frameIndex](Drawable &d) {
-        if (d.update) {
-          d.update(frameIndex);
-        }
-        d.renderComp->draw(cmd, frameIndex);
-      });
+  if (renderWorld_) {
+    renderWorld_->draw(cmd, frameIndex);
+  }
 }
 
 void Scene::addEntity(ecs::component::object::RenderComponentBase *rc,
                       ObjectUpdateFunc updateFunc) {
-  std::unique_lock lock(entitiesMutex_);
-  entities_.push_back(Drawable(rc, std::move(updateFunc)));
-  auto *ptr = entities_.back().renderComp;
-
-  lock.unlock();
-  objectAdded.emit(ptr);
+  if (renderWorld_) {
+    renderWorld_->add(rc, std::move(updateFunc));
+  }
 }
 
 void Scene::removeEntity(
     const ecs::component::object::RenderComponentBase *rc) {
-  std::unique_lock lock(entitiesMutex_);
-  auto it = std::ranges::find_if(
-      entities_, [&rc](const Drawable &d) { return d.renderComp == rc; });
-  if (it == entities_.end()) {
-    return;
+  if (renderWorld_) {
+    renderWorld_->remove(rc);
   }
-
-  auto *ptr = it->renderComp;
-  entities_.erase(it);
-
-  lock.unlock();
-  objectRemoved.emit(ptr);
 }
 
 void Scene::clearEntities() {
-  std::lock_guard lock(entitiesMutex_);
-  entities_.clear();
+  if (renderWorld_) {
+    renderWorld_->clear();
+  }
 }
 
 } // namespace window
+
