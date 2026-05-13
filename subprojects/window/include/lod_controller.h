@@ -49,10 +49,10 @@ struct WINDOW_API LODLevel {
  * @endcode
  */
 struct WINDOW_API LODController {
-    /// LOD levels in order of decreasing detail (coarsest first, finest last).
+    /// LOD levels in order of increasing detail distance (finest first, coarsest last).
     std::vector<LODLevel> levels;
 
-    /// Index of the currently active level (0 = coarsest).
+    /// Index of the currently active level (0 = finest).
     /// Managed by @ref LODSystem::update — do not modify directly.
     uint32_t currentLevel = 0;
 };
