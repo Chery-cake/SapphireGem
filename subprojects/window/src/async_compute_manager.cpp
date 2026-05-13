@@ -198,7 +198,7 @@ void AsyncComputeManager::executeFrame(uint32_t frameIdx,
   cmd.end();
 
   // Submit with timeline semaphore signal — increment counter only on success
-  const uint64_t signalValue = semaphoreValue_ + 1;
+  const uint64_t signalValue = semaphoreValue_.load(std::memory_order_relaxed) + 1;
 
   vk::CommandBufferSubmitInfo cmdInfo{cmd, 0};
   vk::SemaphoreSubmitInfo signalInfo{**timelineSemaphore_, signalValue,
@@ -208,7 +208,7 @@ void AsyncComputeManager::executeFrame(uint32_t frameIdx,
   vk::SubmitInfo2 submit2{{}, {}, cmdInfo, signalInfo};
   try {
     computeQueue.submit2(submit2);
-    semaphoreValue_ = signalValue; // advance only on successful submit
+    semaphoreValue_.store(signalValue, std::memory_order_release); // advance only on successful submit
   } catch (const vk::SystemError &e) {
     std::println(stderr,
                  "[AsyncComputeManager] Failed to submit compute work: {}",
@@ -231,18 +231,20 @@ bool AsyncComputeManager::hasEffects() const {
 }
 
 bool AsyncComputeManager::drainPending(uint64_t timeoutNs) {
-  if (!initialized_ || semaphoreValue_ == 0) {
+  const uint64_t valueToWait = semaphoreValue_.load(std::memory_order_acquire);
+  if (!initialized_ || valueToWait == 0) {
     return true; // Nothing submitted yet — trivially done.
   }
   if (!timelineSemaphore_) {
     return false;
   }
 
+  const vk::Semaphore semHandle = **timelineSemaphore_;
   const vk::SemaphoreWaitInfo waitInfo{
-      {},                      // flags
-      1,                       // semaphore count
-      &(**timelineSemaphore_), // pSemaphores
-      &semaphoreValue_         // pValues
+      {},           // flags
+      1,            // semaphore count
+      &semHandle,   // pSemaphores
+      &valueToWait  // pValues
   };
 
   try {

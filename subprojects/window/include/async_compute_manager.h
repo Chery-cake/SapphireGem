@@ -5,6 +5,7 @@
 #include "vulkan/vulkan.hpp"
 #include "vulkan/vulkan_raii.hpp"
 #include "window_export.h"
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -148,7 +149,7 @@ public:
    * @brief The semaphore value most recently submitted (or 0 if none yet).
    */
   [[nodiscard]] uint64_t getLastSubmittedValue() const {
-    return semaphoreValue_;
+    return semaphoreValue_.load(std::memory_order_acquire);
   }
 
   /**
@@ -196,7 +197,10 @@ private:
 
   // Timeline semaphore for compute→graphics synchronisation
   std::unique_ptr<vk::raii::Semaphore> timelineSemaphore_;
-  uint64_t semaphoreValue_ = 0;
+  /// Monotonically-increasing counter of submitted semaphore signal values.
+  /// Accessed from the render thread (executeFrame) and from any thread via
+  /// drainPending / getLastSubmittedValue, so it must be atomic.
+  std::atomic<uint64_t> semaphoreValue_{0};
 
   device::GPUDevice *device_  = nullptr;
   uint32_t framesInFlight_    = 0;
