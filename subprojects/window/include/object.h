@@ -273,6 +273,18 @@ struct RenderComponent : public RenderComponentBase {
    */
   void updateReadBuffer(vk::Device device, vk::Semaphore timeline);
 
+  // ── LOD mesh swap ─────────────────────────────────────────────────────
+  /**
+   * @brief Swap the active mesh without reallocating GPU resources.
+   *
+   * Called by @ref window::LODSystem::update to switch between LOD levels.
+   * The replacement mesh must have been GPU-uploaded and must share the same
+   * vertex-buffer layout as the mesh used during @ref initialize.
+   *
+   * @param mesh  New active mesh.  Lifetime must exceed the next draw call.
+   */
+  void setMesh(const Mesh *mesh) { mesh_ = mesh; }
+
   // ── Per-face material ──────────────────────────────────────────────────
   void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterial &desc,
                        size_t faceCount);
