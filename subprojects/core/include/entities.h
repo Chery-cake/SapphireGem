@@ -237,7 +237,9 @@ public:
   }
 
   /// Unchecked in-place construction: constructs T from args and stores it,
-  /// overwriting any existing component of the same type.
+  /// overwriting any existing component of the same type. No dependency checks
+  /// are performed. Prefer add_check() or add_throw() when dependency
+  /// validation is required. This method is thread-safe (holds exclusive lock).
   template <typename T, typename... Args> void add(Args &&...args) {
     std::unique_lock lock(mtx_);
     components[typeid(T)] =
