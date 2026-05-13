@@ -48,6 +48,11 @@ struct WINDOW_API PipelineConfig { // TODO check default config
   // Push constants (0 = no push constants)
   uint32_t pushConstantSize = 0;
   vk::ShaderStageFlags pushConstantStages = vk::ShaderStageFlagBits::eVertex;
+
+  /// Spatial dimension of the geometry rendered with this pipeline (2 or 3).
+  /// Included in the PipelineCache key so that 2D and 3D pipelines are cached
+  /// separately (they use different UBO layouts and specialisation constants).
+  uint32_t dimension = 3;
 };
 
 /**

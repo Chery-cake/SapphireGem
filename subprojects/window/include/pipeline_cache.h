@@ -52,6 +52,7 @@ private:
     PipelineConfig config{};
     uint32_t textureCount = 0;
     vk::DescriptorSetLayout bindlessLayout{};
+    uint32_t dimension = 0; ///< Spatial dimension; separates 2D and 3D pipelines
 
     bool operator==(const CacheKey &other) const;
   };

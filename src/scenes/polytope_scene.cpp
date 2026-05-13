@@ -166,11 +166,12 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
   entity_ = std::make_unique<Poly>();
   auto &transform =
       entity_->get<ecs::component::object::TransformComponent<3>>();
-  auto &mesh = entity_->get<ecs::component::object::Mesh<3>>();
-  auto &rc = entity_->get<ecs::component::object::RenderComponent<3>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent>();
 
-  mesh.vertices = std::move(vertices);
-  mesh.indices = std::move(indices);
+  // Use fromVertices<3> to preserve per-vertex averaged colours.
+  mesh = ecs::component::object::Mesh::fromVertices<3>(
+      vertices, indices, "polytope");
   mesh.calculateFaces();
 
   if (!mesh.upload(allocator)) {
@@ -265,16 +266,16 @@ bool PolytopeDemoScene::load(device::GPUDevice &device,
       nullptr,          "computeMain"};
 
   if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
-                            mesh.indices.size()))
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertexCount(),
+                            static_cast<uint32_t>(mesh.indices.size())))
     return false;
 
   frameData_ = std::make_shared<window::Scene3DFrameData>();
   addEntity(&rc, [this, &transform, &rc](uint32_t frameIndex) {
     transform.rotation = {rotX_, rotY_, rotZ_};
     rc.time = totalTime_;
-    rc.updateUniforms(frameIndex, transform, frameData_->view,
-                      frameData_->proj);
+    rc.updateUniforms(frameIndex, transform.modelMatrix(),
+                      frameData_->view, frameData_->proj);
   });
 
   setLoaded(true);

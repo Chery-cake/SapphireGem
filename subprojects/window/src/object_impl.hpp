@@ -1,6 +1,7 @@
 #pragma once
 #include "bindless_types.h"
 #include "glm/ext/matrix_transform.hpp"
+#include "glm/glm.hpp"
 #include "material.h"
 #include "object.h"
 #include "pipeline_cache.h"
@@ -10,6 +11,7 @@
 #include "vulkan/vulkan_core.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <ranges>
 #include <utility>
@@ -62,114 +64,18 @@ TransformComponent<Dim>::modelMatrix() const {
 }
 
 // ============================================================================
-// Mesh
+// Non-templated RenderComponent
 // ============================================================================
 
-template <uint32_t Dim> void Mesh<Dim>::calculateFaces() {
-  faces.clear();
-
-  if (indices.empty()) {
-    // No indices: treat each set of 3 vertices as one face
-    uint32_t totalVerts = static_cast<uint32_t>(vertices.size());
-    uint32_t faceCount = totalVerts / 3;
-    faces.reserve(faceCount);
-
-    std::ranges::for_each(
-        std::views::iota(0U, faceCount),
-        [&faces = faces](uint32_t i) { faces.push_back({i, i * 3, 3}); });
-  } else {
-    // Every 3 consecutive indices form one triangular face
-    uint32_t faceCount = static_cast<uint32_t>(indices.size()) / 3;
-    faces.reserve(faceCount);
-    std::ranges::for_each(
-        std::views::iota(0U, faceCount),
-        [&faces = faces](uint32_t i) { faces.push_back({i, i * 3, 3}); });
-  }
-}
-
-template <uint32_t Dim>
-bool Mesh<Dim>::upload(device::VMAAllocator &allocator) {
-  if (vertices.empty()) {
-    return false;
-  }
-
-  const size_t vertCount = std::max(vertices.size(), size_t(1));
-  const size_t idxCount = std::max(indices.size(), size_t(1));
-
-  // Base positions
-  positionBuffer = allocator.createHostVisibleStorageBuffer(
-      vertCount * sizeof(device::GPUVertexPosition), name + "_basePos");
-  if (!positionBuffer.isValid()) {
-    return false;
-  }
-
-  std::vector<device::GPUVertexPosition> gpuPos(vertCount);
-  std::ranges::for_each(std::views::iota(0U, vertCount),
-                        [&vertices = vertices, &gpuPos](size_t i) {
-                          auto &v = vertices[i];
-                          device::GPUVertexPosition gp{};
-                          if constexpr (Dim >= 1) {
-                            gp.x = v.position[0];
-                          }
-                          if constexpr (Dim >= 2) {
-                            gp.y = v.position[1];
-                          }
-                          if constexpr (Dim >= 3) {
-                            gp.z = v.position[2];
-                          }
-                          gp.w = 1.0F;
-
-                          gp.r = v.color[0];
-                          gp.g = v.color[1];
-                          gp.b = v.color[2];
-
-                          gp.nx = 0;
-                          gp.ny = 1;
-                          gp.nz = 0; // default normal (overwritten later)
-
-                          gpuPos[i] = gp;
-                        });
-
-  void *mapped = positionBuffer.map();
-  if (mapped == nullptr) {
-    return false;
-  }
-  std::memcpy(mapped, gpuPos.data(),
-              vertCount * sizeof(device::GPUVertexPosition));
-  positionBuffer.unmap();
-  positionBuffer.flush(0, vertCount * sizeof(device::GPUVertexPosition));
-
-  // Index buffer (dual‑use as SSBO)
-  indexBuffer = allocator.createIndexStorageBuffer(idxCount * sizeof(uint32_t),
-                                                   name + "_indices");
-  if (!indexBuffer.isValid()) {
-    return false;
-  }
-  mapped = indexBuffer.map();
-  if (mapped != nullptr) {
-    std::memcpy(mapped, indices.data(), indices.size() * sizeof(uint32_t));
-    indexBuffer.unmap();
-    indexBuffer.flush(0, indices.size() * sizeof(uint32_t));
-  }
-
-  gpuUploaded = true;
-  return true;
-}
-
-// ============================================================================
-// Render Component
-// ============================================================================
-
-template <uint32_t Dim>
-bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
-                                      device::GPUDevice &device,
-                                      const Mesh<Dim> &mesh,
-                                      const window::Material &baseMaterial,
-                                      vk::RenderPass renderPass,
-                                      uint32_t framesInFlight,
-                                      const window::PipelineConfig &config,
-                                      vk::DescriptorSetLayout bindlessLayout) {
-  std::lock_guard lock(mutex);
+bool RenderComponent::initialize(device::VMAAllocator &allocator,
+                                 device::GPUDevice &device,
+                                 const Mesh &mesh,
+                                 const window::Material &baseMaterial,
+                                 vk::RenderPass renderPass,
+                                 uint32_t framesInFlight,
+                                 const window::PipelineConfig &config,
+                                 vk::DescriptorSetLayout bindlessLayout) {
+  std::lock_guard lock(mutex_);
 
   if (initialized) {
     return false;
@@ -177,12 +83,16 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
   if (!mesh.gpuUploaded) {
     return false;
   }
-  this->mesh = &mesh;
 
+  mesh_       = &mesh;
+  dimension_  = mesh.dimension;
   pipelineConfig = config;
-  const size_t vertCount = std::max(mesh.vertices.size(), size_t(1));
-  const size_t faceCount = std::max(mesh.faces.size(), size_t(1));
-  const size_t idxCount = std::max(mesh.indices.size(), size_t(1));
+  // Stamp dimension into config so the pipeline cache separates 2D/3D entries
+  pipelineConfig.dimension = dimension_;
+
+  const size_t vCount    = std::max<size_t>(mesh.vertexCount(), 1);
+  const size_t faceCount = std::max<size_t>(mesh.getFaceCount(), 1);
+  const size_t idxCount  = std::max<size_t>(mesh.indices.size(), 1);
 
   // --- Descriptor set layout ---
   std::vector<vk::DescriptorSetLayoutBinding> bindings = {
@@ -190,12 +100,14 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
            vk::ShaderStageFlagBits::eCompute},
       {1, vk::DescriptorType::eStorageBuffer, 1,
-       vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute},
+       vk::ShaderStageFlagBits::eFragment |
+           vk::ShaderStageFlagBits::eCompute},
       {2, vk::DescriptorType::eStorageBuffer, 1,
        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
            vk::ShaderStageFlagBits::eCompute},
       {3, vk::DescriptorType::eStorageBuffer, 1,
-       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eCompute},
+       vk::ShaderStageFlagBits::eVertex |
+           vk::ShaderStageFlagBits::eCompute},
       {4, vk::DescriptorType::eStorageBuffer, 1,
        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment |
            vk::ShaderStageFlagBits::eCompute}};
@@ -207,20 +119,22 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
     return false;
   }
 
-  // --- Pipeline ---
+  // --- Pipeline (dimension stamped into config) ---
   pipeline = window::PipelineCache::instance().getOrCreate(
-      device, renderPass, **descriptorSetLayout, config, 0, bindlessLayout,
-      baseMaterial.getShaderProgram());
+      device, renderPass, **descriptorSetLayout, pipelineConfig, 0,
+      bindlessLayout, baseMaterial.getShaderProgram());
   if (!pipeline) {
     return false;
   }
 
-  // --- UBOs ---
-  const vk::DeviceSize uboSize = sizeof(GPUUniformBufferData<Dim>);
+  // --- UBOs (size depends on dimension) ---
+  const vk::DeviceSize uboSize = (dimension_ == 2)
+                                     ? sizeof(GPUUniformBufferData<2>)
+                                     : sizeof(GPUUniformBufferData<3>);
   uniformBuffers.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
-    auto buf =
-        allocator.createUniformBuffer(uboSize, "ubo_" + std::to_string(i));
+    auto buf = allocator.createUniformBuffer(uboSize,
+                                             "ubo_" + std::to_string(i));
     if (!buf.isValid()) {
       release();
       return false;
@@ -246,7 +160,8 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
   uploadIndirectCommand();
 
   // --- Face data SSBOs ---
-  const vk::DeviceSize faceDataSize = faceCount * sizeof(device::GPUFaceData);
+  const vk::DeviceSize faceDataSize =
+      faceCount * sizeof(device::GPUFaceData);
   faceMaterials.resize(faceCount);
   faceDataBuffers.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
@@ -261,7 +176,7 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
 
   // --- Displaced position SSBOs ---
   const vk::DeviceSize posDataSize =
-      vertCount * sizeof(device::GPUVertexPosition);
+      vCount * sizeof(device::GPUVertexPosition);
   displacedPositionBuffers.reserve(framesInFlight);
   for (uint32_t i = 0; i < framesInFlight; ++i) {
     auto buf = allocator.createHostVisibleStorageBuffer(
@@ -272,19 +187,18 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
     }
     displacedPositionBuffers.push_back(std::move(buf));
   }
-  // Initialise displaced positions with base data
+
+  // Initialise displaced positions from the static base buffer
   void *src = mesh.positionBuffer.map();
   if (src != nullptr) {
-    std::ranges::for_each(std::views::iota(0U, framesInFlight),
-                          [&displacedPositionBuffers = displacedPositionBuffers,
-                           &posDataSize, src](uint32_t i) {
-                            void *dst = displacedPositionBuffers[i].map();
-                            if (dst) {
-                              std::memcpy(dst, src, posDataSize);
-                              displacedPositionBuffers[i].unmap();
-                              displacedPositionBuffers[i].flush(0, posDataSize);
-                            }
-                          });
+    for (uint32_t i = 0; i < framesInFlight; ++i) {
+      void *dst = displacedPositionBuffers[i].map();
+      if (dst) {
+        std::memcpy(dst, src, posDataSize);
+        displacedPositionBuffers[i].unmap();
+        displacedPositionBuffers[i].flush(0, posDataSize);
+      }
+    }
     mesh.positionBuffer.unmap();
   }
 
@@ -295,61 +209,54 @@ bool RenderComponent<Dim>::initialize(device::VMAAllocator &allocator,
   descriptorPool = std::make_unique<vk::raii::DescriptorPool>(
       device.getRaiiDevice(),
       vk::DescriptorPoolCreateInfo{
-          vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, framesInFlight,
-          poolSizes});
+          vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+          framesInFlight, poolSizes});
 
   std::vector<vk::DescriptorSetLayout> layouts(framesInFlight,
                                                **descriptorSetLayout);
   auto sets = vk::raii::DescriptorSets(device.getRaiiDevice(),
                                        {**descriptorPool, layouts});
   descriptorSets.reserve(sets.size());
-  std::ranges::for_each(sets, [&descriptorSets = descriptorSets](auto &s) {
+  for (auto &s : sets) {
     descriptorSets.push_back(std::move(s));
-  });
+  }
 
-  std::ranges::for_each(std::views::iota(0U, framesInFlight), [&](uint32_t i) {
-    std::vector<vk::WriteDescriptorSet> writes;
-
-    vk::DescriptorBufferInfo uniformBuffer{uniformBuffers[i].getBuffer(), 0,
-                                           uboSize};
-    vk::DescriptorBufferInfo faceDataBuffer{faceDataBuffers[i].getBuffer(), 0,
-                                            faceDataSize};
-    vk::DescriptorBufferInfo positionBuffer{mesh.positionBuffer.getBuffer(), 0,
-                                            posDataSize};
-    vk::DescriptorBufferInfo displacedPositionBuffer{
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    vk::DescriptorBufferInfo uniformBuf{uniformBuffers[i].getBuffer(), 0,
+                                        uboSize};
+    vk::DescriptorBufferInfo faceDataBuf{faceDataBuffers[i].getBuffer(), 0,
+                                         faceDataSize};
+    vk::DescriptorBufferInfo posBuf{mesh.positionBuffer.getBuffer(), 0,
+                                    posDataSize};
+    vk::DescriptorBufferInfo dispBuf{
         displacedPositionBuffers[i].getBuffer(), 0, posDataSize};
-    vk::DescriptorBufferInfo indexBuffer{mesh.indexBuffer.getBuffer(), 0,
-                                         idxCount * sizeof(uint32_t)};
+    vk::DescriptorBufferInfo idxBuf{mesh.indexBuffer.getBuffer(), 0,
+                                    idxCount * sizeof(uint32_t)};
 
-    writes.emplace_back(*descriptorSets[i], 0, 0, 1,
-                        vk::DescriptorType::eUniformBuffer, nullptr,
-                        &uniformBuffer, nullptr);
-    writes.emplace_back(*descriptorSets[i], 1, 0, 1,
-                        vk::DescriptorType::eStorageBuffer, nullptr,
-                        &faceDataBuffer, nullptr);
-    writes.emplace_back(*descriptorSets[i], 2, 0, 1,
-                        vk::DescriptorType::eStorageBuffer, nullptr,
-                        &positionBuffer, nullptr);
-    writes.emplace_back(*descriptorSets[i], 3, 0, 1,
-                        vk::DescriptorType::eStorageBuffer, nullptr,
-                        &displacedPositionBuffer, nullptr);
-    writes.emplace_back(*descriptorSets[i], 4, 0, 1,
-                        vk::DescriptorType::eStorageBuffer, nullptr,
-                        &indexBuffer, nullptr);
-
+    std::vector<vk::WriteDescriptorSet> writes = {
+        {*descriptorSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer,
+         nullptr, &uniformBuf},
+        {*descriptorSets[i], 1, 0, 1, vk::DescriptorType::eStorageBuffer,
+         nullptr, &faceDataBuf},
+        {*descriptorSets[i], 2, 0, 1, vk::DescriptorType::eStorageBuffer,
+         nullptr, &posBuf},
+        {*descriptorSets[i], 3, 0, 1, vk::DescriptorType::eStorageBuffer,
+         nullptr, &dispBuf},
+        {*descriptorSets[i], 4, 0, 1, vk::DescriptorType::eStorageBuffer,
+         nullptr, &idxBuf}};
     device.getRaiiDevice().updateDescriptorSets(writes, {});
-  });
+  }
 
-  // Upload initial face data
-  std::ranges::for_each(std::views::iota(0U, framesInFlight),
-                        [&](uint32_t i) { uploadFaceData(i, faceCount); });
+  for (uint32_t i = 0; i < framesInFlight; ++i) {
+    uploadFaceData(i, faceCount);
+  }
 
   initialized = true;
   return true;
 }
 
-template <uint32_t Dim> void RenderComponent<Dim>::release() {
-  std::lock_guard lock(mutex);
+void RenderComponent::release() {
+  std::lock_guard lock(mutex_);
   descriptorSets.clear();
   descriptorPool.reset();
   uniformBuffers.clear();
@@ -360,17 +267,12 @@ template <uint32_t Dim> void RenderComponent<Dim>::release() {
   pipeline.reset();
   descriptorSetLayout.reset();
   bindlessDescriptorSet = vk::DescriptorSet{};
-  indirectCommandDirty = true;
-  initialized = false;
+  indirectCommandDirty  = true;
+  initialized           = false;
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::uploadIndirectCommand() const {
-  std::lock_guard lock(mutex);
-  // For simplicity, use a shared staging buffer or map if host-visible.
-  // Here we assume the indirect buffer is host-visible (CpuToGpu) for easy
-  // updates. If it's device-local, you'd use a one-time staging copy.
-  // TODO improve implementation
+void RenderComponent::uploadIndirectCommand() const {
+  std::lock_guard lock(mutex_);
   void *mapped = indirectDrawBuffer.map();
   if (mapped != nullptr) {
     std::memcpy(mapped, &indirectDrawCmd,
@@ -381,11 +283,10 @@ void RenderComponent<Dim>::uploadIndirectCommand() const {
   indirectCommandDirty = false;
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::setFaceMaterial(uint32_t faceIndex,
-                                           const device::FaceMaterial &desc,
-                                           size_t faceCount) {
-  std::lock_guard lock(mutex);
+void RenderComponent::setFaceMaterial(uint32_t faceIndex,
+                                      const device::FaceMaterial &desc,
+                                      size_t faceCount) {
+  std::lock_guard lock(mutex_);
   if (faceIndex >= faceCount) {
     return;
   }
@@ -395,20 +296,17 @@ void RenderComponent<Dim>::setFaceMaterial(uint32_t faceIndex,
   faceMaterials[faceIndex] = desc;
 }
 
-template <uint32_t Dim>
-device::FaceMaterial
-RenderComponent<Dim>::getFaceMaterial(uint32_t faceIndex) const {
-  std::lock_guard lock(mutex);
+device::FaceMaterial RenderComponent::getFaceMaterial(uint32_t faceIndex) const {
+  std::lock_guard lock(mutex_);
   if (faceIndex < faceMaterials.size()) {
     return faceMaterials[faceIndex];
   }
   return {};
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::uploadFaceData(uint32_t frameIndex,
-                                          size_t faceCount) const {
-  std::lock_guard lock(mutex);
+void RenderComponent::uploadFaceData(uint32_t frameIndex,
+                                     size_t faceCount) const {
+  std::lock_guard lock(mutex_);
   if (faceDataBuffers.empty() || frameIndex >= faceDataBuffers.size()) {
     return;
   }
@@ -416,35 +314,30 @@ void RenderComponent<Dim>::uploadFaceData(uint32_t frameIndex,
   const size_t count = std::max(faceCount, size_t(1));
   std::vector<device::GPUFaceData> gpuData(count);
   for (size_t i = 0; i < count; ++i) {
-    if (i < faceMaterials.size()) {
-      gpuData[i] = device::GPUFaceData::fromFaceMaterial(faceMaterials[i]);
-    } else {
-      gpuData[i] = device::GPUFaceData::fromFaceMaterial({});
-    }
+    gpuData[i] = device::GPUFaceData::fromFaceMaterial(
+        i < faceMaterials.size() ? faceMaterials[i] : device::FaceMaterial{});
   }
 
   void *mapped = faceDataBuffers[frameIndex].map();
   if (mapped != nullptr) {
     std::memcpy(mapped, gpuData.data(), count * sizeof(device::GPUFaceData));
     faceDataBuffers[frameIndex].unmap();
-    faceDataBuffers[frameIndex].flush(0, count * sizeof(device::GPUFaceData));
+    faceDataBuffers[frameIndex].flush(0,
+                                       count * sizeof(device::GPUFaceData));
   }
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::updateUniforms(
-
-    uint32_t frameIndex, const TransformComponent<Dim> &transform,
-    const typename TransformComponent<Dim>::MatType &view,
-    const typename TransformComponent<Dim>::MatType &proj) {
-  std::lock_guard lock(mutex);
+void RenderComponent::updateUniforms(uint32_t frameIndex,
+                                     const glm::mat4 &model,
+                                     const glm::mat4 &view,
+                                     const glm::mat4 &proj) {
+  std::lock_guard lock(mutex_);
   if (!initialized || frameIndex >= uniformBuffers.size()) {
     return;
   }
 
-  UniformBufferData<Dim> ubo{transform.modelMatrix(), view, proj};
-  GPUUniformBufferData<Dim> gpu;
-  gpu.fromUBO(ubo);
+  GPUUniformBufferData<3> gpu{};
+  gpu.fromUBO(UniformBufferData<3>{model, view, proj});
 
   void *mapped = uniformBuffers[frameIndex].map();
   if (mapped != nullptr) {
@@ -454,15 +347,34 @@ void RenderComponent<Dim>::updateUniforms(
   }
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::draw(vk::CommandBuffer cmd,
-                                uint32_t frameIndex) const {
-  std::lock_guard lock(mutex);
+void RenderComponent::updateUniforms(uint32_t frameIndex,
+                                     const glm::mat3 &model,
+                                     const glm::mat3 &view,
+                                     const glm::mat3 &proj) {
+  std::lock_guard lock(mutex_);
+  if (!initialized || frameIndex >= uniformBuffers.size()) {
+    return;
+  }
+
+  GPUUniformBufferData<2> gpu{};
+  gpu.fromUBO(UniformBufferData<2>{model, view, proj});
+
+  void *mapped = uniformBuffers[frameIndex].map();
+  if (mapped != nullptr) {
+    std::memcpy(mapped, &gpu, sizeof(gpu));
+    uniformBuffers[frameIndex].unmap();
+    uniformBuffers[frameIndex].flush(0, sizeof(gpu));
+  }
+}
+
+void RenderComponent::draw(vk::CommandBuffer cmd,
+                           uint32_t frameIndex) const {
+  std::lock_guard lock(mutex_);
   if (!initialized) {
     return;
   }
 
-  uploadFaceData(frameIndex, mesh->faces.size());
+  uploadFaceData(frameIndex, mesh_->getFaceCount());
   if (indirectCommandDirty) {
     uploadIndirectCommand();
   }
@@ -479,26 +391,28 @@ void RenderComponent<Dim>::draw(vk::CommandBuffer cmd,
 
   if (pipelineConfig.pushConstantSize >=
       sizeof(device::BindlessPushConstants)) {
-    device::BindlessPushConstants pc(
-        time, baseTextureId.index, static_cast<uint32_t>(mesh->vertices.size()),
-        static_cast<uint32_t>(mesh->indices.size()));
+    device::BindlessPushConstants pc(time, baseTextureId.index,
+                                     mesh_->vertexCount(),
+                                     static_cast<uint32_t>(mesh_->indices.size()));
     cmd.pushConstants(**pipeline->pipelineLayout,
                       pipelineConfig.pushConstantStages, 0, sizeof(pc), &pc);
   }
 
-  cmd.bindIndexBuffer(mesh->indexBuffer.getBuffer(), 0, vk::IndexType::eUint32);
+  cmd.bindIndexBuffer(mesh_->indexBuffer.getBuffer(), 0,
+                      vk::IndexType::eUint32);
   cmd.drawIndexedIndirect(indirectDrawBuffer.getBuffer(), 0, 1,
                           sizeof(VkDrawIndexedIndirectCommand));
 }
 
-template <uint32_t Dim>
-void RenderComponent<Dim>::preRender(vk::CommandBuffer cmd,
-                                     uint32_t frameIndex) const {
-  std::lock_guard lock(mutex);
+void RenderComponent::preRender(vk::CommandBuffer cmd,
+                                uint32_t frameIndex) const {
+  std::lock_guard lock(mutex_);
   if (!computeUpdatePipeline) {
     return;
   }
-  cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **computeUpdatePipeline);
+
+  cmd.bindPipeline(vk::PipelineBindPoint::eCompute,
+                   **computeUpdatePipeline);
   cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
                          **pipeline->pipelineLayout, 0,
                          {*descriptorSets[frameIndex]}, {});
@@ -509,26 +423,25 @@ void RenderComponent<Dim>::preRender(vk::CommandBuffer cmd,
   }
 
   device::BindlessPushConstants pc(time, baseTextureId.index,
-                                   static_cast<uint32_t>(mesh->vertices.size()),
-                                   static_cast<uint32_t>(mesh->indices.size()));
+                                   mesh_->vertexCount(),
+                                   static_cast<uint32_t>(mesh_->indices.size()));
   cmd.pushConstants(**pipeline->pipelineLayout,
                     pipelineConfig.pushConstantStages, 0, sizeof(pc), &pc);
 
-  uint32_t groups = (static_cast<uint32_t>(mesh->vertices.size()) + 63) / 64;
+  const uint32_t groups = (mesh_->vertexCount() + 63u) / 64u;
   cmd.dispatch(groups, 1, 1);
 
   vk::BufferMemoryBarrier barrier{};
   barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
   barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
   barrier.buffer = displacedPositionBuffers[frameIndex].getBuffer();
-  barrier.size = VK_WHOLE_SIZE;
+  barrier.size   = VK_WHOLE_SIZE;
   cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                       vk::PipelineStageFlagBits::eVertexShader, {}, {},
                       {barrier}, {});
 }
 
-template <uint32_t Dim>
-bool RenderComponent<Dim>::initializeCompute(
+bool RenderComponent::initializeCompute(
     device::GPUDevice &device, device::ShaderManager &shader,
     const device::ShaderTag *computeUpdateTag,
     const device::ShaderTag *computeNormalTag, uint32_t vertexCount,
@@ -566,14 +479,13 @@ bool RenderComponent<Dim>::initializeCompute(
       } catch (...) {
       }
       if (normalPipeline) {
-        // one-shot dispatch
         auto qf = device.getQueueFamilies();
         uint32_t qfIdx =
             qf.graphicsFamily.value_or(qf.computeFamily.value_or(0));
         vk::raii::CommandPool cmdPool(
             device.getRaiiDevice(),
-            vk::CommandPoolCreateInfo{vk::CommandPoolCreateFlagBits::eTransient,
-                                      qfIdx});
+            vk::CommandPoolCreateInfo{
+                vk::CommandPoolCreateFlagBits::eTransient, qfIdx});
         auto cmdBufs = vk::raii::CommandBuffers(
             device.getRaiiDevice(),
             {*cmdPool, vk::CommandBufferLevel::ePrimary, 1});
@@ -581,18 +493,19 @@ bool RenderComponent<Dim>::initializeCompute(
         cmd.begin(vk::CommandBufferBeginInfo{
             vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
         cmd.bindPipeline(vk::PipelineBindPoint::eCompute, **normalPipeline);
-        cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, sharedLayout, 0,
-                               {*descriptorSets[0]}, {});
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, sharedLayout,
+                               0, {*descriptorSets[0]}, {});
         if (bindlessDescriptorSet) {
-          cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, sharedLayout,
-                                 1, {bindlessDescriptorSet}, {});
+          cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute,
+                                 sharedLayout, 1, {bindlessDescriptorSet},
+                                 {});
         }
-        device::BindlessPushConstants pc(0.0F, baseTextureId.index, vertexCount,
-                                         indexCount);
+        device::BindlessPushConstants pc(0.0F, baseTextureId.index,
+                                         vertexCount, indexCount);
         cmd.pushConstants(
             sharedLayout, pipelineConfig.pushConstantStages, 0,
             vk::ArrayProxy<const device::BindlessPushConstants>(pc));
-        cmd.dispatch((vertexCount + 63) / 64, 1, 1);
+        cmd.dispatch((vertexCount + 63u) / 64u, 1, 1);
         cmd.end();
         device.getGraphicsQueue().submit(
             vk::SubmitInfo{}.setCommandBuffers(*cmd));

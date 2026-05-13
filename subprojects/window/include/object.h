@@ -4,6 +4,7 @@
 #include "bindless_types.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
+#include "mesh.h"
 #include "shader_manager.h"
 #include "vma_allocator.h"
 #include "vulkan/vulkan.hpp"
@@ -105,18 +106,7 @@ template <> struct GPUUniformBufferData<2> {
   }
 };
 
-/**
- * @brief A single face (triangle) of an object
- *
- * Tracks the vertex offset and count for draw calls.
- * Rendering mode diversity is handled per-vertex in the shader,
- * not by per-face material overrides.
- */
-struct Face {
-  uint32_t faceIndex = 0;
-  uint32_t vertexOffset = 0; // First vertex of this face
-  uint32_t vertexCount = 0;  // Number of vertices in this face
-};
+// Face is defined in mesh.h (included above)
 
 /**
  * @brief Vertex type for Dim-dimensional objects
@@ -156,22 +146,6 @@ template <uint32_t Dim> struct TransformComponent {
   projectDown(const TransformComponent<FromDim> &src);
 };
 
-template <uint32_t Dim> struct Mesh {
-  std::vector<Vertex<Dim>> vertices;
-  std::vector<uint32_t> indices;
-  std::vector<Face> faces; // auto-calculated
-
-  device::AllocatedBuffer positionBuffer; // static base positions (GPU)
-  device::AllocatedBuffer indexBuffer;    // index/storage (GPU)
-  bool gpuUploaded = false;
-
-  const std::string name = "Mesh";
-
-  void calculateFaces();
-  uint32_t getFaceCount() const { return static_cast<uint32_t>(faces.size()); }
-  bool upload(device::VMAAllocator &allocator);
-};
-
 /**
  * @brief Abstract interface for any renderable component.
  *
@@ -198,20 +172,26 @@ public:
   virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
 };
 
-template <uint32_t Dim> struct RenderComponent : public RenderComponentBase {
-  using required = std::tuple<Mesh<Dim>>;
-
+/**
+ * @brief Dimension-agnostic renderable component.
+ *
+ * Uses the non-templated @ref Mesh resource.  The spatial dimension is
+ * read from @ref Mesh::dimension at initialisation time and stored
+ * internally.  @ref updateUniforms is overloaded for 2-D (mat3) and
+ * 3-D (mat4) callers so the entity's TransformComponent can pass its
+ * model matrix directly without any manual conversion.
+ */
+struct RenderComponent : public RenderComponentBase {
   // Pipeline & descriptors
   std::shared_ptr<window::ObjectPipeline> pipeline;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout;
   std::unique_ptr<vk::raii::DescriptorPool> descriptorPool;
-  std::vector<vk::raii::DescriptorSet> descriptorSets; // per frame‑in‑flight
+  std::vector<vk::raii::DescriptorSet> descriptorSets;
 
   // Buffers
-  std::vector<device::AllocatedBuffer> uniformBuffers;  // UBO
-  std::vector<device::AllocatedBuffer> faceDataBuffers; // per‑face SSBO
-  std::vector<device::AllocatedBuffer>
-      displacedPositionBuffers; // compute output
+  std::vector<device::AllocatedBuffer> uniformBuffers;
+  std::vector<device::AllocatedBuffer> faceDataBuffers;
+  std::vector<device::AllocatedBuffer> displacedPositionBuffers;
 
   // Compute
   std::unique_ptr<vk::raii::Pipeline> computeUpdatePipeline;
@@ -221,7 +201,7 @@ template <uint32_t Dim> struct RenderComponent : public RenderComponentBase {
   device::TextureId baseTextureId{};
 
   window::PipelineConfig pipelineConfig;
-  float time = 0.0F; // per‑frame animation time
+  float time = 0.0F;
 
   // Indirect draw
   device::AllocatedBuffer indirectDrawBuffer;
@@ -230,9 +210,9 @@ template <uint32_t Dim> struct RenderComponent : public RenderComponentBase {
 
   bool initialized = false;
 
-  // ---- Lifecycle ----
+  // ── Lifecycle ──────────────────────────────────────────────────────────
   bool initialize(device::VMAAllocator &allocator, device::GPUDevice &device,
-                  const Mesh<Dim> &mesh, const window::Material &baseMaterial,
+                  const Mesh &mesh, const window::Material &baseMaterial,
                   vk::RenderPass renderPass, uint32_t framesInFlight,
                   const window::PipelineConfig &config,
                   vk::DescriptorSetLayout bindlessLayout);
@@ -244,25 +224,34 @@ template <uint32_t Dim> struct RenderComponent : public RenderComponentBase {
                          const device::ShaderTag *computeNormalTag,
                          uint32_t vertexCount, uint32_t indexCount);
 
-  // ---- Drawing & uniform updates ----
+  // ── Drawing & uniform updates ──────────────────────────────────────────
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
   void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
-  void updateUniforms(uint32_t frameIndex,
-                      const TransformComponent<Dim> &transform,
-                      const typename TransformComponent<Dim>::MatType &view,
-                      const typename TransformComponent<Dim>::MatType &proj);
 
-  // ---- Per‑face material ----
+  /// Update UBO for a 3-D entity (uses mat4 model / view / proj).
+  void updateUniforms(uint32_t frameIndex,
+                      const glm::mat4 &model,
+                      const glm::mat4 &view,
+                      const glm::mat4 &proj);
+
+  /// Update UBO for a 2-D entity (uses mat3 model / view / proj).
+  void updateUniforms(uint32_t frameIndex,
+                      const glm::mat3 &model,
+                      const glm::mat3 &view,
+                      const glm::mat3 &proj);
+
+  // ── Per-face material ──────────────────────────────────────────────────
   void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterial &desc,
                        size_t faceCount);
   device::FaceMaterial getFaceMaterial(uint32_t faceIndex) const;
 
 private:
-  // Per‑face material CPU cache
-  std::vector<device::FaceMaterial> faceMaterials;
-  const Mesh<Dim> *mesh = nullptr;
+  uint32_t dimension_ = 3;         ///< Copied from Mesh::dimension at init
+  const Mesh *mesh_   = nullptr;
 
-  mutable std::recursive_mutex mutex;
+  std::vector<device::FaceMaterial> faceMaterials;
+
+  mutable std::recursive_mutex mutex_;
 
   void uploadFaceData(uint32_t frameIndex, size_t faceCount) const;
   void uploadIndirectCommand() const;

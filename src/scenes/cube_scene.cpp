@@ -202,12 +202,6 @@ bool CubeScene3D::load(device::GPUDevice &device,
       {-0.5f, 0.5f, -0.5f},
   }};
 
-  std::vector<ecs::component::object::Vertex<3>> vertices(8);
-  for (size_t i = 0; i < 8; ++i) {
-    vertices[i].position = {cubePos[i][0], cubePos[i][1], cubePos[i][2]};
-    vertices[i].color = {1.0f, 1.0f, 1.0f};
-  }
-
   std::vector<uint32_t> indices = {
       0, 1, 2, 0, 2, 3, // Front  (+Z)
       5, 4, 7, 5, 7, 6, // Back   (-Z)
@@ -221,10 +215,25 @@ bool CubeScene3D::load(device::GPUDevice &device,
   entity_ = std::make_unique<Cube>();
   auto &transform =
       entity_->get<ecs::component::object::TransformComponent<3>>();
-  auto &mesh = entity_->get<ecs::component::object::Mesh<3>>();
-  auto &rc = entity_->get<ecs::component::object::RenderComponent<3>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent>();
 
-  mesh.vertices = std::move(vertices);
+  // Build flat vertex data (GPUVertexPosition layout: 12 floats per vertex)
+  constexpr uint32_t kFPV = ecs::component::object::Mesh::kFloatsPerVertex;
+  mesh.dimension = 3;
+  mesh.vertexData.resize(8 * kFPV, 0.0f);
+  for (size_t i = 0; i < 8; ++i) {
+    const size_t base = i * kFPV;
+    mesh.vertexData[base + 0] = cubePos[i][0]; // x
+    mesh.vertexData[base + 1] = cubePos[i][1]; // y
+    mesh.vertexData[base + 2] = cubePos[i][2]; // z
+    mesh.vertexData[base + 3] = 3.0f;           // w = dimension
+    mesh.vertexData[base + 4] = 1.0f;           // r
+    mesh.vertexData[base + 5] = 1.0f;           // g
+    mesh.vertexData[base + 6] = 1.0f;           // b
+    // pad, normals default to zero/up (set by compute shader)
+    mesh.vertexData[base + 9] = 1.0f;           // ny default
+  }
   mesh.indices = std::move(indices);
   mesh.calculateFaces();
 
@@ -304,8 +313,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
       nullptr,          "computeMain"};
 
   if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
-                            mesh.indices.size()))
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertexCount(),
+                            static_cast<uint32_t>(mesh.indices.size())))
     return false;
 
   // Create shared frame data
@@ -317,8 +326,8 @@ bool CubeScene3D::load(device::GPUDevice &device,
     float rotX = totalTime_ * 0.3f;
     transform.rotation = {rotX, rotY, 0.0f};
     rc.time = totalTime_;
-    rc.updateUniforms(frameIndex, transform, frameData_->view,
-                      frameData_->proj);
+    rc.updateUniforms(frameIndex, transform.modelMatrix(),
+                      frameData_->view, frameData_->proj);
   });
 
   setLoaded(true);

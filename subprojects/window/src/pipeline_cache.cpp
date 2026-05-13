@@ -26,8 +26,10 @@ bool PipelineCache::CacheKey::operator==(const CacheKey &other) const {
          config.lineWidth == other.config.lineWidth &&
          config.pushConstantSize == other.config.pushConstantSize &&
          config.pushConstantStages == other.config.pushConstantStages &&
+         config.dimension == other.config.dimension &&
          textureCount == other.textureCount &&
-         bindlessLayout == other.bindlessLayout;
+         bindlessLayout == other.bindlessLayout &&
+         dimension == other.dimension;
 }
 
 std::size_t PipelineCache::CacheKeyHash::operator()(const CacheKey &key) const {
@@ -50,8 +52,10 @@ std::size_t PipelineCache::CacheKeyHash::operator()(const CacheKey &key) const {
   combine(key.config.lineWidth);
   combine(key.config.pushConstantSize);
   combine(static_cast<VkShaderStageFlags>(key.config.pushConstantStages));
+  combine(key.config.dimension);
   combine(key.textureCount);
   combine(static_cast<VkDescriptorSetLayout>(key.bindlessLayout));
+  combine(key.dimension);
   return seed;
 }
 
@@ -83,6 +87,7 @@ PipelineCache::getOrCreate(device::GPUDevice &device, vk::RenderPass renderPass,
   key.config = config;
   key.textureCount = textureCount;
   key.bindlessLayout = bindlessLayout;
+  key.dimension = config.dimension; // pipeline is unique per dimension
 
   // Fast path: cache hit
   {

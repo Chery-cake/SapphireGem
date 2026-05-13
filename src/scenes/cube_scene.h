@@ -37,8 +37,8 @@ private:
   device::TextureId atlasTextureId_;
 
   using Cube = ecs::entity::Tuple<ecs::component::object::TransformComponent<3>,
-                                  ecs::component::object::Mesh<3>,
-                                  ecs::component::object::RenderComponent<3>>;
+                                  ecs::component::object::Mesh,
+                                  ecs::component::object::RenderComponent>;
   std::unique_ptr<Cube> entity_;
 
 public:

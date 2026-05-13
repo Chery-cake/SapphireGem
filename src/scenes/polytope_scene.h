@@ -33,8 +33,8 @@ private:
   std::shared_ptr<device::TextureTableManager> textureTable_;
 
   using Poly = ecs::entity::Tuple<ecs::component::object::TransformComponent<3>,
-                                  ecs::component::object::Mesh<3>,
-                                  ecs::component::object::RenderComponent<3>>;
+                                  ecs::component::object::Mesh,
+                                  ecs::component::object::RenderComponent>;
   std::unique_ptr<Poly> entity_;
 
 public:

@@ -34,8 +34,8 @@ private:
   device::TextureId quadTextureId_;
 
   using Quad = ecs::entity::Tuple<ecs::component::object::TransformComponent<2>,
-                                  ecs::component::object::Mesh<2>,
-                                  ecs::component::object::RenderComponent<2>>;
+                                  ecs::component::object::Mesh,
+                                  ecs::component::object::RenderComponent>;
   std::unique_ptr<Quad> entity_;
 
 public:

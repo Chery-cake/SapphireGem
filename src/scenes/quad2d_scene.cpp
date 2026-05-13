@@ -113,13 +113,23 @@ bool Quad2DScene::load(device::GPUDevice &device,
   entity_ = std::make_unique<Quad>();
   auto &transform =
       entity_->get<ecs::component::object::TransformComponent<2>>();
-  auto &mesh = entity_->get<ecs::component::object::Mesh<2>>();
-  auto &rc = entity_->get<ecs::component::object::RenderComponent<2>>();
+  auto &mesh = entity_->get<ecs::component::object::Mesh>();
+  auto &rc = entity_->get<ecs::component::object::RenderComponent>();
 
-  std::vector<ecs::component::object::Vertex<2>> vertices(9);
+  // Build flat vertex data (GPUVertexPosition layout: 12 floats per vertex)
+  constexpr uint32_t kFPV = ecs::component::object::Mesh::kFloatsPerVertex;
+  mesh.dimension = 2;
+  mesh.vertexData.resize(9 * kFPV, 0.0f);
   for (size_t i = 0; i < 9; ++i) {
-    vertices[i].position = {gridPositions[i].x, gridPositions[i].y};
-    vertices[i].color = {1.0f, 1.0f, 1.0f};
+    const size_t base = i * kFPV;
+    mesh.vertexData[base + 0] = gridPositions[i].x; // x
+    mesh.vertexData[base + 1] = gridPositions[i].y; // y
+    // z stays 0.0f
+    mesh.vertexData[base + 3] = 2.0f;               // w = dimension
+    mesh.vertexData[base + 4] = 1.0f;               // r
+    mesh.vertexData[base + 5] = 1.0f;               // g
+    mesh.vertexData[base + 6] = 1.0f;               // b
+    mesh.vertexData[base + 9] = 1.0f;               // ny default
   }
 
   std::vector<uint32_t> indices = {
@@ -153,7 +163,6 @@ bool Quad2DScene::load(device::GPUDevice &device,
       4,
   };
 
-  mesh.vertices = std::move(vertices);
   mesh.indices = std::move(indices);
   mesh.calculateFaces();
 
@@ -218,8 +227,8 @@ bool Quad2DScene::load(device::GPUDevice &device,
       nullptr,          "computeMain"};
 
   if (!rc.initializeCompute(device, shaderManager, &OBJECT_UPDATE_SHADER_TAG,
-                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertices.size(),
-                            mesh.indices.size()))
+                            &OBJECT_COMPUTE_SHADER_TAG, mesh.vertexCount(),
+                            static_cast<uint32_t>(mesh.indices.size())))
     return false;
 
   frameData_ = std::make_shared<window::Scene2DFrameData>();
@@ -228,8 +237,8 @@ bool Quad2DScene::load(device::GPUDevice &device,
     float rotX = totalTime_ * 0.3f;
     transform.rotation = {rotX, rotY};
     rc.time = totalTime_;
-    rc.updateUniforms(frameIndex, transform, frameData_->view,
-                      frameData_->proj);
+    rc.updateUniforms(frameIndex, transform.modelMatrix(),
+                      frameData_->view, frameData_->proj);
   });
 
   setLoaded(true);
