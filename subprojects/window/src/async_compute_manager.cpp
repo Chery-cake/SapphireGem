@@ -84,7 +84,7 @@ bool AsyncComputeManager::initialize(device::GPUDevice &device,
 
   initialized_   = true;
   semaphoreValue_ = 0;
-  std::println("[AsyncComputeManager] Initialized ({} frame slots)", framesInFlight);
+  std::println("[AsyncComputeManager] Initialised ({} frame slots)", framesInFlight);
   return true;
 }
 
