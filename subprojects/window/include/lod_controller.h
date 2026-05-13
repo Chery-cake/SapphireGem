@@ -30,7 +30,7 @@ namespace window {
  */
 struct WINDOW_API LODLevel {
     const ecs::component::object::Mesh *mesh        = nullptr; ///< Geometry for this LOD
-    float                               maxDistance = 0.0f;    ///< Max camera distance for this LOD (0 on last = fallback)
+    float                               maxDistance = 0.0f;    ///< Max camera-distance at which this level is active.  The last level in the array acts as an unconditional fallback regardless of this value.
 };
 
 /**
