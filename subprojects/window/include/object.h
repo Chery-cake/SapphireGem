@@ -2,6 +2,7 @@
 #define OBJECT_H_
 
 #include "bindless_types.h"
+#include "component_registry.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "material.h"
 #include "mesh.h"
@@ -174,8 +175,22 @@ public:
  * internally.  @ref updateUniforms is overloaded for 2-D (mat3) and
  * 3-D (mat4) callers so the entity's TransformComponent can pass its
  * model matrix directly without any manual conversion.
+ *
+ * @c RenderComponent additionally inherits from
+ * @ref ecs::component::ComponentRegistry<RenderComponent> so that all live
+ * instances can be queried globally without going through per-scene
+ * @ref window::RenderWorld objects:
+ *
+ * @code
+ *   // Iterate every RenderComponent across all scenes:
+ *   RenderComponent::forEach([](RenderComponent &rc) {
+ *       if (rc.initialized) { ... }
+ *   });
+ * @endcode
  */
-struct RenderComponent : public RenderComponentBase {
+struct RenderComponent
+    : public RenderComponentBase
+    , public ecs::component::ComponentRegistry<RenderComponent> {
   // Pipeline & descriptors
   std::shared_ptr<window::ObjectPipeline> pipeline;
   std::unique_ptr<vk::raii::DescriptorSetLayout> descriptorSetLayout;
