@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <mutex>
 #include <ranges>
+#include <shared_mutex>
 
 namespace window {
 
@@ -14,8 +15,7 @@ void RenderWorld::add(ecs::component::object::RenderComponentBase *rc,
   }
 
   {
-    std::lock_guard lock(mutex_);
-    // No duplicates
+    std::unique_lock lock(mutex_);
     const bool exists =
         std::ranges::any_of(entries_, [rc](const Entry &e) {
           return e.renderComp == rc;
@@ -37,7 +37,7 @@ void RenderWorld::remove(
 
   ecs::component::object::RenderComponentBase *ptr = nullptr;
   {
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     auto it = std::ranges::find_if(entries_, [rc](const Entry &e) {
       return e.renderComp == rc;
     });
@@ -52,14 +52,14 @@ void RenderWorld::remove(
 }
 
 void RenderWorld::clear() {
-  std::lock_guard lock(mutex_);
+  std::unique_lock lock(mutex_);
   entries_.clear();
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────
 
 void RenderWorld::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
-  std::lock_guard lock(mutex_);
+  std::shared_lock lock(mutex_);
   std::ranges::for_each(
       entries_ |
           std::views::filter([](const Entry &e) { return e.renderComp; }),

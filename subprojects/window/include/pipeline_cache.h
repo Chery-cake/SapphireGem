@@ -21,6 +21,21 @@ class WINDOW_API PipelineCache {
 public:
   static PipelineCache &instance();
 
+  /**
+   * @brief Obtain a per-device @c PipelineCache instance.
+   *
+   * For multi-GPU setups each @ref device::GPUDevice should use its own cache
+   * to avoid pipeline handles being shared across incompatible devices.
+   *
+   * The returned reference is valid for the lifetime of the process.  The
+   * first call for a given @p deviceHandle constructs a new cache; subsequent
+   * calls return the same object.
+   *
+   * @param deviceHandle  The @c VkDevice handle used as a map key.
+   * @return Per-device pipeline cache.
+   */
+  static PipelineCache &forDevice(vk::Device deviceHandle);
+
   PipelineCache(const PipelineCache &) = delete;
   PipelineCache &operator=(const PipelineCache &) = delete;
 

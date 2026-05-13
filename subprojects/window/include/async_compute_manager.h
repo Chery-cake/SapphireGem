@@ -156,6 +156,25 @@ public:
    */
   [[nodiscard]] bool hasEffects() const;
 
+  /**
+   * @brief CPU-side wait until all submitted compute work has completed.
+   *
+   * Waits on the timeline semaphore for @ref getLastSubmittedValue so the
+   * caller knows that any compute output consumed by pending graphics commands
+   * has been written.
+   *
+   * Typical usage: call this when an entity is about to be destroyed so its
+   * SSBO / staging buffers are safe to free.
+   *
+   * No-op if no work has been submitted (@c getLastSubmittedValue == 0) or if
+   * the manager is not initialized.
+   *
+   * @param timeoutNs  Wait timeout in nanoseconds.  Default: 5 seconds.
+   * @return @c true if the semaphore reached the expected value within the
+   *         timeout; @c false on timeout or if not initialized.
+   */
+  bool drainPending(uint64_t timeoutNs = 5'000'000'000ULL);
+
   [[nodiscard]] bool isInitialized() const { return initialized_; }
 
 private:

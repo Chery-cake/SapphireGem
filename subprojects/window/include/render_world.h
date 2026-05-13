@@ -9,6 +9,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <vector>
 
 namespace window {
@@ -110,7 +111,7 @@ private:
   };
 
   std::vector<Entry> entries_;
-  mutable std::mutex mutex_;
+  mutable std::shared_mutex mutex_;
 };
 
 } // namespace window

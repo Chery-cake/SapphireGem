@@ -230,4 +230,36 @@ bool AsyncComputeManager::hasEffects() const {
   return !entries_.empty();
 }
 
+bool AsyncComputeManager::drainPending(uint64_t timeoutNs) {
+  if (!initialized_ || semaphoreValue_ == 0) {
+    return true; // Nothing submitted yet — trivially done.
+  }
+  if (!timelineSemaphore_) {
+    return false;
+  }
+
+  const vk::SemaphoreWaitInfo waitInfo{
+      {},                      // flags
+      1,                       // semaphore count
+      &(**timelineSemaphore_), // pSemaphores
+      &semaphoreValue_         // pValues
+  };
+
+  try {
+    const auto result = device_->getRaiiDevice().waitSemaphores(waitInfo, timeoutNs);
+    if (result != vk::Result::eSuccess) {
+      std::println(stderr,
+                   "[AsyncComputeManager] drainPending: waitSemaphores returned {}",
+                   vk::to_string(result));
+      return false;
+    }
+  } catch (const vk::SystemError &e) {
+    std::println(stderr,
+                 "[AsyncComputeManager] drainPending: exception: {}", e.what());
+    return false;
+  }
+
+  return true;
+}
+
 } // namespace window

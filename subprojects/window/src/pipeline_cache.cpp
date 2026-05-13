@@ -1,7 +1,9 @@
 #include "pipeline_cache.h"
 #include "material.h"
 #include "shader_manager.h"
+#include <mutex>
 #include <print>
+#include <unordered_map>
 
 namespace window {
 
@@ -84,6 +86,22 @@ std::size_t PipelineCache::CacheKeyHash::operator()(const CacheKey &key) const {
 PipelineCache &PipelineCache::instance() {
   static PipelineCache inst;
   return inst;
+}
+
+// ---------- Per-device cache ----------
+
+PipelineCache &PipelineCache::forDevice(vk::Device deviceHandle) {
+  // Map from VkDevice handle to heap-allocated PipelineCache.
+  // A mutex guards the map itself.
+  static std::mutex                                       mapMutex;
+  static std::unordered_map<VkDevice, std::unique_ptr<PipelineCache>> caches;
+
+  std::lock_guard lock(mapMutex);
+  auto &ptr = caches[static_cast<VkDevice>(deviceHandle)];
+  if (!ptr) {
+    ptr = std::unique_ptr<PipelineCache>(new PipelineCache());
+  }
+  return *ptr;
 }
 
 // ---------- Layout cache ----------
