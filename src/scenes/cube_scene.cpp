@@ -346,6 +346,7 @@ void CubeScene3D::unload() {
   material_.reset();
   textureTable_.reset();
   frameData_.reset();
+  frameUpdateConnectionId_ = 0;
   setLoaded(false);
   std::println("[{}] Cube scene unloaded", getName());
 }
@@ -365,4 +366,45 @@ void CubeScene3D::update(float deltaTime) {
   frameData_->proj =
       glm::perspective(glm::radians(45.0f), aspect, 0.1f, 100.0f);
   frameData_->proj[1][1] *= -1.0f;
+}
+
+void CubeScene3D::onComputeAttach(window::AsyncComputeManager *manager,
+                                  window::FrameUpdateSignal *signal) {
+  if (!manager || !entity_) {
+    return;
+  }
+
+  auto &rc = entity_->get<ecs::component::object::RenderComponent>();
+
+  // Register the displacement compute pass with Normal priority.
+  // recordComputeCommands() is a no-op when no compute pipeline is present,
+  // so this is safe to call unconditionally.
+  manager->registerEffect(
+      &rc, window::ComputePriority::Normal,
+      [&rc](vk::CommandBuffer cmd, uint32_t frameIndex) {
+        rc.recordComputeCommands(cmd, frameIndex);
+      });
+
+  // Connect to FrameUpdateSignal so rc.time is refreshed before compute runs
+  if (signal) {
+    auto result = signal->connect([this, &rc](float /*dt*/, uint32_t /*fi*/) {
+      rc.time = totalTime_;
+    });
+    if (result.has_value()) {
+      frameUpdateConnectionId_ = result.value();
+    }
+  }
+}
+
+void CubeScene3D::onComputeDetach(window::AsyncComputeManager *manager) {
+  if (!manager || !entity_) {
+    return;
+  }
+
+  auto &rc = entity_->get<ecs::component::object::RenderComponent>();
+  manager->unregisterEffect(&rc);
+  // Note: FrameUpdateSignal connections are disconnected automatically when
+  // the signal is destroyed along with the Window.  If explicit disconnection
+  // is needed, call signal->disconnect(frameUpdateConnectionId_) here.
+  frameUpdateConnectionId_ = 0;
 }

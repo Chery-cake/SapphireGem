@@ -26,7 +26,7 @@ using RenderUpdateFunc = std::function<void(uint32_t frameIndex)>;
  *
  * RenderWorld decouples the rendering pass from scene lifecycle management.
  * Scenes (or any other subsystem) register their @ref RenderComponentBase
- * objects here; the renderer then calls @ref preRender and @ref draw without
+ * objects here; the renderer then calls @ref draw without
  * knowing anything about scenes.
  *
  * Entries are stored as lightweight descriptors (pointer + optional callback).
@@ -35,7 +35,7 @@ using RenderUpdateFunc = std::function<void(uint32_t frameIndex)>;
  *
  * Thread-safety: all public methods that mutate or iterate the entry list take
  * an internal lock, so it is safe to call @ref add / @ref remove from any
- * thread while @ref draw / @ref preRender are called from the render thread.
+ * thread while @ref draw is called from the render thread.
  */
 class WINDOW_API RenderWorld {
 public:
@@ -73,13 +73,6 @@ public:
   void clear();
 
   // ── Rendering ──────────────────────────────────────────────────────────
-
-  /**
-   * @brief Issue compute / pre-render commands for all registered renderables.
-   *
-   * Should be called once per frame, before the render pass begins.
-   */
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const;
 
   /**
    * @brief Issue draw commands for all registered renderables.

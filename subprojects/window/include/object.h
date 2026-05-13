@@ -149,8 +149,9 @@ template <uint32_t Dim> struct TransformComponent {
 /**
  * @brief Abstract interface for any renderable component.
  *
- * Subclasses implement draw and preRender. The scene holds a list of
- * these pointers and calls the virtual methods every frame.
+ * Subclasses implement draw.  Compute/pre-render work is now driven by
+ * @ref AsyncComputeManager via explicit record callbacks rather than an
+ * inline virtual method.
  */
 class RenderComponentBase {
 public:
@@ -163,13 +164,6 @@ public:
    * selection).
    */
   virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
-
-  /**
-   * @brief Issue compute / pre‑render commands before the render pass.
-   * @param cmd         Active command buffer (before render pass).
-   * @param frameIndex  Current frame‑in‑flight index.
-   */
-  virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const = 0;
 };
 
 /**
@@ -226,7 +220,19 @@ struct RenderComponent : public RenderComponentBase {
 
   // ── Drawing & uniform updates ──────────────────────────────────────────
   void draw(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
-  void preRender(vk::CommandBuffer cmd, uint32_t frameIndex) const override;
+
+  /**
+   * @brief Record the compute dispatch commands for this component.
+   *
+   * This is the logic previously in @c preRender, now exposed as a plain
+   * method so that @ref AsyncComputeManager can call it from a dedicated
+   * compute command buffer.  Pass a lambda wrapping this method as the
+   * @c recordFn when calling @ref AsyncComputeManager::registerEffect.
+   *
+   * No-op if no compute pipeline has been set up via @ref initializeCompute.
+   */
+  void recordComputeCommands(vk::CommandBuffer cmd,
+                             uint32_t frameIndex) const;
 
   /// Update UBO for a 3-D entity (uses mat4 model / view / proj).
   void updateUniforms(uint32_t frameIndex,
@@ -240,6 +246,33 @@ struct RenderComponent : public RenderComponentBase {
                       const glm::mat3 &view,
                       const glm::mat3 &proj);
 
+  // ── Double-buffered displaced positions (§4.2) ─────────────────────────
+  /**
+   * @brief Advance the write slot after compute has been submitted.
+   *
+   * Call this once per frame after @ref AsyncComputeManager::executeFrame to
+   * record the timeline semaphore value that will signal completion of the
+   * current write, then toggle the write index.
+   *
+   * @param signalValue  The timeline semaphore value that will be signalled
+   *                     when the current compute submission completes.
+   */
+  void advanceWriteBuffer(uint64_t signalValue);
+
+  /**
+   * @brief Update @c readIndex_ to the latest confirmed write buffer.
+   *
+   * Queries the current timeline semaphore counter (non-blocking CPU read) and
+   * advances @c readIndex_ to the most recently completed write slot.  Call
+   * before @ref draw to ensure the freshest safe data is used.
+   *
+   * No-op if the compute semaphore handle is null.
+   *
+   * @param device       Vulkan logical device (for the query).
+   * @param timeline     Timeline semaphore to query.
+   */
+  void updateReadBuffer(vk::Device device, vk::Semaphore timeline);
+
   // ── Per-face material ──────────────────────────────────────────────────
   void setFaceMaterial(uint32_t faceIndex, const device::FaceMaterial &desc,
                        size_t faceCount);
@@ -252,6 +285,14 @@ private:
   std::vector<device::FaceMaterial> faceMaterials;
 
   mutable std::recursive_mutex mutex_;
+
+  // ── Double-buffered displaced positions (§4.2) ─────────────────────────
+  /// Slot currently being written by compute (0 or 1); mirrors frameIndex.
+  uint32_t writeIndex_ = 0;
+  /// Last confirmed completed write slot; used to select the safe read buffer.
+  uint32_t readIndex_ = 0;
+  /// Timeline semaphore values that signal completion of each write slot.
+  uint64_t completedSemaphoreValues_[2] = {0, 0};
 
   void uploadFaceData(uint32_t frameIndex, size_t faceCount) const;
   void uploadIndirectCommand() const;

@@ -1,6 +1,8 @@
 #ifndef SCENE_H_
 #define SCENE_H_
 
+#include "async_compute_manager.h"
+#include "frame_update_signal.h"
 #include "glm/ext/matrix_float3x3.hpp"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "object.h"
@@ -99,8 +101,29 @@ public:
                     device::ShaderManager &shaderManager, Renderer &renderer);
   virtual void unload();
   virtual void update(float deltaTime);
-  virtual void preRender(vk::CommandBuffer cmd, uint32_t frameIndex);
   virtual void draw(vk::CommandBuffer cmd, uint32_t frameIndex);
+
+  /**
+   * @brief Called by Window after the scene is loaded and presented.
+   *
+   * Override to register compute effects with @p manager and to connect
+   * frame-update subscribers to @p signal.  The base implementation is empty.
+   *
+   * @param manager  The window's AsyncComputeManager (never null when called).
+   * @param signal   The window's FrameUpdateSignal (never null when called).
+   */
+  virtual void onComputeAttach(AsyncComputeManager *manager,
+                               FrameUpdateSignal *signal);
+
+  /**
+   * @brief Called by Window before the scene is unpresented or destroyed.
+   *
+   * Override to unregister all effects previously registered in
+   * @ref onComputeAttach.  The base implementation is empty.
+   *
+   * @param manager  The window's AsyncComputeManager (never null when called).
+   */
+  virtual void onComputeDetach(AsyncComputeManager *manager);
 
   // ----- Manage objects (thread‑safe) -----
   /**

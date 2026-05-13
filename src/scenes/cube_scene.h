@@ -1,12 +1,15 @@
 #ifndef CUBE_SCENE_H_
 #define CUBE_SCENE_H_
 
+#include "async_compute_manager.h"
 #include "entities.h"
+#include "frame_update_signal.h"
 #include "image_array_registry.h"
 #include "object.h"
 #include "scene.h"
 #include "texture.h"
 #include "texture_table.h"
+#include <cstddef>
 #include <memory>
 
 // Forward declarations for tags (defined in main.cpp)
@@ -37,9 +40,12 @@ private:
   device::TextureId atlasTextureId_;
 
   using Cube = ecs::entity::Tuple<ecs::component::object::TransformComponent<3>,
-                                  ecs::component::object::Mesh,
-                                  ecs::component::object::RenderComponent>;
+                                   ecs::component::object::Mesh,
+                                   ecs::component::object::RenderComponent>;
   std::unique_ptr<Cube> entity_;
+
+  // Signal connection ID for FrameUpdateSignal subscription
+  uint64_t frameUpdateConnectionId_ = 0;
 
 public:
   CubeScene3D(const window::SceneTag &sceneTag,
@@ -56,6 +62,22 @@ public:
 
   void unload() override;
   void update(float deltaTime) override;
+
+  /**
+   * @brief Register the cube's compute displacement effect.
+   *
+   * Connects to @p signal so that @c rc.time is updated each frame before
+   * the compute pass runs, then registers
+   * @ref ecs::component::object::RenderComponent::recordComputeCommands with
+   * @p manager at Normal priority.
+   */
+  void onComputeAttach(window::AsyncComputeManager *manager,
+                       window::FrameUpdateSignal *signal) override;
+
+  /**
+   * @brief Unregister the cube's compute effect.
+   */
+  void onComputeDetach(window::AsyncComputeManager *manager) override;
 };
 
 #endif // CUBE_SCENE_H_

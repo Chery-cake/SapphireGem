@@ -19,7 +19,8 @@ namespace window {
 // Window Implementation
 // ============================================================================
 
-Window::Window() = default;
+Window::Window()
+    : frameUpdateSignal_(std::make_unique<FrameUpdateSignal>()) {}
 
 Window::~Window() { destroy(); }
 
@@ -33,6 +34,8 @@ Window::Window(Window &&other) noexcept
       allocator_(std::exchange(other.allocator_, nullptr)),
       shaderManager_(std::exchange(other.shaderManager_, nullptr)),
       activeScenes_(std::move(other.activeScenes_)),
+      asyncComputeManager_(std::move(other.asyncComputeManager_)),
+      frameUpdateSignal_(std::move(other.frameUpdateSignal_)),
       shouldClose_(other.shouldClose_), minimized_(other.minimized_),
       focused_(other.focused_), fullscreen_(other.fullscreen_),
       eventCallback_(std::move(other.eventCallback_)) {}
@@ -51,6 +54,8 @@ Window &Window::operator=(Window &&other) noexcept {
     allocator_ = std::exchange(other.allocator_, nullptr);
     shaderManager_ = std::exchange(other.shaderManager_, nullptr);
     activeScenes_ = std::move(other.activeScenes_);
+    asyncComputeManager_ = std::move(other.asyncComputeManager_);
+    frameUpdateSignal_ = std::move(other.frameUpdateSignal_);
     shouldClose_ = other.shouldClose_;
     minimized_ = other.minimized_;
     focused_ = other.focused_;
@@ -64,6 +69,13 @@ void Window::destroy() {
   // Wait for GPU to finish before unloading scenes
   if (renderer_) {
     renderer_->waitIdle();
+  }
+
+  // Shutdown async compute manager before scenes are unloaded (it holds
+  // Vulkan resources that must be destroyed while the device is still alive)
+  if (asyncComputeManager_) {
+    asyncComputeManager_->shutdown();
+    asyncComputeManager_.reset();
   }
 
   // Unload all active scenes (they hold GPU resources)
@@ -171,6 +183,18 @@ bool Window::create(const WindowConfig &config) {
       return false;
     }
     std::println("[Window] Renderer initialized for: {}", title_);
+  }
+
+  // Initialize async compute manager if GPU and renderer are available
+  if (mainGPU && renderer_) {
+    asyncComputeManager_ = std::make_unique<AsyncComputeManager>();
+    if (!asyncComputeManager_->initialize(*mainGPU, MAX_FRAMES_IN_FLIGHT)) {
+      std::println(stderr,
+                   "[Window] Failed to initialize AsyncComputeManager for: {}",
+                   title_);
+      // Non-fatal: compute effects simply won't run
+      asyncComputeManager_.reset();
+    }
   }
 
   return true;
@@ -379,6 +403,9 @@ void Window::removeScene(const SceneTag *tag) {
   // Unload if loaded
   Scene *scene = sceneRegistry_.get(tag);
   if (scene && scene->isLoaded()) {
+    if (asyncComputeManager_) {
+      scene->onComputeDetach(asyncComputeManager_.get());
+    }
     if (renderer_) {
       renderer_->waitIdle();
     }
@@ -430,6 +457,12 @@ bool Window::presentScene(const SceneTag *tag) {
     }
   }
 
+  // Notify scene so it can register compute effects and signal connections
+  if (asyncComputeManager_ && frameUpdateSignal_) {
+    scene->onComputeAttach(asyncComputeManager_.get(),
+                           frameUpdateSignal_.get());
+  }
+
   {
     std::lock_guard<std::mutex> lock(sceneMutex_);
     activeScenes_.push_back(tag);
@@ -453,6 +486,9 @@ void Window::unpresentScene(const SceneTag *tag) {
 
   Scene *scene = sceneRegistry_.get(tag);
   if (scene && scene->isLoaded()) {
+    if (asyncComputeManager_) {
+      scene->onComputeDetach(asyncComputeManager_.get());
+    }
     if (renderer_) {
       renderer_->waitIdle();
     }
@@ -523,11 +559,23 @@ bool Window::renderFrame(float deltaTime) {
     return false;
   }
 
-  // Dispatch per-scene compute shaders BEFORE the render pass.
-  // Compute commands cannot be issued inside an active render pass.
-  for (auto *scene : scenesToRender) {
-    scene->preRender(cmd, frameIndex);
+  // ── Async compute pass (Part 4) ─────────────────────────────────────────
+  // 1. Fire FrameUpdateSignal so subscribers (e.g. RenderComponents) can
+  //    update time / animation parameters before compute records them.
+  if (frameUpdateSignal_) {
+    frameUpdateSignal_->emit(deltaTime, frameIndex);
   }
+  // 2. Submit registered compute effects to the dedicated compute queue.
+  //    The AsyncComputeManager signals the timeline semaphore on completion.
+  vk::Semaphore computeSemaphore{};
+  uint64_t      computeWaitValue = 0;
+  if (asyncComputeManager_ && asyncComputeManager_->hasEffects() && mainGPU) {
+    asyncComputeManager_->executeFrame(frameIndex,
+                                       mainGPU->getComputeQueue());
+    computeSemaphore = asyncComputeManager_->getTimelineSemaphore();
+    computeWaitValue = asyncComputeManager_->getLastSubmittedValue();
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   // Begin render pass
   auto clearValues = renderer_->getClearValues();
@@ -557,8 +605,11 @@ bool Window::renderFrame(float deltaTime) {
 
   cmd.endRenderPass();
 
-  // End frame and present
-  return renderer_->endFrame(*sync, imageIndex);
+  // End frame: pass the compute timeline semaphore so the graphics submission
+  // waits at the vertex-input stage until compute finishes writing displaced
+  // positions (eliminates any GPU‑to‑CPU wait for compute readiness).
+  return renderer_->endFrame(*sync, imageIndex,
+                             computeSemaphore, computeWaitValue);
 }
 
 Scene *Window::getScene(const SceneTag *tag) {

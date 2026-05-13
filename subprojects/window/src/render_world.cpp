@@ -58,17 +58,6 @@ void RenderWorld::clear() {
 
 // ── Rendering ─────────────────────────────────────────────────────────────
 
-void RenderWorld::preRender(vk::CommandBuffer cmd,
-                            uint32_t frameIndex) const {
-  std::lock_guard lock(mutex_);
-  std::ranges::for_each(
-      entries_ |
-          std::views::filter([](const Entry &e) { return e.renderComp; }),
-      [cmd, frameIndex](const Entry &e) {
-        e.renderComp->preRender(cmd, frameIndex);
-      });
-}
-
 void RenderWorld::draw(vk::CommandBuffer cmd, uint32_t frameIndex) const {
   std::lock_guard lock(mutex_);
   std::ranges::for_each(

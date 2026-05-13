@@ -88,10 +88,13 @@ void Scene::update(float /*deltaTime*/) {
   // Base empty update
 }
 
-void Scene::preRender(vk::CommandBuffer cmd, uint32_t frameIndex) {
-  if (renderWorld_) {
-    renderWorld_->preRender(cmd, frameIndex);
-  }
+void Scene::onComputeAttach(AsyncComputeManager * /*manager*/,
+                            FrameUpdateSignal * /*signal*/) {
+  // Base no-op – override in derived scenes that use compute
+}
+
+void Scene::onComputeDetach(AsyncComputeManager * /*manager*/) {
+  // Base no-op – override in derived scenes that use compute
 }
 
 void Scene::draw(vk::CommandBuffer cmd, uint32_t frameIndex) {

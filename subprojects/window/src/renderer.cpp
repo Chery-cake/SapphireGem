@@ -410,7 +410,9 @@ FrameSyncObjects *Renderer::beginFrame() {
   return &sync;
 }
 
-bool Renderer::endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex) {
+bool Renderer::endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex,
+                        vk::Semaphore computeWaitSemaphore,
+                        uint64_t computeWaitValue) {
   std::lock_guard<std::mutex> lock(renderMutex_);
 
   if (!gpuDevice_ || imageIndex >= imageSyncObjects_.size()) {
@@ -426,16 +428,39 @@ bool Renderer::endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex) {
   vk::Semaphore waitSemaphore = **syncObjects.imageAvailableSemaphore;
   vk::Semaphore signalSemaphore =
       **imageSyncObjects_[imageIndex].renderFinishedSemaphore;
-  std::vector<vk::Semaphore> waitSemaphores = {waitSemaphore};
-  std::vector<vk::PipelineStageFlags> waitStages = {
-      vk::PipelineStageFlagBits::eColorAttachmentOutput};
-  std::vector<vk::Semaphore> signalSemaphores = {signalSemaphore};
 
-  submitCommandBuffer(syncObjects.commandBuffer, waitSemaphores,
-                      signalSemaphores, waitStages,
-                      **syncObjects.inFlightFence);
+  // Build wait semaphore submit infos (Vulkan 1.3 SubmitInfo2 path so that
+  // timeline semaphores can be mixed with binary semaphores cleanly).
+  std::vector<vk::SemaphoreSubmitInfo> waitInfos;
+  waitInfos.reserve(2);
+  // Binary semaphore: wait for swapchain image availability
+  waitInfos.push_back({waitSemaphore, 0,
+                       vk::PipelineStageFlagBits2::eColorAttachmentOutput, 0});
+  // Timeline semaphore: wait for async compute to finish writing displaced
+  // positions before the vertex shader reads them.
+  if (computeWaitSemaphore && computeWaitValue > 0) {
+    waitInfos.push_back({computeWaitSemaphore, computeWaitValue,
+                         vk::PipelineStageFlagBits2::eVertexInput, 0});
+  }
+
+  // Signal binary semaphore when rendering finishes (for presentation)
+  vk::SemaphoreSubmitInfo signalInfo{
+      signalSemaphore, 0, vk::PipelineStageFlagBits2::eAllGraphics, 0};
+
+  vk::CommandBufferSubmitInfo cmdInfo{syncObjects.commandBuffer, 0};
+  vk::SubmitInfo2 submitInfo2{{}, waitInfos, cmdInfo, signalInfo};
+
+  try {
+    gpuDevice_->getGraphicsQueue().submit2(submitInfo2,
+                                           **syncObjects.inFlightFence);
+  } catch (const vk::SystemError &e) {
+    std::println(stderr, "[Renderer] Failed to submit command buffer: {}",
+                 e.what());
+    return false;
+  }
 
   // Present
+  std::vector<vk::Semaphore> signalSemaphores = {signalSemaphore};
   bool presentResult = swapchain_->present(imageIndex, signalSemaphores);
 
   // Advance frame

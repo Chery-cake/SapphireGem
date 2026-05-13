@@ -1,6 +1,8 @@
 #ifndef WINDOW_H_
 #define WINDOW_H_
 
+#include "async_compute_manager.h"
+#include "frame_update_signal.h"
 #include "renderer.h"
 #include "resource_registry.h"
 #include "scene.h"
@@ -324,6 +326,31 @@ public:
    */
   [[nodiscard]] std::vector<const SceneTag *> getActiveSceneTags() const;
 
+  /**
+   * @brief Get the per-window frame-update signal.
+   *
+   * Scenes and renderable components can connect to this signal to update
+   * animation parameters (e.g. @c RenderComponent::time) before the async
+   * compute pass runs.  The signal is fired once per @ref renderFrame call,
+   * before @ref AsyncComputeManager::executeFrame.
+   *
+   * Signature: @c void(float deltaTime, uint32_t frameIndex)
+   */
+  [[nodiscard]] FrameUpdateSignal *getFrameUpdateSignal() {
+    return frameUpdateSignal_.get();
+  }
+
+  /**
+   * @brief Get the async compute manager for this window.
+   *
+   * Callers can register compute effects via
+   * @ref AsyncComputeManager::registerEffect and unregister them when the
+   * scene unloads.
+   */
+  [[nodiscard]] AsyncComputeManager *getAsyncComputeManager() {
+    return asyncComputeManager_.get();
+  }
+
 private:
   SDL_Window *window_ = nullptr;
   uint32_t windowId_ = 0;
@@ -341,6 +368,10 @@ private:
   core::ResourceRegistry<SceneTag, Scene> sceneRegistry_;
   std::vector<const SceneTag *> activeScenes_;
   mutable std::mutex sceneMutex_;
+
+  // Async compute framework (Part 4)
+  std::unique_ptr<AsyncComputeManager> asyncComputeManager_;
+  std::unique_ptr<FrameUpdateSignal> frameUpdateSignal_;
 
   bool shouldClose_ = false;
   bool minimized_ = false;

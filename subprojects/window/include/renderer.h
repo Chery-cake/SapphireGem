@@ -131,9 +131,16 @@ public:
    * @brief End the current frame and present
    * @param syncObjects Frame sync objects from beginFrame
    * @param imageIndex Swapchain image index
+   * @param computeWaitSemaphore Optional timeline semaphore to wait on (from
+   *        AsyncComputeManager) at the vertex-input stage before the graphics
+   *        commands read displaced-position buffers.  Pass a null handle to
+   *        disable the compute wait.
+   * @param computeWaitValue The timeline semaphore value to wait for.
    * @return true if presentation succeeded
    */
-  bool endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex);
+  bool endFrame(FrameSyncObjects &syncObjects, uint32_t imageIndex,
+                vk::Semaphore computeWaitSemaphore = {},
+                uint64_t computeWaitValue = 0);
 
   /**
    * @brief Record commands using a callback

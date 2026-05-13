@@ -416,8 +416,8 @@ void RenderComponent::draw(vk::CommandBuffer cmd,
                           sizeof(VkDrawIndexedIndirectCommand));
 }
 
-void RenderComponent::preRender(vk::CommandBuffer cmd,
-                                uint32_t frameIndex) const {
+void RenderComponent::recordComputeCommands(vk::CommandBuffer cmd,
+                                            uint32_t frameIndex) const {
   std::lock_guard lock(mutex_);
   if (!computeUpdatePipeline) {
     return;
@@ -451,6 +451,36 @@ void RenderComponent::preRender(vk::CommandBuffer cmd,
   cmd.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader,
                       vk::PipelineStageFlagBits::eVertexShader, {}, {},
                       {barrier}, {});
+}
+
+void RenderComponent::advanceWriteBuffer(uint64_t signalValue) {
+  std::lock_guard lock(mutex_);
+  completedSemaphoreValues_[writeIndex_] = signalValue;
+  writeIndex_ = 1u - writeIndex_;
+}
+
+void RenderComponent::updateReadBuffer(vk::Device device,
+                                       vk::Semaphore timeline) {
+  if (!device || !timeline) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  // Non-blocking CPU query of the current timeline semaphore counter
+  uint64_t currentValue = 0;
+  const vk::Result res =
+      device.getSemaphoreCounterValue(timeline, &currentValue);
+  if (res != vk::Result::eSuccess) {
+    return;
+  }
+  // Advance readIndex_ to the most recently completed write slot
+  for (uint32_t slot = 0; slot < 2u; ++slot) {
+    if (completedSemaphoreValues_[slot] > 0 &&
+        currentValue >= completedSemaphoreValues_[slot] &&
+        completedSemaphoreValues_[slot] >=
+            completedSemaphoreValues_[readIndex_]) {
+      readIndex_ = slot;
+    }
+  }
 }
 
 bool RenderComponent::initializeCompute(
