@@ -45,6 +45,7 @@ private:
   std::unique_ptr<Cube> entity_;
 
   // Signal connection ID for FrameUpdateSignal subscription
+  window::FrameUpdateSignal *frameUpdateSignal_ = nullptr;
   uint64_t frameUpdateConnectionId_ = 0;
 
 public:

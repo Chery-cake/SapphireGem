@@ -338,6 +338,14 @@ bool CubeScene3D::load(device::GPUDevice &device,
 }
 
 void CubeScene3D::unload() {
+  // Disconnect FrameUpdateSignal if still connected (e.g. when unloading
+  // without going through Window::unpresentScene).
+  if (frameUpdateSignal_ != nullptr && frameUpdateConnectionId_ != 0) {
+    frameUpdateSignal_->disconnect(frameUpdateConnectionId_);
+    frameUpdateSignal_       = nullptr;
+    frameUpdateConnectionId_ = 0;
+  }
+
   clearEntities();
   entity_.reset();
   if (material_) {
@@ -385,26 +393,34 @@ void CubeScene3D::onComputeAttach(window::AsyncComputeManager *manager,
         rc.recordComputeCommands(cmd, frameIndex);
       });
 
-  // Connect to FrameUpdateSignal so rc.time is refreshed before compute runs
+  // Connect to FrameUpdateSignal so rc.time is refreshed before compute runs.
+  // Store the signal pointer and connection ID so onComputeDetach can
+  // disconnect explicitly, preventing use-after-free if the scene outlives
+  // the window's signal.
   if (signal) {
     auto result = signal->connect([this, &rc](float /*dt*/, uint32_t /*fi*/) {
       rc.time = totalTime_;
     });
     if (result.has_value()) {
+      frameUpdateSignal_       = signal;
       frameUpdateConnectionId_ = result.value();
     }
   }
 }
 
 void CubeScene3D::onComputeDetach(window::AsyncComputeManager *manager) {
+  // Disconnect from FrameUpdateSignal before the scene (and its captured
+  // references) can be destroyed, preventing potential use-after-free.
+  if (frameUpdateSignal_ != nullptr && frameUpdateConnectionId_ != 0) {
+    frameUpdateSignal_->disconnect(frameUpdateConnectionId_);
+    frameUpdateSignal_       = nullptr;
+    frameUpdateConnectionId_ = 0;
+  }
+
   if (!manager || !entity_) {
     return;
   }
 
   auto &rc = entity_->get<ecs::component::object::RenderComponent>();
   manager->unregisterEffect(&rc);
-  // Note: FrameUpdateSignal connections are disconnected automatically when
-  // the signal is destroyed along with the Window.  If explicit disconnection
-  // is needed, call signal->disconnect(frameUpdateConnectionId_) here.
-  frameUpdateConnectionId_ = 0;
 }
