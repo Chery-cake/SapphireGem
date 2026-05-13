@@ -112,8 +112,9 @@ ObjectPipeline Material::createPipelineForObject(
   }
 
   // Create pipeline layout using the object's descriptor set layout
-  if (!createPipelineLayout(device, descriptorSetLayout, pipelineConfig, result,
-                            bindlessSetLayout)) {
+  result.pipelineLayout = createPipelineLayout(device, descriptorSetLayout,
+                                               pipelineConfig, bindlessSetLayout);
+  if (!result.pipelineLayout) {
     std::println(stderr,
                  "[Material] Failed to create pipeline layout for object: {}",
                  name_);
@@ -134,11 +135,11 @@ ObjectPipeline Material::createPipelineForObject(
   return result;
 }
 
-bool Material::createPipelineLayout(device::GPUDevice &device,
-                                    vk::DescriptorSetLayout descriptorSetLayout,
-                                    const PipelineConfig &config,
-                                    ObjectPipeline &out,
-                                    vk::DescriptorSetLayout bindlessSetLayout) {
+std::shared_ptr<vk::raii::PipelineLayout>
+Material::createPipelineLayout(device::GPUDevice &device,
+                               vk::DescriptorSetLayout descriptorSetLayout,
+                               const PipelineConfig &config,
+                               vk::DescriptorSetLayout bindlessSetLayout) {
   vk::PushConstantRange pushRange{};
 
   // Build the descriptor set layout array: set 0 = per-object, set 1 =
@@ -161,13 +162,12 @@ bool Material::createPipelineLayout(device::GPUDevice &device,
   }
 
   try {
-    out.pipelineLayout = std::make_unique<vk::raii::PipelineLayout>(
+    return std::make_shared<vk::raii::PipelineLayout>(
         device.getRaiiDevice(), layoutInfo);
-    return true;
   } catch (const vk::SystemError &e) {
     std::println(stderr, "[Material] Failed to create pipeline layout: {}",
                  e.what());
-    return false;
+    return nullptr;
   }
 }
 

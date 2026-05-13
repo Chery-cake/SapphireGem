@@ -63,7 +63,9 @@ struct WINDOW_API PipelineConfig { // TODO check default config
  */
 struct WINDOW_API ObjectPipeline {
   std::unique_ptr<vk::raii::Pipeline> pipeline;
-  std::unique_ptr<vk::raii::PipelineLayout> pipelineLayout;
+  /// Shared with any other ObjectPipeline that has the same descriptor-set
+  /// layout and push-constant configuration; managed by PipelineCache.
+  std::shared_ptr<vk::raii::PipelineLayout> pipelineLayout;
 
   [[nodiscard]] bool isValid() const {
     return pipeline != nullptr && pipelineLayout != nullptr;
@@ -161,10 +163,10 @@ public:
 private:
   friend class PipelineCache;
 
-  static bool
+  static std::shared_ptr<vk::raii::PipelineLayout>
   createPipelineLayout(device::GPUDevice &device,
                        vk::DescriptorSetLayout descriptorSetLayout,
-                       const PipelineConfig &config, ObjectPipeline &out,
+                       const PipelineConfig &config,
                        vk::DescriptorSetLayout bindlessSetLayout = {});
   static bool
   createPipeline(device::GPUDevice &device, vk::RenderPass renderPass,

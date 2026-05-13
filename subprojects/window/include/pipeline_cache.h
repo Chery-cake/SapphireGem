@@ -45,6 +45,24 @@ private:
   PipelineCache() = default;
   ~PipelineCache() = default;
 
+  // ---- Pipeline layout cache ----
+
+  /// Key for the layout sub-cache: only the fields that affect VkPipelineLayout
+  /// creation (descriptor-set layouts and push-constant configuration).
+  struct LayoutKey {
+    vk::DescriptorSetLayout set0Layout{};
+    vk::DescriptorSetLayout bindlessLayout{};
+    uint32_t pushConstantSize = 0;
+    vk::ShaderStageFlags pushConstantStages{};
+
+    bool operator==(const LayoutKey &other) const;
+  };
+  struct LayoutKeyHash {
+    std::size_t operator()(const LayoutKey &key) const;
+  };
+
+  // ---- Pipeline cache ----
+
   struct CacheKey {
     std::size_t shaderProgramHash = 0;
     vk::DescriptorSetLayout set0Layout{};
@@ -63,6 +81,13 @@ private:
   mutable std::mutex mutex_;
   std::unordered_map<CacheKey, std::shared_ptr<ObjectPipeline>, CacheKeyHash>
       cache_;
+  std::unordered_map<LayoutKey, std::shared_ptr<vk::raii::PipelineLayout>,
+                     LayoutKeyHash>
+      layoutCache_;
+
+  /// Get or create a shared pipeline layout for the given layout key.
+  std::shared_ptr<vk::raii::PipelineLayout>
+  getOrCreateLayout(device::GPUDevice &device, const LayoutKey &key);
 };
 
 } // namespace window

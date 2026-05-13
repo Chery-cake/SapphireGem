@@ -11,6 +11,28 @@ core::signal::Signal<void()> &PipelineCache::getInvalidateSignal() {
   return signal;
 }
 
+// ---------- LayoutKey helpers ----------
+
+bool PipelineCache::LayoutKey::operator==(const LayoutKey &o) const {
+  return set0Layout == o.set0Layout && bindlessLayout == o.bindlessLayout &&
+         pushConstantSize == o.pushConstantSize &&
+         pushConstantStages == o.pushConstantStages;
+}
+
+std::size_t
+PipelineCache::LayoutKeyHash::operator()(const LayoutKey &key) const {
+  std::size_t seed = 0;
+  auto combine = [&](auto val) {
+    std::hash<std::decay_t<decltype(val)>> h;
+    seed ^= h(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  };
+  combine(static_cast<VkDescriptorSetLayout>(key.set0Layout));
+  combine(static_cast<VkDescriptorSetLayout>(key.bindlessLayout));
+  combine(key.pushConstantSize);
+  combine(static_cast<VkShaderStageFlags>(key.pushConstantStages));
+  return seed;
+}
+
 // ---------- CacheKey helpers ----------
 
 bool PipelineCache::CacheKey::operator==(const CacheKey &other) const {
@@ -64,6 +86,41 @@ PipelineCache &PipelineCache::instance() {
   return inst;
 }
 
+// ---------- Layout cache ----------
+
+std::shared_ptr<vk::raii::PipelineLayout>
+PipelineCache::getOrCreateLayout(device::GPUDevice &device,
+                                  const LayoutKey &key) {
+  // Fast path
+  {
+    std::scoped_lock lock(mutex_);
+    auto it = layoutCache_.find(key);
+    if (it != layoutCache_.end())
+      return it->second;
+  }
+
+  // Slow path: build a minimal PipelineConfig with only the layout-relevant
+  // fields set, then delegate to Material::createPipelineLayout.
+  PipelineConfig minimalConfig;
+  minimalConfig.pushConstantSize = key.pushConstantSize;
+  minimalConfig.pushConstantStages = key.pushConstantStages;
+
+  auto layout = Material::createPipelineLayout(device, key.set0Layout,
+                                               minimalConfig, key.bindlessLayout);
+  if (!layout)
+    return nullptr;
+
+  {
+    std::scoped_lock lock(mutex_);
+    auto [it, inserted] = layoutCache_.try_emplace(key, std::move(layout));
+    if (inserted) {
+      std::println("[PipelineCache] Cached new pipeline layout (total {})",
+                   layoutCache_.size());
+    }
+    return it->second;
+  }
+}
+
 // ---------- Public API ----------
 
 std::shared_ptr<ObjectPipeline>
@@ -103,9 +160,15 @@ PipelineCache::getOrCreate(device::GPUDevice &device, vk::RenderPass renderPass,
   }
 
   ObjectPipeline newPipeline;
-  // TODO remove pipeline creation from material if possible
-  if (!Material::createPipelineLayout(device, set0Layout, config, newPipeline,
-                                      bindlessLayout)) {
+  // Look up (or create) a shared pipeline layout from the layout sub-cache.
+  LayoutKey layoutKey;
+  layoutKey.set0Layout = set0Layout;
+  layoutKey.bindlessLayout = bindlessLayout;
+  layoutKey.pushConstantSize = config.pushConstantSize;
+  layoutKey.pushConstantStages = config.pushConstantStages;
+
+  newPipeline.pipelineLayout = getOrCreateLayout(device, layoutKey);
+  if (!newPipeline.pipelineLayout) {
     std::println(stderr, "[PipelineCache] Pipeline layout creation failed");
     return {};
   }
@@ -140,6 +203,7 @@ void PipelineCache::clear() {
   {
     std::scoped_lock lock(mutex_);
     cache_.clear();
+    layoutCache_.clear();
   }
 }
 
